@@ -1,0 +1,46 @@
+cabal-version:       >=1.10
+name:                sara
+version:             0.1.0.0
+build-type:          Simple
+
+library
+  exposed-modules:     Sara.DataFrame.Types
+                     , Sara.DataFrame.IO
+                     , Sara.DataFrame.Transform
+                     , Sara.DataFrame.Wrangling
+                     , Sara.DataFrame.Aggregate
+                     , Sara.DataFrame.Join
+                     , Sara.DataFrame.Concat
+                     , Sara.DSL.MutateParser
+                     , Sara.REPL
+                     , Sara.Visualization
+  hs-source-dirs:      src
+  build-depends:       base >=4.14 && <5
+                     , text
+                     , containers
+                     , time
+                     , hashable
+                     , vector
+                     , cassava
+                     , bytestring
+                     , unordered-containers
+                     , aeson
+                     , aeson-pretty
+                     , process
+                     , filepath
+                     , directory
+                     , scientific
+  default-language:    Haskell2010
+
+executable sara
+  main-is:             Main.hs
+  hs-source-dirs:      app
+  build-depends:       base, sara, text, containers, vector, time
+  default-language:    Haskell2010
+
+test-suite sara-test
+  type:                exitcode-stdio-1.0
+  main-is:             TestSuite.hs
+  hs-source-dirs:      test
+  build-depends:       base, hspec, text, containers, time, sara, vector
+  default-language:    Haskell2010
