@@ -5,11 +5,11 @@
     <script src="https://cdn.jsdelivr.net/npm/vega@5"></script>
     <script src="https://cdn.jsdelivr.net/npm/vega-lite@5"></script>
     <script src="https://cdn.jsdelivr.net/npm/vega-embed@6"></script>
-</head>
+></head>
 <body>
     <div id="vis"></div>
     <script type="text/javascript">
-        var spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","data":[{"Age":30,"City":"New York","EnrollmentDate":"2020-09-01","GPA":3.8,"IsStudent":true,"Name":"Alice"},{"Age":24,"City":"London","EnrollmentDate":"2021-01-15","GPA":3.2,"IsStudent":false,"Name":"Bob"},{"Age":35,"City":"Paris","EnrollmentDate":"2019-03-10","GPA":3.9,"IsStudent":true,"Name":"Charlie"},{"Age":28,"City":"Berlin","EnrollmentDate":"2022-07-20","GPA":null,"IsStudent":false,"Name":"David"},{"Age":22,"City":"Tokyo","EnrollmentDate":"2023-02-28","GPA":3.5,"IsStudent":true,"Name":"Eve"}],"description":"A scatter plot showing the relationship between Age and GPA.","encoding":{"color":{"field":"City","type":"nominal"},"tooltip":{"field":"Name","type":"nominal"},"x":{"field":"Age","type":"quantitative"},"y":{"field":"GPA","type":"quantitative"}},"mark":"point","title":"Age vs. GPA Scatter Plot"};
+        var spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","data":[{"Age":30,"City":"New York","EnrollmentDate":"2020-09-01","GPA":3.8,"IsStudent":true,"Name":"Alice"},{"Age":24,"City":"London","EnrollmentDate":"2021-01-15","GPA":3.2,"IsStudent":false,"Name":"Bob"},{"Age":35,"City":"Paris","EnrollmentDate":"2019-03-10","GPA":3.9,"IsStudent":true,"Name":"Charlie"},{"Age":28,"City":"Berlin","EnrollmentDate":"2022-07-20","GPA":null,"IsStudent":false,"Name":"David"},{"Age":22,"City":"Tokyo","EnrollmentDate":"2023-02-28","GPA":3.5,"IsStudent":true,"Name":"Eve"}],"description":"A line chart showing GPA trends over enrollment date.","encoding":{"x":{"field":"EnrollmentDate","type":"temporal"},"y":{"field":"GPA","type":"quantitative"}},"mark":"line","title":"GPA over Enrollment Date Line Chart"};
         vegaEmbed('#vis', spec).then(result => console.log(result)).catch(console.error);
     </script>
 </body>

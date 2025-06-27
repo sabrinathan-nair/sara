@@ -9,7 +9,7 @@ module Sara.Visualization (
 ) where
 
 import qualified Data.Text as T
-import Sara.DataFrame.Types (DFValue(..), DataFrame(..), toRows) -- Import DataFrame and toRows
+import Sara.DataFrame.Types (DFValue(..), DataFrame(..), toRows, Column)
 import Data.Aeson as A
 import Data.Aeson.Text (encodeToLazyText)
 import qualified Data.Text.Lazy as TL
@@ -19,10 +19,24 @@ import Data.Maybe (catMaybes)
 import qualified Data.Aeson.Key as Aeson.Key
 import qualified Data.Map.Strict as Map
 import Data.Time.Format (formatTime, defaultTimeLocale)
-import qualified Sara.DataFrame.Types as Types -- Qualified import for DFValue
+import qualified Sara.DataFrame.Types as Types
 import System.Process (callCommand)
 import System.FilePath ((</>))
 import System.Directory (getCurrentDirectory)
+
+-- | Represents Vega-Lite data types.
+data VLType = Quantitative
+            | Ordinal
+            | Nominal
+            | Temporal
+            deriving (Show, Eq)
+
+-- Helper to convert VLType to Text
+vlTypeToText :: VLType -> T.Text
+vlTypeToText Quantitative = T.pack "quantitative"
+vlTypeToText Ordinal = T.pack "ordinal"
+vlTypeToText Nominal = T.pack "nominal"
+vlTypeToText Temporal = T.pack "temporal"
 
 -- | Defines an aesthetic mapping for a plot.
 -- Maps a column name (Text) to a visual property.
@@ -37,15 +51,32 @@ data Aesthetic = X T.Text
                -- Add more as needed
                deriving (Show, Eq)
 
-instance ToJSON Aesthetic where
-    toJSON (X col) = A.object [Aeson.Key.fromText (T.pack "field") .= col, Aeson.Key.fromText (T.pack "type") .= T.pack "quantitative"]
-    toJSON (Y col) = A.object [Aeson.Key.fromText (T.pack "field") .= col, Aeson.Key.fromText (T.pack "type") .= T.pack "quantitative"]
-    toJSON (Color col) = A.object [Aeson.Key.fromText (T.pack "field") .= col, Aeson.Key.fromText (T.pack "type") .= T.pack "nominal"]
-    toJSON (Size col) = A.object [Aeson.Key.fromText (T.pack "field") .= col, Aeson.Key.fromText (T.pack "type") .= T.pack "quantitative"]
-    toJSON (Opacity col) = A.object [Aeson.Key.fromText (T.pack "field") .= col, Aeson.Key.fromText (T.pack "type") .= T.pack "quantitative"]
-    toJSON (Shape col) = A.object [Aeson.Key.fromText (T.pack "field") .= col, Aeson.Key.fromText (T.pack "type") .= T.pack "nominal"]
-    toJSON (Text col) = A.object [Aeson.Key.fromText (T.pack "field") .= col, Aeson.Key.fromText (T.pack "type") .= T.pack "nominal"]
-    toJSON (Tooltip col) = A.object [Aeson.Key.fromText (T.pack "field") .= col, Aeson.Key.fromText (T.pack "type") .= T.pack "nominal"]
+-- Helper to infer VLType from a DataFrame column
+inferVLType :: T.Text -> DataFrame -> VLType
+inferVLType colName (DataFrame dfMap) =
+    case Map.lookup colName dfMap of
+        Just col ->
+            if V.null col
+                then Nominal -- Default to Nominal if column is empty
+                else case V.head col of
+                    Types.IntValue _ -> Quantitative
+                    Types.DoubleValue _ -> Quantitative
+                    Types.BoolValue _ -> Nominal
+                    Types.DateValue _ -> Temporal
+                    Types.TextValue _ -> Nominal
+                    Types.NA -> Nominal -- Default to Nominal for NA
+        Nothing -> Nominal -- Default to Nominal if column not found
+
+-- Helper to convert Aesthetic to Aeson Value
+aestheticToAeson :: DataFrame -> Aesthetic -> A.Value
+aestheticToAeson df (X col) = A.object [Aeson.Key.fromText (T.pack "field") .= col, Aeson.Key.fromText (T.pack "type") .= vlTypeToText (inferVLType col df)]
+aestheticToAeson df (Y col) = A.object [Aeson.Key.fromText (T.pack "field") .= col, Aeson.Key.fromText (T.pack "type") .= vlTypeToText (inferVLType col df)]
+aestheticToAeson df (Color col) = A.object [Aeson.Key.fromText (T.pack "field") .= col, Aeson.Key.fromText (T.pack "type") .= vlTypeToText (inferVLType col df)]
+aestheticToAeson df (Size col) = A.object [Aeson.Key.fromText (T.pack "field") .= col, Aeson.Key.fromText (T.pack "type") .= vlTypeToText (inferVLType col df)]
+aestheticToAeson df (Opacity col) = A.object [Aeson.Key.fromText (T.pack "field") .= col, Aeson.Key.fromText (T.pack "type") .= vlTypeToText (inferVLType col df)]
+aestheticToAeson df (Shape col) = A.object [Aeson.Key.fromText (T.pack "field") .= col, Aeson.Key.fromText (T.pack "type") .= vlTypeToText (inferVLType col df)]
+aestheticToAeson df (Text col) = A.object [Aeson.Key.fromText (T.pack "field") .= col, Aeson.Key.fromText (T.pack "type") .= vlTypeToText (inferVLType col df)]
+aestheticToAeson df (Tooltip col) = A.object [Aeson.Key.fromText (T.pack "field") .= col, Aeson.Key.fromText (T.pack "type") .= vlTypeToText (inferVLType col df)]
 
 -- | Defines the type of geometric mark to use in the plot.
 data Geom = Point
@@ -65,7 +96,7 @@ geomToAeson Area = A.String (T.pack "area")
 geomToAeson TextGeom = A.String (T.pack "text")
 
 -- | Combines aesthetic mappings and a geometric mark.
-data PlotEncoding = PlotEncoding -- Renamed from Encoding
+data PlotEncoding = PlotEncoding
     { encodingX :: Maybe Aesthetic
     , encodingY :: Maybe Aesthetic
     , encodingColor :: Maybe Aesthetic
@@ -81,13 +112,12 @@ data PlotEncoding = PlotEncoding -- Renamed from Encoding
 data Plot = Plot
     { plotTitle :: Maybe T.Text
     , plotDescription :: Maybe T.Text
-    , plotEncoding :: PlotEncoding -- Updated type
-    , plotData :: DataFrame -- Added DataFrame to Plot
-    -- Add more plot-level properties as needed (e.g., data source, width, height)
+    , plotEncoding :: PlotEncoding
+    , plotData :: DataFrame
     } deriving (Show, Eq)
 
 -- | Converts a DFValue to an Aeson Value for JSON serialization.
-valueToAeson :: Types.DFValue -> A.Value -- Qualified DFValue
+valueToAeson :: Types.DFValue -> A.Value
 valueToAeson (Types.IntValue i) = A.toJSON i
 valueToAeson (Types.DoubleValue d) = A.toJSON d
 valueToAeson (Types.TextValue t) = A.toJSON t
@@ -100,7 +130,6 @@ dataFrameToVegaLiteValues :: DataFrame -> A.Value
 dataFrameToVegaLiteValues df =
     let
         rows = toRows df
-        -- Convert each Row (Map Text DFValue) to an Aeson Object (Map Text A.Value)
         jsonRows = map (A.object . Map.toList . Map.mapKeys Aeson.Key.fromText . Map.map valueToAeson) rows
     in
         A.Array (V.fromList jsonRows)
@@ -110,27 +139,26 @@ toVegaLite :: Plot -> TL.Text
 toVegaLite (Plot title desc encoding df) =
     let
         encObj = A.object $ catMaybes
-            [ fmap ((Aeson.Key.fromText (T.pack "x")) .=) (encodingX encoding)
-            , fmap ((Aeson.Key.fromText (T.pack "y")) .=) (encodingY encoding)
-            , fmap ((Aeson.Key.fromText (T.pack "color")) .=) (encodingColor encoding)
-            , fmap ((Aeson.Key.fromText (T.pack "size")) .=) (encodingSize encoding)
-            , fmap ((Aeson.Key.fromText (T.pack "opacity")) .=) (encodingOpacity encoding)
-            , fmap ((Aeson.Key.fromText (T.pack "shape")) .=) (encodingShape encoding)
-            , fmap ((Aeson.Key.fromText (T.pack "text")) .=) (encodingText encoding)
-            , fmap ((Aeson.Key.fromText (T.pack "tooltip")) .=) (encodingTooltip encoding)
+            [ fmap (\x -> (Aeson.Key.fromText (T.pack "x"), aestheticToAeson df x)) (encodingX encoding)
+            , fmap (\y -> (Aeson.Key.fromText (T.pack "y"), aestheticToAeson df y)) (encodingY encoding)
+            , fmap (\color -> (Aeson.Key.fromText (T.pack "color"), aestheticToAeson df color)) (encodingColor encoding)
+            , fmap (\size -> (Aeson.Key.fromText (T.pack "size"), aestheticToAeson df size)) (encodingSize encoding)
+            , fmap (\opacity -> (Aeson.Key.fromText (T.pack "opacity"), aestheticToAeson df opacity)) (encodingOpacity encoding)
+            , fmap (\shape -> (Aeson.Key.fromText (T.pack "shape"), aestheticToAeson df shape)) (encodingShape encoding)
+            , fmap (\text -> (Aeson.Key.fromText (T.pack "text"), aestheticToAeson df text)) (encodingText encoding)
+            , fmap (\tooltip -> (Aeson.Key.fromText (T.pack "tooltip"), aestheticToAeson df tooltip)) (encodingTooltip encoding)
             ]
 
         markObj = geomToAeson (encodingGeom encoding)
 
-        -- Basic Vega-Lite spec structure
         vlSpec :: A.Value
         vlSpec = A.object $ catMaybes
-            [ Just ((Aeson.Key.fromText (T.pack "$schema")) .= T.pack "https://vega.github.io/schema/vega-lite/v5.json")
-            , fmap ((Aeson.Key.fromText (T.pack "title")) .=) title
-            , fmap ((Aeson.Key.fromText (T.pack "description")) .=) desc
-            , Just ((Aeson.Key.fromText (T.pack "mark")) .= markObj)
-            , Just ((Aeson.Key.fromText (T.pack "encoding")) .= encObj)
-            , Just ((Aeson.Key.fromText (T.pack "data")) .= dataFrameToVegaLiteValues df)
+            [ Just (Aeson.Key.fromText (T.pack "$schema") .= T.pack "https://vega.github.io/schema/vega-lite/v5.json")
+            , fmap (Aeson.Key.fromText (T.pack "title") .=) title
+            , fmap (Aeson.Key.fromText (T.pack "description") .=) desc
+            , Just (Aeson.Key.fromText (T.pack "mark") .= markObj)
+            , Just (Aeson.Key.fromText (T.pack "encoding") .= encObj)
+            , Just (Aeson.Key.fromText (T.pack "data") .= dataFrameToVegaLiteValues df)
             ]
     in
         encodeToLazyText vlSpec
@@ -155,7 +183,7 @@ viewPlotInBrowser plot = do
             ,TL.pack "    <script src=\"https://cdn.jsdelivr.net/npm/vega@5\"></script>"
             ,TL.pack "    <script src=\"https://cdn.jsdelivr.net/npm/vega-lite@5\"></script>"
             ,TL.pack "    <script src=\"https://cdn.jsdelivr.net/npm/vega-embed@6\"></script>"
-            ,TL.pack "</head>"
+            ,TL.pack "></head>"
             ,TL.pack "<body>"
             ,TL.pack "    <div id=\"vis\"></div>"
             ,TL.pack "    <script type=\"text/javascript\">"
