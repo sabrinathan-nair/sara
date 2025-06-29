@@ -10,7 +10,7 @@ import Sara.DataFrame.Transform (selectColumns, addColumn, applyColumn)
 import Sara.DataFrame.Types
 import Sara.DataFrame.TimeSeries (resample, shift, pctChange, fromRows, ResampleRule(..))
 import Sara.DataFrame.Missing (fillna, ffill, bfill, dropna, DropAxis(..), isna, notna)
-import Sara.DataFrame.Statistics (rollingApply, sumV, meanV, stdV, minV, maxV, countV)
+import Sara.DataFrame.Statistics (rollingApply, sumV, meanV, stdV, minV, maxV, countV, medianV, modeV, varianceV, skewV, kurtosisV)
 import Sara.DataFrame.Strings (lower, upper, strip, contains, replace)
 import Sara.DataFrame.Wrangling (filterByBoolColumn)
 import Data.Time.Format (parseTimeM, defaultTimeLocale)
@@ -144,21 +144,21 @@ main = hspec $ do
         _ -> expectationFailure "Percentage Change column not found or incorrect"
 
   describe "Statistical Functions" $ do
-    let testVector = V.fromList [IntValue 1, IntValue 2, DoubleValue 3.0, NA, IntValue 4]
+    let testVector = V.fromList [IntValue 1, IntValue 2, IntValue 1, DoubleValue 3.0, NA, IntValue 4, IntValue 1]
 
     it "calculates sumV correctly" $ do
       case sumV testVector of
-        DoubleValue s -> s `shouldBeApprox` 10.0
+        DoubleValue s -> s `shouldBeApprox` 12.0
         _ -> expectationFailure "sumV did not return a DoubleValue"
 
     it "calculates meanV correctly" $ do
       case meanV testVector of
-        DoubleValue m -> m `shouldBeApprox` 2.5
+        DoubleValue m -> m `shouldBeApprox` 2.0
         _ -> expectationFailure "meanV did not return a DoubleValue"
 
     it "calculates stdV correctly" $ do
       case stdV testVector of
-        DoubleValue s -> s `shouldBeApprox` 1.290994448735806
+        DoubleValue s -> s `shouldBeApprox` 1.2649110640673518
         _ -> expectationFailure "stdV did not return a DoubleValue"
 
     it "calculates minV correctly" $ do
@@ -168,7 +168,32 @@ main = hspec $ do
       maxV testVector `shouldBe` DoubleValue 4.0
 
     it "calculates countV correctly" $ do
-      countV testVector `shouldBe` IntValue 4
+      countV testVector `shouldBe` IntValue 6
+
+    it "calculates medianV correctly" $ do
+      case medianV testVector of
+        DoubleValue m -> m `shouldBeApprox` 1.5
+        _ -> expectationFailure "medianV did not return a DoubleValue"
+
+    it "calculates modeV correctly" $ do
+      case modeV testVector of
+        IntValue m -> m `shouldBe` 1
+        _ -> expectationFailure "modeV did not return an IntValue"
+
+    it "calculates varianceV correctly" $ do
+      case varianceV testVector of
+        DoubleValue v -> v `shouldBeApprox` 1.6
+        _ -> expectationFailure "varianceV did not return a DoubleValue"
+
+    it "calculates skewV correctly" $ do
+      case skewV testVector of
+        DoubleValue s -> s `shouldBeApprox` 0.8893905919223565
+        _ -> expectationFailure "skewV did not return a DoubleValue"
+
+    it "calculates kurtosisV correctly" $ do
+      case kurtosisV testVector of
+        DoubleValue k -> k `shouldBeApprox` (-0.78125)
+        _ -> expectationFailure "kurtosisV did not return a DoubleValue"
 
   describe "String Functions" $ do
     let createStringDataFrame :: IO DataFrame

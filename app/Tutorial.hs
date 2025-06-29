@@ -10,7 +10,7 @@ import qualified Data.Map as Map
 import Sara.DataFrame.Types (DFValue(..), JoinType(..), Row, DataFrame(..))
 import Sara.DataFrame.TimeSeries (resample, shift, pctChange, fromRows, ResampleRule(..))
 import Sara.DataFrame.Missing (fillna, ffill, bfill, dropna, DropAxis(..), isna, notna)
-import Sara.DataFrame.Statistics (rollingApply, sumV, meanV, stdV, minV, maxV, countV)
+import Sara.DataFrame.Statistics (rollingApply, sumV, meanV, stdV, minV, maxV, countV, medianV, modeV, varianceV, skewV, kurtosisV)
 import Sara.DataFrame.Strings (lower, upper, strip, contains, replace)
 import Data.Time.Format (parseTimeM, defaultTimeLocale)
 import Data.Time (UTCTime)
@@ -185,6 +185,31 @@ main = do
     putStrLn "\n--- Count of Non-NA Values in Value Column ---"
     case sumCol of
         Just vec -> print $ countV vec
+        Nothing -> putStrLn "Value column not found"
+
+    putStrLn "\n--- Median of Value Column ---"
+    case sumCol of
+        Just vec -> print $ medianV vec
+        Nothing -> putStrLn "Value column not found"
+
+    putStrLn "\n--- Mode of Value Column ---"
+    case sumCol of
+        Just vec -> print $ modeV vec
+        Nothing -> putStrLn "Value column not found"
+
+    putStrLn "\n--- Variance of Value Column ---"
+    case sumCol of
+        Just vec -> print $ varianceV vec
+        Nothing -> putStrLn "Value column not found"
+
+    putStrLn "\n--- Skewness of Value Column ---"
+    case sumCol of
+        Just vec -> print $ skewV vec
+        Nothing -> putStrLn "Value column not found"
+
+    putStrLn "\n--- Kurtosis of Value Column ---"
+    case sumCol of
+        Just vec -> print $ kurtosisV vec
         Nothing -> putStrLn "Value column not found"
 
     -- 10. String Functions
