@@ -13,7 +13,7 @@ library
                      , Sara.DataFrame.Concat
                      , Sara.DSL.MutateParser
                      , Sara.REPL
-                     , Sara.Visualization
+                     
   hs-source-dirs:      src
   build-depends:       base >=4.14 && <5
                      , text
@@ -25,7 +25,7 @@ library
                      , bytestring
                      , unordered-containers
                      , aeson
-                     , aeson-pretty
+                     
                      , process
                      , filepath
                      , directory
@@ -33,7 +33,12 @@ library
   default-language:    Haskell2010
 
 executable sara
-  main-is:             Main.hs
+  main-is:          Main.hs
+  hs-source-dirs:      app
+  build-depends:       base, sara, text, containers, vector, time, bytestring, aeson, filepath, process, directory
+
+executable sara-tutorial
+    main-is:          Tutorial.hs
   hs-source-dirs:      app
   build-depends:       base, sara, text, containers, vector, time
   default-language:    Haskell2010

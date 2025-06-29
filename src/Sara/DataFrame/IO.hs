@@ -22,7 +22,6 @@ import qualified Data.ByteString.Char8 as BC
 import qualified Data.HashMap.Strict as HM
 import Data.Char (toUpper)
 import Data.Aeson as A
-import Data.Aeson.Encode.Pretty (encodePretty)
 
 import Sara.DataFrame.Types
 
@@ -117,4 +116,4 @@ readJSON filePath = do
 writeJSON :: FilePath -> DataFrame -> IO ()
 writeJSON filePath df = do
     let rows = toRows df
-    BL.writeFile filePath (encodePretty rows)
+    BL.writeFile filePath (A.encode rows)
