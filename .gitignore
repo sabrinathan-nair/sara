@@ -1,3 +1,4 @@
 dist-newstyle/
 *.hi
 *.o
+vega_lite_plot.html
