@@ -1,7 +1,8 @@
 module Sara.DataFrame.Transform (
     selectColumns,
     addColumn,
-    melt
+    melt,
+    applyColumn
 ) where
 
 import qualified Data.Text as T
@@ -68,3 +69,13 @@ melt id_vars value_vars (DataFrame dfMap) =
                            Map.fromList (zip colNames cols)
     in
         DataFrame newDfMap
+
+-- | Applies a function to a specified column in a DataFrame.
+applyColumn :: T.Text -> (DFValue -> DFValue) -> DataFrame -> DataFrame
+applyColumn colName f (DataFrame dfMap) =
+    case Map.lookup colName dfMap of
+        Just col ->
+            let updatedCol = V.map f col
+            in DataFrame (Map.insert colName updatedCol dfMap)
+        Nothing ->
+            DataFrame dfMap -- Column not found, return original DataFrame

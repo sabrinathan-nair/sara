@@ -6,7 +6,7 @@ import qualified Data.Text as T
 import qualified Data.Map.Strict as Map
 import qualified Data.Vector as V
 import Sara.DataFrame.IO
-import Sara.DataFrame.Transform
+import Sara.DataFrame.Transform (selectColumns, addColumn, applyColumn)
 import Sara.DataFrame.Types
 import Sara.DataFrame.TimeSeries (resample, shift, pctChange, fromRows, ResampleRule(..))
 import Sara.DataFrame.Missing (fillna, ffill, bfill, dropna, DropAxis(..), isna, notna)
@@ -359,3 +359,33 @@ main = hspec $ do
           n1 `shouldBe` T.pack "Alice"
           n2 `shouldBe` T.pack "Charlie"
         _ -> expectationFailure "Boolean filtering failed"
+
+  describe "Column-wise Apply" $ do
+    let createApplyDataFrame :: IO DataFrame
+        createApplyDataFrame = do
+          let rows = [
+                  Map.fromList [(T.pack "ColA", IntValue 1), (T.pack "ColB", DoubleValue 10.0)],
+                  Map.fromList [(T.pack "ColA", IntValue 2), (T.pack "ColB", DoubleValue 20.0)],
+                  Map.fromList [(T.pack "ColA", NA), (T.pack "ColB", NA)]
+                  ]
+          return $ fromRows rows
+
+    it "applies a function to a numeric column" $ do
+      df <- createApplyDataFrame
+      let appliedDf = applyColumn (T.pack "ColB") (\val -> case val of DoubleValue d -> DoubleValue (d * 2); IntValue i -> DoubleValue (fromIntegral i * 2); _ -> NA) df
+      let (DataFrame appliedMap) = appliedDf
+      case Map.lookup (T.pack "ColB") appliedMap of
+        Just (V.toList -> [DoubleValue v1, DoubleValue v2, NA]) -> do
+          v1 `shouldBe` 20.0
+          v2 `shouldBe` 40.0
+        _ -> expectationFailure "applyColumn failed for numeric column"
+
+    it "applies a function to a text column" $ do
+      df <- createApplyDataFrame
+      let appliedDf = applyColumn (T.pack "ColA") (\val -> case val of IntValue i -> TextValue (T.pack $ show i); _ -> NA) df
+      let (DataFrame appliedMap) = appliedDf
+      case Map.lookup (T.pack "ColA") appliedMap of
+        Just (V.toList -> [TextValue t1, TextValue t2, NA]) -> do
+          t1 `shouldBe` T.pack "1"
+          t2 `shouldBe` T.pack "2"
+        _ -> expectationFailure "applyColumn failed for text column"

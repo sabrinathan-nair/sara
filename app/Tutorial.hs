@@ -2,7 +2,7 @@ module Main where
 
 import Sara.DataFrame.IO
 import Sara.DataFrame.Wrangling (filterRows, filterByBoolColumn)
-import Sara.DataFrame.Transform (selectColumns, addColumn)
+import Sara.DataFrame.Transform (selectColumns, addColumn, applyColumn)
 import Sara.DataFrame.Join
 import Sara.DataFrame.Aggregate
 import qualified Data.Text as T
@@ -233,3 +233,18 @@ main = do
     putStrLn "\n--- Filter by IsStudent == True ---"
     let filteredBoolDf = filterByBoolColumn boolDf (T.pack "IsStudent")
     print filteredBoolDf
+
+    -- 12. Column-wise Apply
+    putStrLn "\n--- Column-wise Apply ---"
+    let applyData = [
+            Map.fromList [(T.pack "ColA", IntValue 1), (T.pack "ColB", DoubleValue 10.0)],
+            Map.fromList [(T.pack "ColA", IntValue 2), (T.pack "ColB", DoubleValue 20.0)],
+            Map.fromList [(T.pack "ColA", NA), (T.pack "ColB", NA)]
+            ]
+    let applyDf = fromRows applyData
+    putStrLn "Original Data for Column-wise Apply:"
+    print applyDf
+
+    putStrLn "\n--- Apply function (multiply by 2) to ColB ---"
+    let appliedDf = applyColumn (T.pack "ColB") (\val -> case val of DoubleValue d -> DoubleValue (d * 2); IntValue i -> DoubleValue (fromIntegral i * 2); _ -> NA) applyDf
+    print appliedDf
