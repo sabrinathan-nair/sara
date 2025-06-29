@@ -9,7 +9,7 @@ import Sara.DataFrame.IO
 import Sara.DataFrame.Transform
 import Sara.DataFrame.Types
 import Sara.DataFrame.TimeSeries (resample, shift, pctChange, fromRows, ResampleRule(..))
-import Sara.DataFrame.Missing (fillna, ffill, bfill, dropna, DropAxis(..))
+import Sara.DataFrame.Missing (fillna, ffill, bfill, dropna, DropAxis(..), isna, notna)
 import Sara.DataFrame.Statistics (rollingApply, sumV, meanV, stdV, minV, maxV, countV)
 import Sara.DataFrame.Strings (lower, upper, strip, contains, replace)
 import Sara.DataFrame.Wrangling (filterByBoolColumn)
@@ -304,6 +304,40 @@ main = hspec $ do
       let droppedDf = dropna df DropColumns (Just 2)
       let (DataFrame droppedMap) = droppedDf
       Map.keys droppedMap `shouldMatchList` [T.pack "Col1", T.pack "Col3"]
+
+    it "creates isna boolean mask" $ do
+      df <- createNaDataFrame
+      let isnaDf = isna df
+      let (DataFrame isnaMap) = isnaDf
+      case Map.lookup (T.pack "Col1") isnaMap of
+        Just (V.toList -> [BoolValue b1, BoolValue b2, BoolValue b3]) -> do
+          b1 `shouldBe` False
+          b2 `shouldBe` True
+          b3 `shouldBe` False
+        _ -> expectationFailure "isna failed for Col1"
+      case Map.lookup (T.pack "Col2") isnaMap of
+        Just (V.toList -> [BoolValue b1, BoolValue b2, BoolValue b3]) -> do
+          b1 `shouldBe` True
+          b2 `shouldBe` False
+          b3 `shouldBe` True
+        _ -> expectationFailure "isna failed for Col2"
+
+    it "creates notna boolean mask" $ do
+      df <- createNaDataFrame
+      let notnaDf = notna df
+      let (DataFrame notnaMap) = notnaDf
+      case Map.lookup (T.pack "Col1") notnaMap of
+        Just (V.toList -> [BoolValue b1, BoolValue b2, BoolValue b3]) -> do
+          b1 `shouldBe` True
+          b2 `shouldBe` False
+          b3 `shouldBe` True
+        _ -> expectationFailure "notna failed for Col1"
+      case Map.lookup (T.pack "Col2") notnaMap of
+        Just (V.toList -> [BoolValue b1, BoolValue b2, BoolValue b3]) -> do
+          b1 `shouldBe` False
+          b2 `shouldBe` True
+          b3 `shouldBe` False
+        _ -> expectationFailure "notna failed for Col2"
 
   describe "Boolean Indexing" $ do
     let createBoolDataFrame :: IO DataFrame

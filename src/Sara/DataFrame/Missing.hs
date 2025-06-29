@@ -5,7 +5,9 @@ module Sara.DataFrame.Missing (
     ffill,
     bfill,
     dropna,
-    DropAxis(..)
+    DropAxis(..),
+    isna,
+    notna
 ) where
 
 import Sara.DataFrame.Types (DFValue(..), DataFrame(..), Column, Row, toRows)
@@ -57,6 +59,14 @@ dropna (DataFrame dfMap) DropColumns thresholdM =
                 Nothing -> not (NA `V.elem` col) -- Keep if no NA
             ) dfMap
     in DataFrame filteredMap
+
+-- | Returns a DataFrame indicating whether each element is NA.
+isna :: DataFrame -> DataFrame
+isna (DataFrame dfMap) = DataFrame $ Map.map (V.map (BoolValue . (== NA))) dfMap
+
+-- | Returns a DataFrame indicating whether each element is not NA.
+notna :: DataFrame -> DataFrame
+notna (DataFrame dfMap) = DataFrame $ Map.map (V.map (BoolValue . (/= NA))) dfMap
 
 data DropAxis = DropRows | DropColumns
     deriving (Show, Eq)

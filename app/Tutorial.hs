@@ -9,7 +9,7 @@ import qualified Data.Text as T
 import qualified Data.Map as Map
 import Sara.DataFrame.Types (DFValue(..), JoinType(..), Row, DataFrame(..))
 import Sara.DataFrame.TimeSeries (resample, shift, pctChange, fromRows, ResampleRule(..))
-import Sara.DataFrame.Missing (fillna, ffill, bfill, dropna, DropAxis(..))
+import Sara.DataFrame.Missing (fillna, ffill, bfill, dropna, DropAxis(..), isna, notna)
 import Sara.DataFrame.Statistics (rollingApply, sumV, meanV, stdV, minV, maxV, countV)
 import Sara.DataFrame.Strings (lower, upper, strip, contains, replace)
 import Data.Time.Format (parseTimeM, defaultTimeLocale)
@@ -132,6 +132,16 @@ main = do
     putStrLn "\n--- Drop Columns with Any NA ---"
     let droppedColsDf = dropna naDf DropColumns Nothing
     print droppedColsDf
+
+    -- 8.1. isna and notna
+    putStrLn "\n--- isna and notna ---"
+    let isnaDf = isna naDf
+    putStrLn "isna DataFrame:"
+    print isnaDf
+
+    let notnaDf = notna naDf
+    putStrLn "notna DataFrame:"
+    print notnaDf
 
     -- 9. Statistical Functions
     putStrLn "\n--- Statistical Functions ---"
