@@ -11,7 +11,7 @@ import Sara.DataFrame.Types
 import Sara.DataFrame.TimeSeries (resample, shift, pctChange, fromRows, ResampleRule(..))
 import Sara.DataFrame.Missing (fillna, ffill, bfill, dropna, DropAxis(..))
 import Sara.DataFrame.Statistics (rollingApply, sumV, meanV, stdV, minV, maxV, countV)
-import Sara.DataFrame.Statistics (rollingApply, sumV, meanV, stdV, minV, maxV, countV)
+import Sara.DataFrame.Strings (lower, upper, strip, contains, replace)
 import Data.Time.Format (parseTimeM, defaultTimeLocale)
 import Data.Time (UTCTime, Day)
 
@@ -168,6 +168,66 @@ main = hspec $ do
 
     it "calculates countV correctly" $ do
       countV testVector `shouldBe` IntValue 4
+
+  describe "String Functions" $ do
+    let createStringDataFrame :: IO DataFrame
+        createStringDataFrame = do
+          let rows = [
+                  Map.fromList [(T.pack "TextCol", TextValue (T.pack "  Hello World  ")), (T.pack "NumCol", IntValue 1)],
+                  Map.fromList [(T.pack "TextCol", TextValue (T.pack "haskell")), (T.pack "NumCol", IntValue 2)],
+                  Map.fromList [(T.pack "TextCol", NA), (T.pack "NumCol", IntValue 3)]
+                  ]
+          return $ fromRows rows
+
+    it "converts to lowercase" $ do
+      df <- createStringDataFrame
+      let lowerDf = lower df (T.pack "TextCol")
+      let (DataFrame lowerMap) = lowerDf
+      case Map.lookup (T.pack "TextCol") lowerMap of
+        Just (V.toList -> [TextValue t1, TextValue t2, NA]) -> do
+          t1 `shouldBe` T.pack "  hello world  "
+          t2 `shouldBe` T.pack "haskell"
+        _ -> expectationFailure "Lowercase conversion failed"
+
+    it "converts to uppercase" $ do
+      df <- createStringDataFrame
+      let upperDf = upper df (T.pack "TextCol")
+      let (DataFrame upperMap) = upperDf
+      case Map.lookup (T.pack "TextCol") upperMap of
+        Just (V.toList -> [TextValue t1, TextValue t2, NA]) -> do
+          t1 `shouldBe` T.pack "  HELLO WORLD  "
+          t2 `shouldBe` T.pack "HASKELL"
+        _ -> expectationFailure "Uppercase conversion failed"
+
+    it "strips whitespace" $ do
+      df <- createStringDataFrame
+      let stripDf = strip df (T.pack "TextCol")
+      let (DataFrame stripMap) = stripDf
+      case Map.lookup (T.pack "TextCol") stripMap of
+        Just (V.toList -> [TextValue t1, TextValue t2, NA]) -> do
+          t1 `shouldBe` T.pack "Hello World"
+          t2 `shouldBe` T.pack "haskell"
+        _ -> expectationFailure "Strip whitespace failed"
+
+    it "checks for substring containment" $ do
+      df <- createStringDataFrame
+      let containsDf = contains df (T.pack "TextCol") (T.pack "World")
+      let (DataFrame containsMap) = containsDf
+      case Map.lookup (T.pack "TextCol_contains_World") containsMap of
+        Just (V.toList -> [BoolValue b1, BoolValue b2, NA]) -> do
+          b1 `shouldBe` True
+          b2 `shouldBe` False
+        _ -> expectationFailure "Substring containment check failed"
+
+    it "replaces substrings" $ do
+      df <- createStringDataFrame
+      let replaceDf = replace df (T.pack "TextCol") (T.pack "World") (T.pack "Haskell")
+      let (DataFrame replaceMap) = replaceDf
+      case Map.lookup (T.pack "TextCol") replaceMap of
+        Just (V.toList -> [TextValue t1, TextValue t2, NA]) -> do
+          t1 `shouldBe` T.pack "  Hello Haskell  "
+          t2 `shouldBe` T.pack "haskell"
+        _ -> expectationFailure "Substring replacement failed"
 
   describe "Missing Data Handling" $ do
     let createNaDataFrame :: IO DataFrame

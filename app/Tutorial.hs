@@ -11,6 +11,7 @@ import Sara.DataFrame.Types (DFValue(..), JoinType(..), Row, DataFrame(..))
 import Sara.DataFrame.TimeSeries (resample, shift, pctChange, fromRows, ResampleRule(..))
 import Sara.DataFrame.Missing (fillna, ffill, bfill, dropna, DropAxis(..))
 import Sara.DataFrame.Statistics (rollingApply, sumV, meanV, stdV, minV, maxV, countV)
+import Sara.DataFrame.Strings (lower, upper, strip, contains, replace)
 import Data.Time.Format (parseTimeM, defaultTimeLocale)
 import Data.Time (UTCTime)
 import qualified Data.Vector as V
@@ -175,3 +176,34 @@ main = do
     case sumCol of
         Just vec -> print $ countV vec
         Nothing -> putStrLn "Value column not found"
+
+    -- 10. String Functions
+    putStrLn "\n--- String Functions ---"
+    let stringData = [
+            Map.fromList [(T.pack "TextCol", TextValue (T.pack "  Hello World  ")), (T.pack "NumCol", IntValue 1)],
+            Map.fromList [(T.pack "TextCol", TextValue (T.pack "haskell")), (T.pack "NumCol", IntValue 2)],
+            Map.fromList [(T.pack "TextCol", NA), (T.pack "NumCol", IntValue 3)]
+            ]
+    let stringDf = fromRows stringData
+    putStrLn "Original Data for String Functions:"
+    print stringDf
+
+    putStrLn "\n--- Lowercase TextCol ---"
+    let lowerDf = lower stringDf (T.pack "TextCol")
+    print lowerDf
+
+    putStrLn "\n--- Uppercase TextCol ---"
+    let upperDf = upper stringDf (T.pack "TextCol")
+    print upperDf
+
+    putStrLn "\n--- Strip TextCol ---"
+    let stripDf = strip stringDf (T.pack "TextCol")
+    print stripDf
+
+    putStrLn "\n--- Contains 'World' in TextCol ---"
+    let containsDf = contains stringDf (T.pack "TextCol") (T.pack "World")
+    print containsDf
+
+    putStrLn "\n--- Replace 'World' with 'Haskell' in TextCol ---"
+    let replaceDf = replace stringDf (T.pack "TextCol") (T.pack "World") (T.pack "Haskell")
+    print replaceDf
