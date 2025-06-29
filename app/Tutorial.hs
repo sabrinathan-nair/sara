@@ -9,6 +9,7 @@ import qualified Data.Text as T
 import qualified Data.Map as Map
 import Sara.DataFrame.Types (DFValue(..), JoinType(..), Row)
 import Sara.DataFrame.TimeSeries (resample, rolling, shift, pctChange, fromRows, ResampleRule(..))
+import Sara.DataFrame.Missing (fillna, ffill, bfill, dropna, DropAxis(..))
 import Data.Time.Format (parseTimeM, defaultTimeLocale)
 import Data.Time (UTCTime)
 import qualified Data.Vector as V
@@ -93,3 +94,39 @@ main = do
     putStrLn "\n--- Percentage Change on Value column ---"
     let pctChangeDf = pctChange timeSeriesDf "Value"
     print pctChangeDf
+
+    -- 8. Missing Data Handling
+    putStrLn "\n--- Missing Data Handling ---"
+    let naData = [
+            Map.fromList [(T.pack "ColA", IntValue 1), (T.pack "ColB", NA), (T.pack "ColC", DoubleValue 1.1)],
+            Map.fromList [(T.pack "ColA", NA), (T.pack "ColB", IntValue 2), (T.pack "ColC", NA)],
+            Map.fromList [(T.pack "ColA", IntValue 3), (T.pack "ColB", NA), (T.pack "ColC", DoubleValue 3.3)]
+            ]
+    let naDf = fromRows naData
+    putStrLn "Original DataFrame with NAs:"
+    print naDf
+
+    -- Fill NA with a specific value
+    putStrLn "\n--- Fill NA with 0 ---"
+    let filledDf = fillna naDf Nothing (IntValue 0)
+    print filledDf
+
+    -- Forward Fill
+    putStrLn "\n--- Forward Fill ---"
+    let ffilledDf = ffill naDf
+    print ffilledDf
+
+    -- Backward Fill
+    putStrLn "\n--- Backward Fill ---"
+    let bfilledDf = bfill naDf
+    print bfilledDf
+
+    -- Drop rows with any NA
+    putStrLn "\n--- Drop Rows with Any NA ---"
+    let droppedRowsDf = dropna naDf DropRows Nothing
+    print droppedRowsDf
+
+    -- Drop columns with any NA
+    putStrLn "\n--- Drop Columns with Any NA ---"
+    let droppedColsDf = dropna naDf DropColumns Nothing
+    print droppedColsDf

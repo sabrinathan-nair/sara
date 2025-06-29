@@ -9,6 +9,7 @@ import Sara.DataFrame.IO
 import Sara.DataFrame.Transform
 import Sara.DataFrame.Types
 import Sara.DataFrame.TimeSeries
+import Sara.DataFrame.Missing (fillna, ffill, bfill, dropna, DropAxis(..))
 import Data.Time.Format (parseTimeM, defaultTimeLocale)
 import Data.Time (UTCTime, Day)
 
@@ -138,3 +139,78 @@ main = hspec $ do
               p4 `shouldBeApprox` 0.2
             _ -> expectationFailure $ "Percentage Change column content incorrect: " ++ show col
         _ -> expectationFailure "Percentage Change column not found or incorrect"
+
+  describe "Missing Data Handling" $ do
+    let createNaDataFrame :: IO DataFrame
+        createNaDataFrame = do
+          let rows = [
+                  Map.fromList [(T.pack "Col1", IntValue 1), (T.pack "Col2", NA), (T.pack "Col3", DoubleValue 1.1)],
+                  Map.fromList [(T.pack "Col1", NA), (T.pack "Col2", IntValue 2), (T.pack "Col3", NA)],
+                  Map.fromList [(T.pack "Col1", IntValue 3), (T.pack "Col2", NA), (T.pack "Col3", DoubleValue 3.3)]
+                  ]
+          return $ fromRows rows
+
+    it "fills NA values with a specified value" $ do
+      df <- createNaDataFrame
+      let filledDf = fillna df Nothing (IntValue 0)
+      let (DataFrame filledMap) = filledDf
+      case Map.lookup (T.pack "Col2") filledMap of
+        Just (V.toList -> [IntValue v1, IntValue v2, IntValue v3]) -> do
+          v1 `shouldBe` 0
+          v2 `shouldBe` 2
+          v3 `shouldBe` 0
+        _ -> expectationFailure "fillna failed for Col2"
+
+    it "forward fills NA values" $ do
+      df <- createNaDataFrame
+      let ffilledDf = ffill df
+      let (DataFrame ffilledMap) = ffilledDf
+      case Map.lookup (T.pack "Col2") ffilledMap of
+        Just col -> do
+          -- print col -- Debug print
+          case V.toList col of
+            [NA, IntValue v2, IntValue v3] -> do
+              v2 `shouldBe` 2
+              v3 `shouldBe` 2
+            _ -> expectationFailure $ "ffill failed for Col2. Actual: " ++ show col
+
+    it "backward fills NA values" $ do
+      df <- createNaDataFrame
+      let bfilledDf = bfill df
+      let (DataFrame bfilledMap) = bfilledDf
+      case Map.lookup (T.pack "Col2") bfilledMap of
+        Just col -> do
+          -- print col -- Debug print
+          case V.toList col of
+            [IntValue v1, IntValue v2, NA] -> do
+              v1 `shouldBe` 2
+              v2 `shouldBe` 2
+            _ -> expectationFailure $ "bfill failed for Col2. Actual: " ++ show col
+
+    it "drops rows with any NA values" $ do
+      df <- createNaDataFrame
+      let droppedDf = dropna df DropRows Nothing
+      let (DataFrame droppedMap) = droppedDf
+      toRows droppedDf `shouldBe` []
+
+    it "drops rows with a threshold of NA values" $ do
+      df <- createNaDataFrame
+      let droppedDf = dropna df DropRows (Just 2)
+      let (DataFrame droppedMap) = droppedDf
+      let expectedRows = [
+              Map.fromList [(T.pack "Col1", IntValue 1), (T.pack "Col2", NA), (T.pack "Col3", DoubleValue 1.1)],
+              Map.fromList [(T.pack "Col1", IntValue 3), (T.pack "Col2", NA), (T.pack "Col3", DoubleValue 3.3)]
+              ]
+      toRows droppedDf `shouldBe` expectedRows
+
+    it "drops columns with any NA values" $ do
+      df <- createNaDataFrame
+      let droppedDf = dropna df DropColumns Nothing
+      let (DataFrame droppedMap) = droppedDf
+      Map.keys droppedMap `shouldMatchList` []
+
+    it "drops columns with a threshold of NA values" $ do
+      df <- createNaDataFrame
+      let droppedDf = dropna df DropColumns (Just 2)
+      let (DataFrame droppedMap) = droppedDf
+      Map.keys droppedMap `shouldMatchList` [T.pack "Col1", T.pack "Col3"]
