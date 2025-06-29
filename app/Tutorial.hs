@@ -1,7 +1,7 @@
 module Main where
 
 import Sara.DataFrame.IO
-import Sara.DataFrame.Wrangling (filterRows)
+import Sara.DataFrame.Wrangling (filterRows, filterByBoolColumn)
 import Sara.DataFrame.Transform (selectColumns, addColumn)
 import Sara.DataFrame.Join
 import Sara.DataFrame.Aggregate
@@ -207,3 +207,19 @@ main = do
     putStrLn "\n--- Replace 'World' with 'Haskell' in TextCol ---"
     let replaceDf = replace stringDf (T.pack "TextCol") (T.pack "World") (T.pack "Haskell")
     print replaceDf
+
+    -- 11. Boolean Indexing
+    putStrLn "\n--- Boolean Indexing ---"
+    let boolData = [
+            Map.fromList [(T.pack "Name", TextValue (T.pack "Alice")), (T.pack "IsStudent", BoolValue True)],
+            Map.fromList [(T.pack "Name", TextValue (T.pack "Bob")), (T.pack "IsStudent", BoolValue False)],
+            Map.fromList [(T.pack "Name", TextValue (T.pack "Charlie")), (T.pack "IsStudent", BoolValue True)],
+            Map.fromList [(T.pack "Name", TextValue (T.pack "David")), (T.pack "IsStudent", BoolValue False)]
+            ]
+    let boolDf = fromRows boolData
+    putStrLn "Original Data for Boolean Indexing:"
+    print boolDf
+
+    putStrLn "\n--- Filter by IsStudent == True ---"
+    let filteredBoolDf = filterByBoolColumn boolDf (T.pack "IsStudent")
+    print filteredBoolDf

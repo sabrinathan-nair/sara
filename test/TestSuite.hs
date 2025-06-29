@@ -12,6 +12,7 @@ import Sara.DataFrame.TimeSeries (resample, shift, pctChange, fromRows, Resample
 import Sara.DataFrame.Missing (fillna, ffill, bfill, dropna, DropAxis(..))
 import Sara.DataFrame.Statistics (rollingApply, sumV, meanV, stdV, minV, maxV, countV)
 import Sara.DataFrame.Strings (lower, upper, strip, contains, replace)
+import Sara.DataFrame.Wrangling (filterByBoolColumn)
 import Data.Time.Format (parseTimeM, defaultTimeLocale)
 import Data.Time (UTCTime, Day)
 
@@ -303,3 +304,24 @@ main = hspec $ do
       let droppedDf = dropna df DropColumns (Just 2)
       let (DataFrame droppedMap) = droppedDf
       Map.keys droppedMap `shouldMatchList` [T.pack "Col1", T.pack "Col3"]
+
+  describe "Boolean Indexing" $ do
+    let createBoolDataFrame :: IO DataFrame
+        createBoolDataFrame = do
+          let rows = [
+                  Map.fromList [(T.pack "Name", TextValue (T.pack "Alice")), (T.pack "IsStudent", BoolValue True)],
+                  Map.fromList [(T.pack "Name", TextValue (T.pack "Bob")), (T.pack "IsStudent", BoolValue False)],
+                  Map.fromList [(T.pack "Name", TextValue (T.pack "Charlie")), (T.pack "IsStudent", BoolValue True)],
+                  Map.fromList [(T.pack "Name", TextValue (T.pack "David")), (T.pack "IsStudent", BoolValue False)]
+                  ]
+          return $ fromRows rows
+
+    it "filters DataFrame based on a boolean column" $ do
+      df <- createBoolDataFrame
+      let filteredDf = filterByBoolColumn df (T.pack "IsStudent")
+      let (DataFrame filteredMap) = filteredDf
+      case Map.lookup (T.pack "Name") filteredMap of
+        Just (V.toList -> [TextValue n1, TextValue n2]) -> do
+          n1 `shouldBe` T.pack "Alice"
+          n2 `shouldBe` T.pack "Charlie"
+        _ -> expectationFailure "Boolean filtering failed"

@@ -5,7 +5,8 @@ module Sara.DataFrame.Wrangling (
     dropRows,
     renameColumns,
     dropNA,
-    fillNA
+    fillNA,
+    filterByBoolColumn
 ) where
 
 import qualified Data.Text as T
@@ -143,5 +144,29 @@ fillNA :: DFValue -> DataFrame -> DataFrame
 fillNA replacementValue (DataFrame dfMap) =
     let
         newDfMap = Map.map (V.map (\val -> if val == NA then replacementValue else val)) dfMap
+    in
+        DataFrame newDfMap
+
+-- | Filters a DataFrame based on a boolean column.
+filterByBoolColumn :: DataFrame -> T.Text -> DataFrame
+filterByBoolColumn df boolColName =
+    let
+        rows = toRows df
+        filteredRows = filter (\row ->
+            case Map.lookup boolColName row of
+                Just (BoolValue True) -> True
+                _ -> False
+            ) rows
+        -- Convert filtered rows back to DataFrame
+        newDfMap = if null filteredRows
+                   then Map.empty
+                   else
+                       let
+                           colNames = Map.keys (head filteredRows)
+                           cols = [ V.fromList [ Map.findWithDefault NA colName r | r <- filteredRows ]
+                                  | colName <- colNames
+                                  ]
+                       in
+                           Map.fromList (zip colNames cols)
     in
         DataFrame newDfMap
