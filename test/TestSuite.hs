@@ -8,8 +8,10 @@ import qualified Data.Vector as V
 import Sara.DataFrame.IO
 import Sara.DataFrame.Transform
 import Sara.DataFrame.Types
-import Sara.DataFrame.TimeSeries
+import Sara.DataFrame.TimeSeries (resample, shift, pctChange, fromRows, ResampleRule(..))
 import Sara.DataFrame.Missing (fillna, ffill, bfill, dropna, DropAxis(..))
+import Sara.DataFrame.Statistics (rollingApply, sumV, meanV, stdV, minV, maxV, countV)
+import Sara.DataFrame.Statistics (rollingApply, sumV, meanV, stdV, minV, maxV, countV)
 import Data.Time.Format (parseTimeM, defaultTimeLocale)
 import Data.Time (UTCTime, Day)
 
@@ -98,7 +100,7 @@ main = hspec $ do
 
     it "calculates rolling average" $ do
       df <- createTimeSeriesDataFrame
-      let rollingDf = rolling df 2 "Value"
+      let rollingDf = rollingApply df 2 "Value" meanV
       let (DataFrame rollingMap) = rollingDf
       Map.keys rollingMap `shouldMatchList` [T.pack "Date", T.pack "Value", T.pack "Value_rolling"]
       case Map.lookup (T.pack "Value_rolling") rollingMap of
@@ -130,7 +132,7 @@ main = hspec $ do
       Map.keys pctChangeMap `shouldMatchList` [T.pack "Date", T.pack "Value", T.pack "Value_pct_change"]
       case Map.lookup (T.pack "Value_pct_change") pctChangeMap of
         Just col -> do
-          print col -- Debug print
+          -- print col -- Debug print
           case V.toList col of
             [NA, DoubleValue p1, DoubleValue p2, DoubleValue p3, DoubleValue p4] -> do
               p1 `shouldBeApprox` 1.0
@@ -139,6 +141,33 @@ main = hspec $ do
               p4 `shouldBeApprox` 0.2
             _ -> expectationFailure $ "Percentage Change column content incorrect: " ++ show col
         _ -> expectationFailure "Percentage Change column not found or incorrect"
+
+  describe "Statistical Functions" $ do
+    let testVector = V.fromList [IntValue 1, IntValue 2, DoubleValue 3.0, NA, IntValue 4]
+
+    it "calculates sumV correctly" $ do
+      case sumV testVector of
+        DoubleValue s -> s `shouldBeApprox` 10.0
+        _ -> expectationFailure "sumV did not return a DoubleValue"
+
+    it "calculates meanV correctly" $ do
+      case meanV testVector of
+        DoubleValue m -> m `shouldBeApprox` 2.5
+        _ -> expectationFailure "meanV did not return a DoubleValue"
+
+    it "calculates stdV correctly" $ do
+      case stdV testVector of
+        DoubleValue s -> s `shouldBeApprox` 1.290994448735806
+        _ -> expectationFailure "stdV did not return a DoubleValue"
+
+    it "calculates minV correctly" $ do
+      minV testVector `shouldBe` DoubleValue 1.0
+
+    it "calculates maxV correctly" $ do
+      maxV testVector `shouldBe` DoubleValue 4.0
+
+    it "calculates countV correctly" $ do
+      countV testVector `shouldBe` IntValue 4
 
   describe "Missing Data Handling" $ do
     let createNaDataFrame :: IO DataFrame

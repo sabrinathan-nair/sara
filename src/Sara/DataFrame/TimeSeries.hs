@@ -3,7 +3,6 @@
 module Sara.DataFrame.TimeSeries (
     resample,
     ResampleRule(..),
-    rolling,
     shift,
     pctChange,
     fromRows
@@ -16,6 +15,18 @@ import qualified Data.Text as T
 import Data.Time
 import Data.Time.Calendar (toGregorian, fromGregorian)
 import Data.List (foldl')
+
+-- Helper to convert DFValue to Double for calculations, treating NA as 0 or skipping
+toNumeric :: DFValue -> Maybe Double
+toNumeric (IntValue i) = Just $ fromIntegral i
+toNumeric (DoubleValue d) = Just d
+toNumeric _ = Nothing
+
+-- Helper to convert DFValue to Double, treating NA as 0
+toDouble :: DFValue -> Double
+toDouble (IntValue i) = fromIntegral i
+toDouble (DoubleValue d) = d
+toDouble _ = 0.0
 
 -- | The rule for resampling a time series.
 data ResampleRule = Daily | Monthly | Yearly
@@ -67,22 +78,6 @@ resample df timeColumn rule aggFunc =
 
         concatDFs :: [DataFrame] -> DataFrame
         concatDFs dfs = DataFrame $ Map.unionsWith (V.++) $ map (\(DataFrame m) -> m) dfs
-
--- | Calculate the rolling average of a column.
-rolling :: DataFrame -> Int -> String -> DataFrame
-rolling (DataFrame dfMap) window colName =
-    let col = dfMap Map.! (T.pack colName)
-        rollingCol = V.fromList $ map (\i ->
-            let windowed = V.slice i (min window (V.length col - i)) col
-            in DoubleValue $ V.sum (V.map toDouble windowed) / fromIntegral (V.length windowed)
-            ) [0 .. V.length col - 1]
-        newDfMap = Map.insert (T.pack $ colName ++ "_rolling") rollingCol dfMap
-    in DataFrame newDfMap
-    where
-        toDouble :: DFValue -> Double
-        toDouble (IntValue i) = fromIntegral i
-        toDouble (DoubleValue d) = d
-        toDouble _ = 0.0
 
 -- | Shift the values in a column by a given number of periods.
 shift :: DataFrame -> String -> Int -> DataFrame

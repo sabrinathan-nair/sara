@@ -7,9 +7,10 @@ import Sara.DataFrame.Join
 import Sara.DataFrame.Aggregate
 import qualified Data.Text as T
 import qualified Data.Map as Map
-import Sara.DataFrame.Types (DFValue(..), JoinType(..), Row)
-import Sara.DataFrame.TimeSeries (resample, rolling, shift, pctChange, fromRows, ResampleRule(..))
+import Sara.DataFrame.Types (DFValue(..), JoinType(..), Row, DataFrame(..))
+import Sara.DataFrame.TimeSeries (resample, shift, pctChange, fromRows, ResampleRule(..))
 import Sara.DataFrame.Missing (fillna, ffill, bfill, dropna, DropAxis(..))
+import Sara.DataFrame.Statistics (rollingApply, sumV, meanV, stdV, minV, maxV, countV)
 import Data.Time.Format (parseTimeM, defaultTimeLocale)
 import Data.Time (UTCTime)
 import qualified Data.Vector as V
@@ -82,7 +83,7 @@ main = do
 
     -- Rolling Average
     putStrLn "\n--- Rolling Average (Window 2) on Value ---"
-    let rollingDf = rolling timeSeriesDf 2 "Value"
+    let rollingDf = rollingApply timeSeriesDf 2 "Value" meanV
     print rollingDf
 
     -- Shifting
@@ -130,3 +131,47 @@ main = do
     putStrLn "\n--- Drop Columns with Any NA ---"
     let droppedColsDf = dropna naDf DropColumns Nothing
     print droppedColsDf
+
+    -- 9. Statistical Functions
+    putStrLn "\n--- Statistical Functions ---"
+    let statsData = [
+            Map.fromList [(T.pack "Value", IntValue 10)],
+            Map.fromList [(T.pack "Value", IntValue 20)],
+            Map.fromList [(T.pack "Value", IntValue 15)],
+            Map.fromList [(T.pack "Value", NA)],
+            Map.fromList [(T.pack "Value", IntValue 30)]
+            ]
+    let statsDf = fromRows statsData
+    putStrLn "Original Data for Statistics:"
+    print statsDf
+
+    putStrLn "\n--- Sum of Value Column ---"
+    let sumCol = Map.lookup (T.pack "Value") (case statsDf of DataFrame m -> m)
+    case sumCol of
+        Just vec -> print $ sumV vec
+        Nothing -> putStrLn "Value column not found"
+
+    putStrLn "\n--- Mean of Value Column ---"
+    case sumCol of
+        Just vec -> print $ meanV vec
+        Nothing -> putStrLn "Value column not found"
+
+    putStrLn "\n--- Standard Deviation of Value Column ---"
+    case sumCol of
+        Just vec -> print $ stdV vec
+        Nothing -> putStrLn "Value column not found"
+
+    putStrLn "\n--- Minimum of Value Column ---"
+    case sumCol of
+        Just vec -> print $ minV vec
+        Nothing -> putStrLn "Value column not found"
+
+    putStrLn "\n--- Maximum of Value Column ---"
+    case sumCol of
+        Just vec -> print $ maxV vec
+        Nothing -> putStrLn "Value column not found"
+
+    putStrLn "\n--- Count of Non-NA Values in Value Column ---"
+    case sumCol of
+        Just vec -> print $ countV vec
+        Nothing -> putStrLn "Value column not found"
