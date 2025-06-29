@@ -22,8 +22,6 @@ main = do
                 , encodingShape = Nothing
                 , encodingText = Nothing
                 , encodingTooltip = Just (Tooltip (T.pack "Name"))
-                , encodingRow = Just (Row (T.pack "IsStudent"))
-                , encodingColumn = Just (Column (T.pack "City"))
                 , encodingGeom = Point
                 }
             , plotData = df
