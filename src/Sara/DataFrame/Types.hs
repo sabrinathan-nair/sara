@@ -13,7 +13,7 @@ module Sara.DataFrame.Types (
 ) where
 
 import qualified Data.Text as T
-import Data.Time (Day)
+import Data.Time (Day, UTCTime)
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
 import Data.Vector (Vector)
@@ -30,6 +30,7 @@ data DFValue = IntValue Int
            | DoubleValue Double
            | TextValue T.Text
            | DateValue Day
+           | TimestampValue UTCTime
            | BoolValue Bool
            | NA -- ^ Represents a missing value.
            deriving (Show, Eq, Ord)
@@ -40,6 +41,7 @@ instance ToJSON DFValue where
     toJSON (DoubleValue d) = toJSON d
     toJSON (TextValue t) = toJSON t
     toJSON (DateValue d) = toJSON (formatTime defaultTimeLocale "%Y-%m-%d" d)
+    toJSON (TimestampValue t) = toJSON t
     toJSON (BoolValue b) = toJSON b
     toJSON NA = Null
 
@@ -48,16 +50,19 @@ instance FromJSON DFValue where
     parseJSON (Number n) = pure (DoubleValue (toRealFloat n))
     parseJSON (String s) =
         -- Try parsing as Date, then Bool, then Int, then Double, otherwise Text
-        case parseTimeM True defaultTimeLocale "%Y-%m-%d" (T.unpack s) :: Maybe Day of
-            Just d -> pure (DateValue d)
-            Nothing -> case readMaybe (T.unpack s) :: Maybe Int of
-                Just i -> pure (IntValue i)
-                Nothing -> case readMaybe (T.unpack s) :: Maybe Double of
-                    Just d -> pure (DoubleValue d)
-                    Nothing -> case T.toLower s of
-                        "true" -> pure (BoolValue True)
-                        "false" -> pure (BoolValue False)
-                        _ -> pure (TextValue s)
+        case parseTimeM True defaultTimeLocale "%Y-%m-%dT%H:%M:%S%QZ" (T.unpack s) :: Maybe UTCTime of
+            Just t -> pure (TimestampValue t)
+            Nothing ->
+                case parseTimeM True defaultTimeLocale "%Y-%m-%d" (T.unpack s) :: Maybe Day of
+                    Just d -> pure (DateValue d)
+                    Nothing -> case readMaybe (T.unpack s) :: Maybe Int of
+                        Just i -> pure (IntValue i)
+                        Nothing -> case readMaybe (T.unpack s) :: Maybe Double of
+                            Just d -> pure (DoubleValue d)
+                            Nothing -> case T.toLower s of
+                                "true" -> pure (BoolValue True)
+                                "false" -> pure (BoolValue False)
+                                _ -> pure (TextValue s)
     parseJSON (Bool b) = pure (BoolValue b)
     parseJSON Null = pure NA
     parseJSON _ = fail "Unsupported JSON value type for DFValue"

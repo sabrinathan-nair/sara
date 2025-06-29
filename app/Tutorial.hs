@@ -7,7 +7,11 @@ import Sara.DataFrame.Join
 import Sara.DataFrame.Aggregate
 import qualified Data.Text as T
 import qualified Data.Map as Map
-import Sara.DataFrame.Types (DFValue(..), JoinType(..))
+import Sara.DataFrame.Types (DFValue(..), JoinType(..), Row)
+import Sara.DataFrame.TimeSeries (resample, rolling, shift, pctChange, fromRows, ResampleRule(..))
+import Data.Time.Format (parseTimeM, defaultTimeLocale)
+import Data.Time (UTCTime)
+import qualified Data.Vector as V
 
 main :: IO ()
 main = do
@@ -52,4 +56,40 @@ main = do
     let aggregatedDf = sumAgg (T.pack "Salary") groupedDf
     print aggregatedDf
 
+    let sumAggV :: V.Vector DFValue -> DFValue
+        sumAggV vec = DoubleValue $ V.sum $ V.map (\val -> case val of IntValue i -> fromIntegral i; DoubleValue d -> d; _ -> 0.0) vec
+
     putStrLn "Tutorial finished."
+
+    -- 7. Time Series Functionality
+    putStrLn "\n--- Time Series Analysis ---"
+    let timeSeriesData = [
+            Map.fromList [(T.pack "Date", DateValue (read "2023-01-01")), (T.pack "Value", IntValue 10)],
+            Map.fromList [(T.pack "Date", DateValue (read "2023-01-02")), (T.pack "Value", IntValue 12)],
+            Map.fromList [(T.pack "Date", DateValue (read "2023-01-03")), (T.pack "Value", IntValue 15)],
+            Map.fromList [(T.pack "Date", DateValue (read "2023-01-04")), (T.pack "Value", IntValue 13)],
+            Map.fromList [(T.pack "Date", DateValue (read "2023-01-05")), (T.pack "Value", IntValue 18)]
+            ]
+    let timeSeriesDf = fromRows timeSeriesData
+    putStrLn "Original Time Series Data:"
+    print timeSeriesDf
+
+    -- Resampling
+    putStrLn "\n--- Resampling Daily Data to Monthly (Sum) ---"
+    let resampledDf = resample timeSeriesDf "Date" Monthly (sumAggV)
+    print resampledDf
+
+    -- Rolling Average
+    putStrLn "\n--- Rolling Average (Window 2) on Value ---"
+    let rollingDf = rolling timeSeriesDf 2 "Value"
+    print rollingDf
+
+    -- Shifting
+    putStrLn "\n--- Shifting Value column by 1 period ---"
+    let shiftedDf = shift timeSeriesDf "Value" 1
+    print shiftedDf
+
+    -- Percentage Change
+    putStrLn "\n--- Percentage Change on Value column ---"
+    let pctChangeDf = pctChange timeSeriesDf "Value"
+    print pctChangeDf
