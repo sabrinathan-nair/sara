@@ -30,6 +30,9 @@ library
                      , unordered-containers
                      , aeson
                      , template-haskell
+                     , parallel
+                     , vector-strategies
+                     , deepseq
                      
                      , process
                      , filepath
@@ -40,17 +43,17 @@ library
 executable sara
   main-is:          Main.hs
   hs-source-dirs:      app, src
-  build-depends:       base, sara, text, containers, vector, time, bytestring, aeson, filepath, process, directory, cassava, template-haskell
+  build-depends:       base, sara, text, containers, vector, time, bytestring, aeson, filepath, process, directory, cassava, template-haskell, parallel, vector-strategies
 
 executable sara-tutorial
     main-is:          Tutorial.hs
   hs-source-dirs:      app
-  build-depends:       base, sara, text, containers, vector, time
+  build-depends:       base, sara, text, containers, vector, time, parallel, vector-strategies, deepseq
   default-language:    Haskell2010
 
 test-suite sara-test
   type:                exitcode-stdio-1.0
   main-is:             TestSuite.hs
   hs-source-dirs:      test, src
-  build-depends:       base, hspec, text, containers, time, sara, vector, template-haskell, cassava, bytestring, aeson, scientific, unordered-containers
+  build-depends:       base, hspec, text, containers, time, sara, vector, template-haskell, cassava, bytestring, aeson, scientific, unordered-containers, parallel, deepseq
   default-language:    Haskell2010

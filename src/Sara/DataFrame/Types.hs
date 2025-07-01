@@ -1,5 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DeriveGeneric #-}
 
 module Sara.DataFrame.Types (
     DFValue(..),
@@ -23,6 +25,8 @@ import Data.Aeson.Types (Parser)
 import Data.Scientific (toRealFloat)
 import Data.Time.Format (formatTime, parseTimeM, defaultTimeLocale)
 import Text.Read (readMaybe)
+import Control.DeepSeq
+import GHC.Generics (Generic)
 
 -- | A type to represent a single value in a DataFrame.
 -- It can hold different types of data such as integers, doubles, text, dates, booleans, or missing values (NA).
@@ -33,7 +37,7 @@ data DFValue = IntValue Int
            | TimestampValue UTCTime
            | BoolValue Bool
            | NA -- ^ Represents a missing value.
-           deriving (Show, Eq, Ord)
+           deriving (Show, Eq, Ord, Generic, NFData)
 
 -- | ToJSON instance for DFValue, allowing conversion to JSON.
 instance ToJSON DFValue where

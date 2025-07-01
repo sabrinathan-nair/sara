@@ -5,6 +5,7 @@ module Sara.DataFrame.Transform (
     applyColumn
 ) where
 
+import Control.Parallel.Strategies (withStrategy, rseq, parList)
 import qualified Data.Text as T
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
@@ -71,11 +72,15 @@ melt id_vars value_vars (DataFrame dfMap) =
         DataFrame newDfMap
 
 -- | Applies a function to a specified column in a DataFrame.
+parallelMapVector :: (DFValue -> DFValue) -> V.Vector DFValue -> V.Vector DFValue
+parallelMapVector f vec = V.fromList $ withStrategy (parList rseq) (V.toList $ V.map f vec)
+
+-- | Applies a function to a specified column in a DataFrame.
 applyColumn :: T.Text -> (DFValue -> DFValue) -> DataFrame -> DataFrame
 applyColumn colName f (DataFrame dfMap) =
     case Map.lookup colName dfMap of
         Just col ->
-            let updatedCol = V.map f col
+            let updatedCol = parallelMapVector f col
             in DataFrame (Map.insert colName updatedCol dfMap)
         Nothing ->
             DataFrame dfMap -- Column not found, return original DataFrame
