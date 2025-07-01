@@ -1,4 +1,10 @@
 {-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DeriveAnyClass #-}
+
 module Main where
 
 import Test.Hspec
@@ -15,6 +21,12 @@ import Sara.DataFrame.Strings (lower, upper, strip, contains, replace)
 import Sara.DataFrame.Wrangling (filterByBoolColumn)
 import Data.Time.Format (parseTimeM, defaultTimeLocale)
 import Data.Time (UTCTime, Day)
+import Sara.DataFrame.Static (tableTypes, readCsv)
+import Data.Csv (FromNamedRecord)
+import GHC.Generics (Generic)
+
+-- Define the Employee type using Template Haskell
+tableTypes "Employee" "employees.csv"
 
 main :: IO ()
 main = hspec $ do
@@ -84,11 +96,6 @@ main = hspec $ do
                 ]
         return $ fromRows rows
 
-  let parseTimeOrError :: String -> String -> UTCTime
-      parseTimeOrError formatStr timeStr = case parseTimeM True defaultTimeLocale formatStr timeStr of
-        Just t -> t
-        Nothing -> error $ "Failed to parse time: " ++ timeStr
-
   describe "TimeSeries" $ do
     it "resamples daily data to monthly (sum)" $ do
       df <- createTimeSeriesDataFrame
@@ -133,7 +140,6 @@ main = hspec $ do
       Map.keys pctChangeMap `shouldMatchList` [T.pack "Date", T.pack "Value", T.pack "Value_pct_change"]
       case Map.lookup (T.pack "Value_pct_change") pctChangeMap of
         Just col -> do
-          -- print col -- Debug print
           case V.toList col of
             [NA, DoubleValue p1, DoubleValue p2, DoubleValue p3, DoubleValue p4] -> do
               p1 `shouldBeApprox` 1.0
@@ -282,7 +288,6 @@ main = hspec $ do
       let (DataFrame ffilledMap) = ffilledDf
       case Map.lookup (T.pack "Col2") ffilledMap of
         Just col -> do
-          -- print col -- Debug print
           case V.toList col of
             [NA, IntValue v2, IntValue v3] -> do
               v2 `shouldBe` 2
@@ -295,7 +300,6 @@ main = hspec $ do
       let (DataFrame bfilledMap) = bfilledDf
       case Map.lookup (T.pack "Col2") bfilledMap of
         Just col -> do
-          -- print col -- Debug print
           case V.toList col of
             [IntValue v1, IntValue v2, NA] -> do
               v1 `shouldBe` 2
@@ -414,3 +418,24 @@ main = hspec $ do
           t1 `shouldBe` T.pack "1"
           t2 `shouldBe` T.pack "2"
         _ -> expectationFailure "applyColumn failed for text column"
+
+  describe "Static DataFrame" $ do
+    it "reads employees.csv into statically typed Employee records" $ do
+      employees <- readCsv "employees.csv"
+      case employees of
+        Left err -> expectationFailure $ "Failed to read CSV: " ++ err
+        Right (records :: V.Vector Employee) -> do
+          V.length records `shouldBe` 5
+          let alice = records V.! 0
+          employeeID alice `shouldBe` 1
+          name alice `shouldBe` T.pack "Alice"
+          departmentID alice `shouldBe` 101
+          salary alice `shouldBe` 70000
+          startDate alice `shouldBe` T.pack "2020-01-15"
+
+          let bob = records V.! 1
+          employeeID bob `shouldBe` 2
+          name bob `shouldBe` T.pack "Bob"
+          departmentID bob `shouldBe` 102
+          salary bob `shouldBe` 80000
+          startDate bob `shouldBe` T.pack "2019-03-01"
