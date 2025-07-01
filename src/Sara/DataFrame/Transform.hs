@@ -2,10 +2,13 @@ module Sara.DataFrame.Transform (
     selectColumns,
     addColumn,
     melt,
-    applyColumn
+    applyColumn,
+    mutate
 ) where
 
-import Control.Parallel.Strategies (withStrategy, rseq, parList)
+import Sara.DSL.MutateParser (parseExpr, evaluate)
+import Control.Parallel.Strategies as Parallel (withStrategy, rseq, parList, using, Strategy)
+import Data.Vector.Strategies (parVector)
 import qualified Data.Text as T
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
@@ -84,3 +87,20 @@ applyColumn colName f (DataFrame dfMap) =
             in DataFrame (Map.insert colName updatedCol dfMap)
         Nothing ->
             DataFrame dfMap -- Column not found, return original DataFrame
+
+-- | Adds new columns or modifies existing ones based on DSL expressions.
+mutate :: DataFrame -> [(T.Text, T.Text)] -> DataFrame
+mutate df [] = df
+mutate df ((newColName, exprStr):exprs) =
+    let
+        rows = toRows df
+        newDf = case parseExpr exprStr of
+            Left err -> df -- Or handle error more gracefully
+            Right expr ->
+                let
+                    newColumnValues = V.fromList $ map (evaluate expr) rows
+                    updatedDfMap = Map.insert newColName newColumnValues (case df of DataFrame m -> m)
+                in
+                    DataFrame updatedDfMap
+    in
+        mutate newDf exprs

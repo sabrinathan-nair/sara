@@ -2,7 +2,7 @@ module Main where
 
 import Sara.DataFrame.IO
 import Sara.DataFrame.Wrangling (filterRows, filterByBoolColumn)
-import Sara.DataFrame.Transform (selectColumns, addColumn, applyColumn)
+import Sara.DataFrame.Transform (selectColumns, addColumn, applyColumn, mutate)
 import Sara.DataFrame.Join
 import Sara.DataFrame.Aggregate
 import qualified Data.Text as T
@@ -13,8 +13,12 @@ import Sara.DataFrame.Missing (fillna, ffill, bfill, dropna, DropAxis(..), isna,
 import Sara.DataFrame.Statistics (rollingApply, sumV, meanV, stdV, minV, maxV, countV, medianV, modeV, varianceV, skewV, kurtosisV)
 import Sara.DataFrame.Strings (lower, upper, strip, contains, replace)
 import Data.Time.Format (parseTimeM, defaultTimeLocale)
-import Data.Time (UTCTime)
+import Data.Time (UTCTime(..), Day, fromGregorian)
 import qualified Data.Vector as V
+
+-- Helper function to create UTCTime values
+createUTCTime :: Integer -> Int -> Int -> UTCTime
+createUTCTime y m d = UTCTime (fromGregorian y m d) 0
 
 main :: IO ()
 main = do
@@ -40,11 +44,7 @@ main = do
 
     -- 4. Mutating
     putStrLn "\n--- Adding a SalaryInThousands column ---"
-    let mutatedDf = addColumn (T.pack "SalaryInThousands") (\row -> 
-            case Map.lookup (T.pack "Salary") row of
-                Just (IntValue s) -> DoubleValue (fromIntegral s / 1000.0)
-                _ -> NA
-            ) employeesDf
+    let mutatedDf = mutate employeesDf [(T.pack "SalaryInThousands", T.pack "Salary / 1000")]
     print mutatedDf
 
     -- 5. Joining DataFrames
@@ -67,11 +67,11 @@ main = do
     -- 7. Time Series Functionality
     putStrLn "\n--- Time Series Analysis ---"
     let timeSeriesData = [
-            Map.fromList [(T.pack "Date", DateValue (read "2023-01-01")), (T.pack "Value", IntValue 10)],
-            Map.fromList [(T.pack "Date", DateValue (read "2023-01-02")), (T.pack "Value", IntValue 12)],
-            Map.fromList [(T.pack "Date", DateValue (read "2023-01-03")), (T.pack "Value", IntValue 15)],
-            Map.fromList [(T.pack "Date", DateValue (read "2023-01-04")), (T.pack "Value", IntValue 13)],
-            Map.fromList [(T.pack "Date", DateValue (read "2023-01-05")), (T.pack "Value", IntValue 18)]
+            Map.fromList [(T.pack "Date", TimestampValue (createUTCTime 2023 1 1)), (T.pack "Value", IntValue 10)],
+            Map.fromList [(T.pack "Date", TimestampValue (createUTCTime 2023 1 2)), (T.pack "Value", IntValue 12)],
+            Map.fromList [(T.pack "Date", TimestampValue (createUTCTime 2023 1 3)), (T.pack "Value", IntValue 15)],
+            Map.fromList [(T.pack "Date", TimestampValue (createUTCTime 2023 1 4)), (T.pack "Value", IntValue 13)],
+            Map.fromList [(T.pack "Date", TimestampValue (createUTCTime 2023 1 5)), (T.pack "Value", IntValue 18)]
             ]
     let timeSeriesDf = fromRows timeSeriesData
     putStrLn "Original Time Series Data:"

@@ -17,7 +17,7 @@ library
                      , Sara.DataFrame.Missing
                      , Sara.DataFrame.Statistics
                      , Sara.DataFrame.Strings
-                     
+                     , Sara.DataFrame.Static
   hs-source-dirs:      src
   build-depends:       base >=4.14 && <5
                      , text
@@ -33,7 +33,6 @@ library
                      , parallel
                      , vector-strategies
                      , deepseq
-                     
                      , process
                      , filepath
                      , directory
@@ -44,9 +43,10 @@ executable sara
   main-is:          Main.hs
   hs-source-dirs:      app, src
   build-depends:       base, sara, text, containers, vector, time, bytestring, aeson, filepath, process, directory, cassava, template-haskell, parallel, vector-strategies
+  default-language:    Haskell2010
 
 executable sara-tutorial
-    main-is:          Tutorial.hs
+  main-is:          Tutorial.hs
   hs-source-dirs:      app
   build-depends:       base, sara, text, containers, vector, time, parallel, vector-strategies, deepseq
   default-language:    Haskell2010
@@ -55,5 +55,16 @@ test-suite sara-test
   type:                exitcode-stdio-1.0
   main-is:             TestSuite.hs
   hs-source-dirs:      test, src
-  build-depends:       base, hspec, text, containers, time, sara, vector, template-haskell, cassava, bytestring, aeson, scientific, unordered-containers, parallel, deepseq
+  build-depends:       base, hspec, text, containers, time, sara, vector, template-haskell, cassava, bytestring, aeson, scientific, unordered-containers, parallel, deepseq, vector-strategies
   default-language:    Haskell2010
+  other-modules:
+    Sara.DSL.MutateParser
+    , Sara.DataFrame.IO
+    , Sara.DataFrame.Missing
+    , Sara.DataFrame.Static
+    , Sara.DataFrame.Statistics
+    , Sara.DataFrame.Strings
+    , Sara.DataFrame.TimeSeries
+    , Sara.DataFrame.Transform
+    , Sara.DataFrame.Types
+    , Sara.DataFrame.Wrangling
