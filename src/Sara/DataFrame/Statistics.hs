@@ -1,4 +1,12 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE KindSignatures #-}
+{-# LANGUAGE TypeApplications #-}
 
 module Sara.DataFrame.Statistics (
     -- General statistical functions
@@ -147,7 +155,7 @@ kurtosisV vec =
            in DoubleValue $ (fromIntegral len * (fromIntegral len + 1) / ((fromIntegral len - 1) * (fromIntegral len - 2) * (fromIntegral len - 3))) * (sumFourthDiff / (s ** 4)) - (3 * (fromIntegral len - 1) * (fromIntegral len - 1) / ((fromIntegral len - 2) * (fromIntegral len - 3)))
 
 -- | Applies a function over a rolling window of a column.
-rollingApply :: DataFrame -> Int -> String -> (V.Vector DFValue -> DFValue) -> DataFrame
+rollingApply :: KnownColumns cols => DataFrame cols -> Int -> String -> (V.Vector DFValue -> DFValue) -> DataFrame cols
 rollingApply (DataFrame dfMap) window colName aggFunc =
     let col = dfMap Map.! (T.pack colName)
         rollingCol = V.fromList $ map (\i ->

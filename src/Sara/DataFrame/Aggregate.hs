@@ -1,10 +1,21 @@
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE KindSignatures #-}
+{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE UndecidableInstances #-}
+
 module Sara.DataFrame.Aggregate (
     GroupedDataFrame,
     groupBy,
     sumAgg,
     meanAgg,
-    countAgg,
-    pivotTable
+    countAgg
 ) where
 
 import qualified Data.Text as T
@@ -12,158 +23,158 @@ import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
 import qualified Data.Vector as V
 import Data.List (foldl', nub)
-import Sara.DataFrame.Types (DataFrame(..), Column, Row, toRows, DFValue(..))
+import Sara.DataFrame.Types
 import Sara.DataFrame.Wrangling (filterRows)
+import GHC.TypeLits
+import Data.Proxy (Proxy(..))
 
 -- | A DataFrame grouped by certain columns.
 -- The outer Map's keys are the unique combinations of values from the grouping columns (represented as a Row),
 -- and the values are DataFrames containing the rows belonging to that group.
-type GroupedDataFrame = Map Row DataFrame
+type GroupedDataFrame (groupCols :: [Symbol]) (originalCols :: [Symbol]) = Map Row (DataFrame originalCols)
 
 -- | Groups a DataFrame by the specified column names.
-groupBy :: [T.Text] -> DataFrame -> GroupedDataFrame
-groupBy groupCols df =
+groupBy :: forall (groupCols :: [Symbol]) (cols :: [Symbol]).
+          (HasColumns groupCols cols, KnownColumns groupCols)
+          => DataFrame cols -> GroupedDataFrame groupCols cols
+groupBy df =
     let
         rows = toRows df
-        -- Function to extract the group key from a row
+        groupColNames = columnNames (Proxy @groupCols)
         getGroupKey :: Row -> Row
-        getGroupKey row = Map.filterWithKey (\k _ -> k `elem` groupCols) row
+        getGroupKey row = Map.filterWithKey (\k _ -> k `elem` groupColNames) row
 
-        -- Fold over rows to build the GroupedDataFrame
-        initialGroupedMap = Map.empty :: GroupedDataFrame
+        initialGroupedMap = Map.empty
         groupedMap = foldl' (\accMap row ->
             let
                 groupKey = getGroupKey row
-                -- Convert the single row back to a DataFrame
-                singleRowDf = DataFrame $ Map.map (\val -> V.singleton val) row
+                singleRowDf = DataFrame $ Map.map V.singleton row
             in
-                Map.insertWith (\newDf existingDf ->
-                    let
-                        (DataFrame newMap) = newDf
-                        (DataFrame existingMap) = existingDf
-                        -- Merge columns of newDf into existingDf
-                        mergedMap = Map.unionWith (V.++) existingMap newMap
-                    in
-                        DataFrame mergedMap
+                Map.insertWith (\(DataFrame newMap) (DataFrame existingMap) ->
+                    DataFrame $ Map.unionWith (V.++) existingMap newMap
                 ) groupKey singleRowDf accMap
             ) initialGroupedMap rows
     in
         groupedMap
 
+-- | Type family to create a new column name for an aggregation.
+type family AggColName (col :: Symbol) (op :: Symbol) :: Symbol where
+    AggColName col op = AppendSymbol (AppendSymbol col "_") op
+
 -- | Aggregates a GroupedDataFrame by summing a specified column.
-sumAgg :: T.Text -> GroupedDataFrame -> DataFrame
-sumAgg colName groupedDf =
+sumAgg :: forall (aggCol :: Symbol) (groupCols :: [Symbol]) (cols :: [Symbol]) (outCols :: [Symbol]) (newAggCol :: Symbol).
+          ( HasColumn aggCol cols, KnownColumns groupCols
+          , newAggCol ~ AggColName aggCol "sum", KnownSymbol newAggCol
+          , outCols ~ Nub (Append groupCols '[newAggCol]), KnownColumns outCols
+          )
+       => GroupedDataFrame groupCols cols -> DataFrame outCols
+sumAgg groupedDf =
     let
-        aggregatedRows = Map.foldlWithKey (
-            \accMap groupKey dfGroup ->
-                let (DataFrame df) = dfGroup in
-                case Map.lookup colName df of
-                    Just col ->
-                        let
-                            totalSum = V.foldl' (
-                                \acc val -> case val of
-                                    IntValue i -> acc + fromIntegral i
-                                    DoubleValue d -> acc + d
-                                    _ -> acc
-                                ) 0.0 col
-                        in
-                            Map.insert groupKey (DoubleValue totalSum) accMap
-                    Nothing -> accMap
-            ) Map.empty groupedDf
-    in
-        if Map.null aggregatedRows
-            then DataFrame Map.empty
+        aggColName = T.pack (symbolVal (Proxy @aggCol))
+        aggFunc col = DoubleValue $ V.sum $ V.map toDouble col
+            where toDouble (IntValue i) = fromIntegral i
+                  toDouble (DoubleValue d) = d
+                  toDouble _ = 0.0
+        aggregatedRows = Map.map (\(DataFrame dfMap) ->
+            case Map.lookup aggColName dfMap of
+                Just col -> aggFunc col
+                Nothing -> NA -- Should not happen due to HasColumn constraint
+            ) groupedDf
+
+        groupColNames = columnNames (Proxy @groupCols)
+        newAggColName = T.pack (symbolVal (Proxy @newAggCol))
+
+        newDfMap = if Map.null aggregatedRows
+            then Map.empty
             else
                 let
-                    -- Convert aggregated Map to DataFrame
-                    allGroupColNames = foldl' (\acc keyRow -> Map.keys keyRow ++ acc) [] (Map.keys aggregatedRows)
-                    uniqueGroupColNames = nub $ Map.keys $ head $ Map.keys aggregatedRows -- Assuming at least one group
-
-                    -- Create columns for the group keys
+                    groupKeys = Map.keys aggregatedRows
                     groupKeyColumns = Map.fromList $ map (\name ->
-                        (name, V.fromList $ map (\keyRow -> Map.findWithDefault NA name keyRow) (Map.keys aggregatedRows))
-                        ) uniqueGroupColNames
-
-                    -- Create the aggregated value column
+                        (name, V.fromList $ map (\keyRow -> Map.findWithDefault NA name keyRow) groupKeys)
+                        ) groupColNames
                     aggColumn = V.fromList $ Map.elems aggregatedRows
-
-                    -- Combine group key columns and aggregated column into a new DataFrame
-                    finalDfMap = Map.insert (colName `T.append` T.pack "_sum") aggColumn groupKeyColumns
                 in
-                    DataFrame finalDfMap
+                    Map.insert newAggColName aggColumn groupKeyColumns
+    in
+        DataFrame newDfMap
 
 -- | Aggregates a GroupedDataFrame by calculating the mean of a specified column.
-meanAgg :: T.Text -> GroupedDataFrame -> DataFrame
-meanAgg colName groupedDf =
+meanAgg :: forall (aggCol :: Symbol) (groupCols :: [Symbol]) (cols :: [Symbol]) (outCols :: [Symbol]) (newAggCol :: Symbol).
+           ( HasColumn aggCol cols, KnownColumns groupCols
+           , newAggCol ~ AggColName aggCol "mean", KnownSymbol newAggCol
+           , outCols ~ Nub (Append groupCols '[newAggCol]), KnownColumns outCols
+           )
+        => GroupedDataFrame groupCols cols -> DataFrame outCols
+meanAgg groupedDf =
     let
-        aggregatedRows = Map.foldlWithKey (
-            \accMap groupKey dfGroup ->
-                let (DataFrame df) = dfGroup in
-                case Map.lookup colName df of
-                    Just col ->
-                        let
-                            (totalSum, count) = V.foldl' (
-                                \(accSum, accCount) val -> case val of
-                                    IntValue i -> (accSum + fromIntegral i, accCount + 1)
-                                    DoubleValue d -> (accSum + d, accCount + 1)
-                                    _ -> (accSum, accCount)
-                                ) (0.0, 0) col
-                            meanVal = if count > 0 then DoubleValue (totalSum / fromIntegral count) else NA
-                        in
-                            Map.insert groupKey meanVal accMap
-                    Nothing -> accMap
-            ) Map.empty groupedDf
-    in
-        if Map.null aggregatedRows
-            then DataFrame Map.empty
+        aggColName = T.pack (symbolVal (Proxy @aggCol))
+        aggFunc col =
+            let (total, count) = V.foldl' (\(accSum, accCount) val ->
+                    case val of
+                        IntValue i -> (accSum + fromIntegral i, accCount + 1)
+                        DoubleValue d -> (accSum + d, accCount + 1)
+                        _ -> (accSum, accCount)
+                    ) (0.0, 0) col
+            in if count > 0 then DoubleValue (total / fromIntegral count) else NA
+        aggregatedRows = Map.map (\(DataFrame dfMap) ->
+            case Map.lookup aggColName dfMap of
+                Just col -> aggFunc col
+                Nothing -> NA -- Should not happen due to HasColumn constraint
+            ) groupedDf
+
+        groupColNames = columnNames (Proxy @groupCols)
+        newAggColName = T.pack (symbolVal (Proxy @newAggCol))
+
+        newDfMap = if Map.null aggregatedRows
+            then Map.empty
             else
                 let
-                    -- Convert aggregated Map to DataFrame
-                    uniqueGroupColNames = nub $ Map.keys $ head $ Map.keys aggregatedRows
+                    groupKeys = Map.keys aggregatedRows
                     groupKeyColumns = Map.fromList $ map (\name ->
-                        (name, V.fromList $ map (\keyRow -> Map.findWithDefault NA name keyRow) (Map.keys aggregatedRows))
-                        ) uniqueGroupColNames
+                        (name, V.fromList $ map (\keyRow -> Map.findWithDefault NA name keyRow) groupKeys)
+                        ) groupColNames
                     aggColumn = V.fromList $ Map.elems aggregatedRows
-                    finalDfMap = Map.insert (colName `T.append` T.pack "_mean") aggColumn groupKeyColumns
                 in
-                    DataFrame finalDfMap
+                    Map.insert newAggColName aggColumn groupKeyColumns
+    in
+        DataFrame newDfMap
 
 -- | Aggregates a GroupedDataFrame by counting non-NA values in a specified column.
-countAgg :: T.Text -> GroupedDataFrame -> DataFrame
-countAgg colName groupedDf =
+countAgg :: forall (aggCol :: Symbol) (groupCols :: [Symbol]) (cols :: [Symbol]) (outCols :: [Symbol]) (newAggCol :: Symbol).
+            ( HasColumn aggCol cols, KnownColumns groupCols
+            , newAggCol ~ AggColName aggCol "count", KnownSymbol newAggCol
+            , outCols ~ Nub (Append groupCols '[newAggCol]), KnownColumns outCols
+            )
+         => GroupedDataFrame groupCols cols -> DataFrame outCols
+countAgg groupedDf =
     let
-        aggregatedRows = Map.foldlWithKey (
-            \accMap groupKey dfGroup ->
-                let (DataFrame df) = dfGroup in
-                case Map.lookup colName df of
-                    Just col ->
-                        let
-                            count = V.foldl' (
-                                \acc val -> case val of
-                                    NA -> acc
-                                    _ -> acc + 1
-                                ) 0 col
-                        in
-                            Map.insert groupKey (IntValue count) accMap
-                    Nothing -> accMap
-            ) Map.empty groupedDf
-    in
-        if Map.null aggregatedRows
-            then DataFrame Map.empty
+        aggColName = T.pack (symbolVal (Proxy @aggCol))
+        aggFunc col = IntValue $ V.length $ V.filter (/= NA) col
+        aggregatedRows = Map.map (\(DataFrame dfMap) ->
+            case Map.lookup aggColName dfMap of
+                Just col -> aggFunc col
+                Nothing -> NA -- Should not happen due to HasColumn constraint
+            ) groupedDf
+
+        groupColNames = columnNames (Proxy @groupCols)
+        newAggColName = T.pack (symbolVal (Proxy @newAggCol))
+
+        newDfMap = if Map.null aggregatedRows
+            then Map.empty
             else
                 let
-                    -- Convert aggregated Map to DataFrame
-                    uniqueGroupColNames = nub $ Map.keys $ head $ Map.keys aggregatedRows
+                    groupKeys = Map.keys aggregatedRows
                     groupKeyColumns = Map.fromList $ map (\name ->
-                        (name, V.fromList $ map (\keyRow -> Map.findWithDefault NA name keyRow) (Map.keys aggregatedRows))
-                        ) uniqueGroupColNames
+                        (name, V.fromList $ map (\keyRow -> Map.findWithDefault NA name keyRow) groupKeys)
+                        ) groupColNames
                     aggColumn = V.fromList $ Map.elems aggregatedRows
-                    finalDfMap = Map.insert (colName `T.append` T.pack "_count") aggColumn groupKeyColumns
                 in
-                    DataFrame finalDfMap
+                    Map.insert newAggColName aggColumn groupKeyColumns
+    in
+        DataFrame newDfMap
 
 -- | Extracts a single DFValue from a DataFrame, assuming it has one column and one row.
-extractSingleValue :: DataFrame -> DFValue
+extractSingleValue :: DataFrame cols -> DFValue
 extractSingleValue (DataFrame dfMap) =
     if Map.null dfMap || V.null (snd . head . Map.toList $ dfMap)
         then NA
@@ -174,38 +185,4 @@ valueToText :: DFValue -> T.Text
 valueToText (TextValue t) = t
 valueToText v = T.pack (show v) -- Fallback for other DFValue types
 
--- | Creates a pivot table from a DataFrame.
-pivotTable :: T.Text -> T.Text -> T.Text -> (T.Text -> GroupedDataFrame -> DataFrame) -> DataFrame -> DataFrame
-pivotTable rowKeyCol colKeyCol valueCol aggFunc df =
-    let
-        -- Get all rows from the original DataFrame
-        allRows = toRows df
 
-        -- Extract all unique values for row and column keys
-        uniqueRowValues = nub $ map (\r -> Map.findWithDefault NA rowKeyCol r) allRows
-        uniqueColValues = nub $ map (\r -> Map.findWithDefault NA colKeyCol r) allRows
-
-        -- Create the pivot table structure
-        -- Each column in the pivot table corresponds to a unique colKeyCol value
-        pivotColumns = Map.fromList $ map (\cVal ->
-            (valueToText cVal, V.fromList $ map (\rVal ->
-                let
-                    -- Filter the original DataFrame to get rows matching current rVal and cVal
-                    filteredDf = filterRows (
-                        \row -> Map.findWithDefault NA rowKeyCol row == rVal &&
-                                Map.findWithDefault NA colKeyCol row == cVal
-                        ) df
-                    -- Group the filtered DataFrame by the rowKeyCol (or just pass it directly if no further grouping needed)
-                    groupedFilteredDf = groupBy [rowKeyCol] filteredDf -- Grouping by rowKeyCol for consistency with aggFunc
-                    -- Apply the aggregation function to the grouped data
-                    aggregatedResultDf = aggFunc valueCol groupedFilteredDf
-                in
-                    extractSingleValue aggregatedResultDf
-            ) uniqueRowValues)
-            ) uniqueColValues
-
-        -- Add the row key column to the pivot table
-        rowKeyColumn = V.fromList uniqueRowValues
-        finalPivotDfMap = Map.insert rowKeyCol rowKeyColumn pivotColumns
-    in
-        DataFrame finalPivotDfMap

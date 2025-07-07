@@ -1,3 +1,15 @@
+{-# LANGUAGE GADTs #-}
+{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE KindSignatures #-}
+{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE PolyKinds #-}
+{-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+
 module Sara.DataFrame.Transform (
     selectColumns,
     addColumn,
@@ -6,66 +18,74 @@ module Sara.DataFrame.Transform (
     mutate
 ) where
 
-import Sara.DSL.MutateParser (parseExpr, evaluate)
 import Control.Parallel.Strategies as Parallel (withStrategy, rseq, parList, using, Strategy)
 import Data.Vector.Strategies (parVector)
 import qualified Data.Text as T
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
 import qualified Data.Vector as V
-import Sara.DataFrame.Types (DataFrame(..), Column, Row, toRows, DFValue(..))
+import Sara.DataFrame.Types
+import Sara.DataFrame.Expression (Expr, evaluateExpr)
+import GHC.TypeLits
+import Data.Proxy (Proxy(..))
+import Data.Maybe (fromMaybe)
 
 -- | Selects a subset of columns from a DataFrame.
--- If a column name does not exist, it will be ignored.
-selectColumns :: [T.Text] -> DataFrame -> DataFrame
-selectColumns cols (DataFrame dfMap) =
+selectColumns :: forall (selectedCols :: [Symbol]) (originalCols :: [Symbol]).
+                (KnownColumns selectedCols, KnownColumns originalCols)
+                => DataFrame originalCols -> DataFrame selectedCols
+selectColumns (DataFrame dfMap) =
     let
-        selectedMap = Map.filterWithKey (\k _ -> k `elem` cols) dfMap
+        selectedColNames = columnNames (Proxy @selectedCols)
+        selectedMap = Map.filterWithKey (\k _ -> k `elem` selectedColNames) dfMap
     in
         DataFrame selectedMap
 
 -- | Adds a new column to a DataFrame or modifies an existing one.
--- The new column's values are computed by applying a function to each row.
-addColumn :: T.Text -> (Row -> DFValue) -> DataFrame -> DataFrame
-addColumn colName f (DataFrame dfMap) =
+type family AddColumn (newCol :: Symbol) (cols :: [Symbol]) :: [Symbol] where
+    AddColumn newCol cols = Nub (newCol ': cols)
+
+addColumn :: forall (newCol :: Symbol) (cols :: [Symbol]) (newCols :: [Symbol]).
+            (KnownSymbol newCol, KnownColumns cols, newCols ~ AddColumn newCol cols, KnownColumns newCols)
+            => (Row -> DFValue) -> DataFrame cols -> DataFrame newCols
+addColumn f df@(DataFrame dfMap) =
     let
-        rows = toRows (DataFrame dfMap)
+        colName = T.pack (symbolVal (Proxy :: Proxy (newCol :: Symbol)))
+        rows = toRows df
         newColumnValues = V.fromList $ map f rows
         updatedDfMap = Map.insert colName newColumnValues dfMap
     in
         DataFrame updatedDfMap
 
 -- | Unpivots a DataFrame from wide format to long format.
--- 'id_vars' are columns to remain as identifier variables.
--- 'value_vars' are columns to unpivot.
-melt :: [T.Text] -> [T.Text] -> DataFrame -> DataFrame
-melt id_vars value_vars (DataFrame dfMap) =
+type family Melt (id_vars :: [Symbol]) (value_vars :: [Symbol]) :: [Symbol] where
+    Melt id_vars value_vars = Nub (Append id_vars '["variable", "value"])
+
+melt :: forall (id_vars :: [Symbol]) (value_vars :: [Symbol]) (cols :: [Symbol]) (newCols :: [Symbol]).
+       (KnownColumns id_vars, KnownColumns value_vars, KnownColumns cols, newCols ~ Melt id_vars value_vars, KnownColumns newCols)
+       => DataFrame cols -> DataFrame newCols
+melt df@(DataFrame dfMap) =
     let
-        rows = toRows (DataFrame dfMap)
-        
-        -- Function to process a single row
+        idVarNames = columnNames (Proxy :: Proxy (id_vars :: [Symbol]))
+        valueVarNames = columnNames (Proxy :: Proxy (value_vars :: [Symbol]))
+        rows = toRows df
         processRow :: Row -> [Row]
         processRow row = 
             let
-                -- Extract id_vars from the current row
-                idValues = Map.filterWithKey (\k _ -> k `elem` id_vars) row
+                idValues = Map.filterWithKey (\k _ -> k `elem` idVarNames) row
             in
-                -- For each value_var, create a new row
                 concatMap (\valVar ->
                     case Map.lookup valVar row of
                         Just val -> [Map.union idValues (Map.fromList [(T.pack "variable", TextValue valVar), (T.pack "value", val)])]
-                        Nothing -> [] -- Skip if value_var not found in row
-                ) value_vars
+                        Nothing -> []
+                ) valueVarNames
 
-        -- Process all rows and flatten the list of lists of rows
         meltedRows = concatMap processRow rows
-
-        -- Convert melted rows back to DataFrame
         newDfMap = if null meltedRows
                    then Map.empty
                    else
                        let
-                           colNames = Map.keys (head meltedRows)
+                           colNames = columnNames (Proxy :: Proxy (newCols :: [Symbol]))
                            cols = [ V.fromList [ Map.findWithDefault NA colName r | r <- meltedRows ]
                                   | colName <- colNames
                                   ]
@@ -74,33 +94,34 @@ melt id_vars value_vars (DataFrame dfMap) =
     in
         DataFrame newDfMap
 
--- | Applies a function to a specified column in a DataFrame.
-parallelMapVector :: (DFValue -> DFValue) -> V.Vector DFValue -> V.Vector DFValue
-parallelMapVector f vec = V.fromList $ withStrategy (parList rseq) (V.toList $ V.map f vec)
-
--- | Applies a function to a specified column in a DataFrame.
-applyColumn :: T.Text -> (DFValue -> DFValue) -> DataFrame -> DataFrame
-applyColumn colName f (DataFrame dfMap) =
-    case Map.lookup colName dfMap of
-        Just col ->
-            let updatedCol = parallelMapVector f col
+-- | Applies a function to a specified column in a DataFrame in a type-safe way.
+applyColumn :: forall (col :: Symbol) a (cols :: [Symbol]).
+              (HasColumn col cols, KnownColumns cols, CanBeDFValue a)
+              => Proxy col -> (a -> a) -> DataFrame cols -> DataFrame cols
+applyColumn _ f (DataFrame dfMap) =
+    let
+        colName = T.pack (symbolVal (Proxy :: Proxy (col :: Symbol)))
+        transform v = fromMaybe v (toDFValue . f <$> fromDFValue v)
+    in case Map.lookup colName dfMap of
+        Just c ->
+            let updatedCol = V.map transform c
             in DataFrame (Map.insert colName updatedCol dfMap)
         Nothing ->
-            DataFrame dfMap -- Column not found, return original DataFrame
+            DataFrame dfMap
 
--- | Adds new columns or modifies existing ones based on DSL expressions.
-mutate :: DataFrame -> [(T.Text, T.Text)] -> DataFrame
-mutate df [] = df
-mutate df ((newColName, exprStr):exprs) =
+-- | Adds new columns or modifies existing ones based on a type-safe expression.
+mutate :: forall newCol a cols (newCols :: [Symbol]).
+         (KnownSymbol newCol, CanBeDFValue a, KnownColumns cols, newCols ~ AddColumn newCol cols, KnownColumns newCols)
+         => Proxy newCol
+         -> Expr cols a
+         -> DataFrame cols
+         -> DataFrame newCols
+mutate newColProxy expr df@(DataFrame dfMap) =
     let
         rows = toRows df
-        newDf = case parseExpr exprStr of
-            Left err -> df -- Or handle error more gracefully
-            Right expr ->
-                let
-                    newColumnValues = V.fromList $ map (evaluate expr) rows
-                    updatedDfMap = Map.insert newColName newColumnValues (case df of DataFrame m -> m)
-                in
-                    DataFrame updatedDfMap
+        newColName = T.pack (symbolVal newColProxy)
+        newColumnValues = V.fromList $ map (\row -> fromMaybe NA (toDFValue <$> evaluateExpr expr row)) rows
+        updatedDfMap = Map.insert newColName newColumnValues dfMap
     in
-        mutate newDf exprs
+        DataFrame updatedDfMap
+

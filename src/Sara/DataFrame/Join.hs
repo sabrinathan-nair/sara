@@ -1,3 +1,13 @@
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE KindSignatures #-}
+{-# LANGUAGE TypeApplications #-}
+
 module Sara.DataFrame.Join (
     joinDF
 ) where
@@ -7,25 +17,30 @@ import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
 import qualified Data.Vector as V
 import Data.List (nub)
-import Data.Maybe (fromMaybe) -- Added import
-import Sara.DataFrame.Types (DataFrame(..), Column, Row, DFValue(..), JoinType(..), toRows)
+import Data.Maybe (fromMaybe)
+import Sara.DataFrame.Types (DFValue(..), Column, Row, DataFrame(..), JoinType(..), toRows, KnownColumns, HasColumns, JoinCols, columnNames)
+import GHC.TypeLits
+import Data.Proxy (Proxy(..))
 
 -- | Joins two DataFrames based on common columns and a specified join type.
-joinDF :: DataFrame -> DataFrame -> [T.Text] -> JoinType -> DataFrame
-joinDF (DataFrame df1Map) (DataFrame df2Map) onCols joinType =
+joinDF :: forall (onCols :: [Symbol]) (cols1 :: [Symbol]) (cols2 :: [Symbol]) (colsOut :: [Symbol]).
+          ( HasColumns onCols cols1, HasColumns onCols cols2
+          , KnownColumns onCols, KnownColumns cols1, KnownColumns cols2
+          , colsOut ~ JoinCols cols1 cols2, KnownColumns colsOut
+          )
+       => DataFrame cols1 -> DataFrame cols2 -> JoinType -> DataFrame colsOut
+joinDF df1 df2 joinType =
     let
-        rows1 = toRows (DataFrame df1Map)
-        rows2 = toRows (DataFrame df2Map)
+        rows1 = toRows df1
+        rows2 = toRows df2
+        onColsNames = columnNames (Proxy @onCols)
 
-        -- Helper to extract join key from a row
         getJoinKey :: Row -> Row
-        getJoinKey row = Map.filterWithKey (\k _ -> k `elem` onCols) row
+        getJoinKey row = Map.filterWithKey (\k _ -> k `elem` onColsNames) row
 
-        -- Helper to combine two rows, handling overlapping columns
         combineRows :: Row -> Row -> Row
-        combineRows r1 r2 = Map.union r1 r2 -- r2 overwrites r1 for common keys
+        combineRows r1 r2 = Map.union r1 r2
 
-        -- Perform the join based on JoinType
         joinedRows = case joinType of
             InnerJoin ->
                 [ combineRows r1 r2
@@ -43,10 +58,7 @@ joinDF (DataFrame df1Map) (DataFrame df2Map) onCols joinType =
                 ]
             OuterJoin ->
                 let
-                    -- Collect all unique join keys
                     allKeys = nub $ map getJoinKey rows1 ++ map getJoinKey rows2
-
-                    -- Create maps from join key to row for efficient lookup
                     map1 = Map.fromList (map (\r -> (getJoinKey r, r)) rows1)
                     map2 = Map.fromList (map (\r -> (getJoinKey r, r)) rows2)
                 in
@@ -55,12 +67,11 @@ joinDF (DataFrame df1Map) (DataFrame df2Map) onCols joinType =
                     | k <- allKeys
                     ]
 
-        -- Convert joined rows back to DataFrame
         newDfMap = if null joinedRows
                    then Map.empty
                    else
                        let
-                           colNames = Map.keys (head joinedRows)
+                           colNames = columnNames (Proxy @colsOut)
                            cols = [ V.fromList [ Map.findWithDefault NA colName r | r <- joinedRows ]
                                   | colName <- colNames
                                   ]

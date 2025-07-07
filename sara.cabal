@@ -11,13 +11,14 @@ library
                      , Sara.DataFrame.Aggregate
                      , Sara.DataFrame.Join
                      , Sara.DataFrame.Concat
-                     , Sara.DSL.MutateParser
                      , Sara.REPL
                      , Sara.DataFrame.TimeSeries
                      , Sara.DataFrame.Missing
                      , Sara.DataFrame.Statistics
                      , Sara.DataFrame.Strings
                      , Sara.DataFrame.Static
+                     , Sara.DataFrame.Predicate
+                     , Sara.DataFrame.Expression
   hs-source-dirs:      src
   build-depends:       base >=4.14 && <5
                      , text
@@ -38,18 +39,23 @@ library
                      , directory
                      , scientific
   default-language:    Haskell2010
+  ghc-options:         -Wall
 
 executable sara
   main-is:          Main.hs
   hs-source-dirs:      app, src
   build-depends:       base, sara, text, containers, vector, time, bytestring, aeson, filepath, process, directory, cassava, template-haskell, parallel, vector-strategies
   default-language:    Haskell2010
+  ghc-options:         -Wall
+  other-modules:
+    Sara.DataFrame.Static
 
 executable sara-tutorial
   main-is:          Tutorial.hs
   hs-source-dirs:      app
   build-depends:       base, sara, text, containers, vector, time, parallel, vector-strategies, deepseq
   default-language:    Haskell2010
+  ghc-options:         -Wall
 
 test-suite sara-test
   type:                exitcode-stdio-1.0
@@ -57,14 +63,15 @@ test-suite sara-test
   hs-source-dirs:      test, src
   build-depends:       base, hspec, text, containers, time, sara, vector, template-haskell, cassava, bytestring, aeson, scientific, unordered-containers, parallel, deepseq, vector-strategies
   default-language:    Haskell2010
+  ghc-options:         -Wall
   other-modules:
-    Sara.DSL.MutateParser
-    , Sara.DataFrame.IO
+    Sara.DataFrame.IO
     , Sara.DataFrame.Missing
-    , Sara.DataFrame.Static
     , Sara.DataFrame.Statistics
     , Sara.DataFrame.Strings
     , Sara.DataFrame.TimeSeries
     , Sara.DataFrame.Transform
     , Sara.DataFrame.Types
     , Sara.DataFrame.Wrangling
+    , Sara.DataFrame.Expression
+    , Sara.DataFrame.Predicate

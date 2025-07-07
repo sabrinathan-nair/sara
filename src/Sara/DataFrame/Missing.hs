@@ -1,4 +1,12 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE KindSignatures #-}
+{-# LANGUAGE TypeApplications #-}
 
 module Sara.DataFrame.Missing (
     fillna,
@@ -10,7 +18,7 @@ module Sara.DataFrame.Missing (
     notna
 ) where
 
-import Sara.DataFrame.Types (DFValue(..), DataFrame(..), Column, Row, toRows)
+import Sara.DataFrame.Types (DFValue(..), DataFrame(..), Column, Row, toRows, KnownColumns)
 import qualified Data.Vector as V
 import qualified Data.Map.Strict as Map
 import qualified Data.Text as T
@@ -18,7 +26,7 @@ import Data.List (foldl')
 import Sara.DataFrame.TimeSeries (fromRows)
 
 -- | Fills NA values in a DataFrame with a specified DFValue.
-fillna :: DataFrame -> Maybe T.Text -> DFValue -> DataFrame
+fillna :: KnownColumns cols => DataFrame cols -> Maybe T.Text -> DFValue -> DataFrame cols
 fillna (DataFrame dfMap) colNameM fillVal = DataFrame $ Map.mapWithKey (\k col ->
     case colNameM of
         Just cn | cn == k -> V.map (\x -> if x == NA then fillVal else x) col
@@ -27,21 +35,21 @@ fillna (DataFrame dfMap) colNameM fillVal = DataFrame $ Map.mapWithKey (\k col -
     ) dfMap
 
 -- | Forward fills NA values in a DataFrame.
-ffill :: DataFrame -> DataFrame
+ffill :: KnownColumns cols => DataFrame cols -> DataFrame cols
 ffill (DataFrame dfMap) = DataFrame $ Map.map ffillColumn dfMap
   where
     ffillColumn :: Column -> Column
     ffillColumn col = V.postscanl' (\lastVal currentVal -> if currentVal == NA then lastVal else currentVal) NA col
 
 -- | Backward fills NA values in a DataFrame.
-bfill :: DataFrame -> DataFrame
+bfill :: KnownColumns cols => DataFrame cols -> DataFrame cols
 bfill (DataFrame dfMap) = DataFrame $ Map.map bfillColumn dfMap
   where
     bfillColumn :: Column -> Column
     bfillColumn col = V.reverse $ V.postscanl' (\lastVal currentVal -> if currentVal == NA then lastVal else currentVal) NA (V.reverse col)
 
 -- | Drops rows or columns containing NA values.
-dropna :: DataFrame -> DropAxis -> Maybe Int -> DataFrame
+dropna :: KnownColumns cols => DataFrame cols -> DropAxis -> Maybe Int -> DataFrame cols
 dropna df DropRows thresholdM =
     let rows = toRows df
         filteredRows = filter (\row ->
@@ -61,11 +69,11 @@ dropna (DataFrame dfMap) DropColumns thresholdM =
     in DataFrame filteredMap
 
 -- | Returns a DataFrame indicating whether each element is NA.
-isna :: DataFrame -> DataFrame
+isna :: KnownColumns cols => DataFrame cols -> DataFrame cols
 isna (DataFrame dfMap) = DataFrame $ Map.map (V.map (BoolValue . (== NA))) dfMap
 
 -- | Returns a DataFrame indicating whether each element is not NA.
-notna :: DataFrame -> DataFrame
+notna :: KnownColumns cols => DataFrame cols -> DataFrame cols
 notna (DataFrame dfMap) = DataFrame $ Map.map (V.map (BoolValue . (/= NA))) dfMap
 
 data DropAxis = DropRows | DropColumns

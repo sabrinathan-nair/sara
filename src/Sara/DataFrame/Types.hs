@@ -2,6 +2,18 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE KindSignatures #-}
+{-# LANGUAGE PolyKinds #-}
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE GADTs #-}
 
 module Sara.DataFrame.Types (
     DFValue(..),
@@ -9,9 +21,21 @@ module Sara.DataFrame.Types (
     DataFrame(..),
     Row,
     toRows,
+    fromRows,
     SortOrder(..),
     ConcatAxis(..),
-    JoinType(..)
+    JoinType(..),
+    SortCriterion(..),
+    SortableColumn,
+    KnownColumns(..),
+    CanBeDFValue(..),
+    -- * Type-level programming helpers
+    type Append,
+    type Remove,
+    type Nub,
+    HasColumn,
+    HasColumns,
+    JoinCols
 ) where
 
 import qualified Data.Text as T
@@ -27,6 +51,9 @@ import Data.Time.Format (formatTime, parseTimeM, defaultTimeLocale)
 import Text.Read (readMaybe)
 import Control.DeepSeq
 import GHC.Generics (Generic)
+import GHC.TypeLits
+import Data.Kind (Constraint)
+import Data.Proxy (Proxy(..))
 
 -- | A type to represent a single value in a DataFrame.
 -- It can hold different types of data such as integers, doubles, text, dates, booleans, or missing values (NA).
@@ -80,13 +107,42 @@ type Row = Map T.Text DFValue
 
 -- | The DataFrame itself, represented as a newtype wrapper around a 'Map' from column names ('T.Text') to 'Column's.
 -- This structure allows for efficient column-wise operations and access.
-newtype DataFrame = DataFrame (Map T.Text Column)
-    deriving (Show, Eq)
+newtype DataFrame (cols :: [Symbol]) = DataFrame (Map T.Text Column)
+
+-- | Type class to get the runtime Text names from a type-level list of Symbols.
+class KnownColumns (cols :: [Symbol]) where
+    columnNames :: Proxy cols -> [T.Text]
+
+instance KnownColumns '[] where
+    columnNames _ = []
+
+instance (KnownSymbol x, KnownColumns xs) => KnownColumns (x ': xs) where
+    columnNames _ = T.pack (symbolVal (Proxy @x)) : columnNames (Proxy @xs)
+
+instance (KnownColumns cols) => Show (DataFrame cols) where
+    show (DataFrame dfMap) =
+        let
+            cols = columnNames (Proxy @cols)
+            header = T.intercalate "\t" cols
+            rows = toRows (DataFrame dfMap)
+            rowStrings = map (\row -> T.intercalate "\t" [ maybe "NA" (T.pack . show) (Map.lookup col row) | col <- cols ]) rows
+        in
+            T.unpack $ T.intercalate "\n" (header : rowStrings)
+
+instance Eq (DataFrame cols) where
+    (DataFrame dfMap1) == (DataFrame dfMap2) = dfMap1 == dfMap2
 
 -- | Specifies the sort order for a column.
 data SortOrder = Ascending  -- ^ Sort in ascending order.
                | Descending -- ^ Sort in descending order.
     deriving (Show, Eq)
+
+-- | A type-safe criterion for sorting a DataFrame.
+data SortCriterion (cols :: [Symbol]) where
+    SortCriterion :: (KnownSymbol col, HasColumn col cols) => Proxy col -> SortOrder -> SortCriterion cols
+
+-- | A type synonym for a sortable column.
+type SortableColumn (col :: Symbol) (cols :: [Symbol]) = (KnownSymbol col, HasColumn col cols)
 
 -- | Specifies the axis along which to concatenate DataFrames.
 data ConcatAxis = ConcatRows    -- ^ Concatenate DataFrames row-wise.
@@ -100,9 +156,44 @@ data JoinType = InnerJoin   -- ^ Return only the rows that have matching keys in
               | OuterJoin   -- ^ Return all rows when there is a match in one of the DataFrames.
     deriving (Show, Eq)
 
+-- | A type class for values that can be converted to and from DFValue.
+class CanBeDFValue a where
+    toDFValue :: a -> DFValue
+    fromDFValue :: DFValue -> Maybe a
+
+instance CanBeDFValue Int where
+    toDFValue = IntValue
+    fromDFValue (IntValue i) = Just i
+    fromDFValue _ = Nothing
+
+instance CanBeDFValue Double where
+    toDFValue = DoubleValue
+    fromDFValue (DoubleValue d) = Just d
+    fromDFValue _ = Nothing
+
+instance CanBeDFValue T.Text where
+    toDFValue = TextValue
+    fromDFValue (TextValue t) = Just t
+    fromDFValue _ = Nothing
+
+instance CanBeDFValue Day where
+    toDFValue = DateValue
+    fromDFValue (DateValue d) = Just d
+    fromDFValue _ = Nothing
+
+instance CanBeDFValue UTCTime where
+    toDFValue = TimestampValue
+    fromDFValue (TimestampValue t) = Just t
+    fromDFValue _ = Nothing
+
+instance CanBeDFValue Bool where
+    toDFValue = BoolValue
+    fromDFValue (BoolValue b) = Just b
+    fromDFValue _ = Nothing
+
 -- | Converts a 'DataFrame' into a list of 'Row's.
 -- Each 'Row' is a 'Map' where keys are column names and values are the corresponding 'DFValue's for that row.
-toRows :: DataFrame -> [Row]
+toRows :: DataFrame cols -> [Row]
 toRows (DataFrame dfMap) =
     if Map.null dfMap
         then []
@@ -110,8 +201,52 @@ toRows (DataFrame dfMap) =
             let
                 -- Assuming all columns have the same number of rows
                 numRows = V.length (snd . head . Map.toList $ dfMap)
-                columnNames = Map.keys dfMap
+                columnNames' = Map.keys dfMap
             in
-                [ Map.fromList [ (colName, (dfMap Map.! colName) V.! rowIndex) | colName <- columnNames ]
+                [ Map.fromList [ (colName, (dfMap Map.! colName) V.! rowIndex) | colName <- columnNames' ]
                 | rowIndex <- [0 .. numRows - 1]
                 ]
+
+-- * Type-level list operations
+
+-- | Create a DataFrame from a list of rows.
+fromRows :: KnownColumns cols => [Row] -> DataFrame cols
+fromRows [] = DataFrame Map.empty
+fromRows rows@(firstRow:_) =
+    let columns = Map.keys firstRow
+        colMap = Map.fromList $ map (\colName -> (colName, V.fromList $ map (Map.! colName) rows)) columns
+    in DataFrame colMap
+
+-- | A type family to append two type-level lists.
+type family Append (xs :: [k]) (ys :: [k]) :: [k] where
+    Append '[] ys = ys
+    Append (x ': xs) ys = x ': Append xs ys
+
+-- | A type family to remove an element from a type-level list.
+type family Remove (x :: k) (ys :: [k]) :: [k] where
+    Remove x '[] = '[]
+    Remove x (x ': ys) = Remove x ys
+    Remove x (y ': ys) = y ': Remove x ys
+
+-- | A type family to remove duplicates from a type-level list.
+type family Nub (xs :: [k]) :: [k] where
+    Nub '[] = '[]
+    Nub (x ': xs) = x ': Nub (Remove x xs)
+
+-- | A constraint to check if a column is present in a list of columns.
+type family Elem (x :: k) (ys :: [k]) :: Constraint where
+    Elem x (x ': ys) = ()
+    Elem x (y ': ys) = Elem x ys
+
+-- | A constraint synonym for checking if a column exists in a DataFrame.
+type HasColumn (col :: Symbol) (cols :: [Symbol]) = (KnownSymbol col, Elem col cols)
+
+-- | Constraint to ensure a list of columns exists in another list of columns.
+type family HasColumns (subset :: [Symbol]) (superset :: [Symbol]) :: Constraint where
+    HasColumns '[] _ = ()
+    HasColumns (s ': ss) superset = (HasColumn s superset, HasColumns ss superset)
+
+-- | Type family to compute the columns of a joined DataFrame.
+type family JoinCols (cols1 :: [Symbol]) (cols2 :: [Symbol]) :: [Symbol] where
+    JoinCols cols1 cols2 = Nub (Append cols1 cols2)
+

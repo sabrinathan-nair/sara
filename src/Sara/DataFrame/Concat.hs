@@ -1,3 +1,9 @@
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE AllowAmbiguousTypes #-}
+
 module Sara.DataFrame.Concat (
     concatDF
 ) where
@@ -6,7 +12,7 @@ import qualified Data.Text as T
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
 import qualified Data.Vector as V
-import Sara.DataFrame.Types (DataFrame(..), Column, Row, DFValue(..), ConcatAxis(..), toRows)
+import Sara.DataFrame.Types (DataFrame(..), Column, Row, DFValue(..), ConcatAxis(..), toRows, KnownColumns)
 
 -- | Concatenates a list of DataFrames along a specified axis.
 --
@@ -18,7 +24,7 @@ import Sara.DataFrame.Types (DataFrame(..), Column, Row, DFValue(..), ConcatAxis
 --   - DataFrames must have the same number of rows.
 --   - Columns are appended.
 --   - If column names overlap, later DataFrames' columns will overwrite earlier ones.
-concatDF :: ConcatAxis -> [DataFrame] -> DataFrame
+concatDF :: KnownColumns cols => ConcatAxis -> [DataFrame cols] -> DataFrame cols
 concatDF _ [] = DataFrame Map.empty
 concatDF ConcatRows dfs =
     let

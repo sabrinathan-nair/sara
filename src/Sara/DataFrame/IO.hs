@@ -1,5 +1,11 @@
 -- Sara.DataFrame.IO module
 
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE AllowAmbiguousTypes #-}
+
 module Sara.DataFrame.IO (
     readCSV,
     writeCSV,
@@ -22,6 +28,7 @@ import qualified Data.ByteString.Char8 as BC
 import qualified Data.HashMap.Strict as HM
 import Data.Char (toUpper)
 import Data.Aeson as A
+import Data.Proxy (Proxy)
 
 import Sara.DataFrame.Types
 
@@ -52,7 +59,7 @@ valueToByteString (BoolValue b) = BC.pack (map toUpper (show b))
 valueToByteString NA = BC.pack "NA"
 
 -- | Reads a CSV file from the given file path and converts it into a DataFrame.
-readCSV :: FilePath -> IO DataFrame
+readCSV :: forall cols. KnownColumns cols => FilePath -> IO (DataFrame cols)
 readCSV filePath = do
     csvData <- BL.readFile filePath
     case C.decodeByName csvData :: Either String (C.Header, V.Vector C.NamedRecord) of
@@ -76,7 +83,7 @@ readCSV filePath = do
                     return $ DataFrame finalColumnsMap
 
 -- | Writes a DataFrame to a CSV file at the given file path.
-writeCSV :: FilePath -> DataFrame -> IO ()
+writeCSV :: KnownColumns cols => FilePath -> DataFrame cols -> IO ()
 writeCSV filePath (DataFrame dfMap) = do
     let header = V.fromList $ Map.keys dfMap
         headerBS = V.map TE.encodeUtf8 header -- Convert Text header to ByteString
@@ -93,7 +100,7 @@ writeCSV filePath (DataFrame dfMap) = do
     BL.writeFile filePath $ C.encodeByName headerBS (V.toList rows)
 
 -- | Reads a JSON file into a DataFrame.
-readJSON :: FilePath -> IO DataFrame
+readJSON :: forall cols. KnownColumns cols => FilePath -> IO (DataFrame cols)
 readJSON filePath = do
     jsonData <- BL.readFile filePath
     case A.eitherDecode jsonData :: Either String [Map T.Text DFValue] of
@@ -113,7 +120,7 @@ readJSON filePath = do
                         return $ DataFrame dfMap
 
 -- | Writes a DataFrame to a JSON file.
-writeJSON :: FilePath -> DataFrame -> IO ()
+writeJSON :: KnownColumns cols => FilePath -> DataFrame cols -> IO ()
 writeJSON filePath df = do
     let rows = toRows df
     BL.writeFile filePath (A.encode rows)
