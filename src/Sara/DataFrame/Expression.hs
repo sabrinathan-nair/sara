@@ -28,12 +28,13 @@ module Sara.DataFrame.Expression (
 import qualified Data.Text as T
 import Data.Proxy (Proxy(..))
 import GHC.TypeLits (Symbol, KnownSymbol, symbolVal)
+import Data.Kind (Type)
 import Sara.DataFrame.Types
 import qualified Data.Map.Strict as Map
 
 -- | A type-safe expression GADT for DataFrame operations.
 -- 'cols' is the schema of the DataFrame, and 'a' is the return type of the expression.
-data Expr (cols :: [Symbol]) a where
+data Expr (cols :: [(Symbol, Type)]) a where
     -- Literals
     Lit :: CanBeDFValue a => a -> Expr cols a
 

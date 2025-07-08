@@ -1,3 +1,4 @@
+{-# LANGUAGE PolyKinds #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE TypeOperators #-}
@@ -22,23 +23,29 @@ module Sara.DataFrame.Wrangling (
 ) where
 
 import qualified Data.Text as T
-import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
 import qualified Data.Vector as V
 import Data.List (sortBy)
-import Data.Ord (comparing)
 import Sara.DataFrame.Types
 import Sara.DataFrame.Predicate (Predicate, evaluate)
-import GHC.TypeLits (Symbol, KnownSymbol, symbolVal, CmpSymbol)
+import GHC.TypeLits (Symbol, KnownSymbol, symbolVal, CmpSymbol, TypeError, ErrorMessage(..))
 import Data.Proxy (Proxy(..))
-import Data.Type.Bool (If)
-import Sara.DataFrame.Types (DataFrame(..), Row, DFValue(..), KnownColumns(..), SortOrder(..), SortCriterion(..), HasColumn, HasColumns, columnNames)
+import Data.Kind (Type)
+
+class AllKnownSymbol (xs :: [Symbol]) where
+    symbolsToTexts :: Proxy xs -> [T.Text]
+
+instance AllKnownSymbol '[] where
+    symbolsToTexts _ = []
+
+instance (KnownSymbol x, AllKnownSymbol xs) => AllKnownSymbol (x ': xs) where
+    symbolsToTexts _ = T.pack (symbolVal (Proxy @x)) : symbolsToTexts (Proxy @xs)
 
 -- | Filters rows from a DataFrame based on a type-safe predicate.
 filterRows :: forall cols. KnownColumns cols => Predicate cols -> DataFrame cols -> DataFrame cols
-filterRows p df@(DataFrame dfMap) =
+filterRows p (DataFrame dfMap) =
     let
-        rows = toRows df
+        rows = toRows (DataFrame dfMap)
         filteredRows = filter (evaluate p) rows
         newDfMap = if null filteredRows
                    then Map.empty
@@ -92,16 +99,21 @@ sortDataFrame sortCriteria df =
         DataFrame newDfMap
 
 -- | Drops a list of columns from a DataFrame.
-type family DropColumns (toDrop :: [Symbol]) (cols :: [Symbol]) :: [Symbol] where
+type family DropColumns (toDrop :: [Symbol]) (cols :: [(Symbol, Type)]) :: [(Symbol, Type)] where
     DropColumns '[] cols = cols
-    DropColumns (d ': ds) cols = DropColumns ds (Remove d cols)
+    DropColumns (d ': ds) cols = DropColumns ds (RemoveBySymbol d cols)
 
-dropColumns :: forall (colsToDrop :: [Symbol]) (cols :: [Symbol]) (newCols :: [Symbol]).
-              (KnownColumns colsToDrop, KnownColumns cols, newCols ~ DropColumns colsToDrop cols, KnownColumns newCols)
+type family RemoveBySymbol (s :: Symbol) (cols :: [(Symbol, Type)]) :: [(Symbol, Type)] where
+    RemoveBySymbol s '[] = '[]
+    RemoveBySymbol s ('(s, t) ': xs) = RemoveBySymbol s xs
+    RemoveBySymbol s (x ': xs) = x ': RemoveBySymbol s xs
+
+dropColumns :: forall (colsToDrop :: [Symbol]) (cols :: [(Symbol, Type)]) (newCols :: [(Symbol, Type)]).
+              (KnownColumns newCols, KnownColumns cols, newCols ~ DropColumns colsToDrop cols, AllKnownSymbol colsToDrop)
               => DataFrame cols -> DataFrame newCols
 dropColumns (DataFrame dfMap) =
     let
-        colsToDropNames = columnNames (Proxy @colsToDrop)
+        colsToDropNames = symbolsToTexts (Proxy @colsToDrop)
         newDfMap = foldr Map.delete dfMap colsToDropNames
     in
         DataFrame newDfMap
@@ -117,16 +129,16 @@ dropRows indicesToDrop (DataFrame dfMap) =
         DataFrame newDfMap
 
 -- | Renames a column in a DataFrame.
-type family RenameColumn (old :: Symbol) (new :: Symbol) (cols :: [Symbol]) :: [Symbol] where
-    RenameColumn old new (c ': cs) = RenameColumn' (CmpSymbol old c) old new c cs
+type family RenameColumn (old :: Symbol) (new :: Symbol) (cols :: [(Symbol, Type)]) :: [(Symbol, Type)] where
+    RenameColumn old new (c ': cs) = RenameColumn' (CmpSymbol old (Fst c)) old new c cs
     RenameColumn old new '[] = '[]
 
-type family RenameColumn' (ord :: Ordering) (old :: Symbol) (new :: Symbol) (c :: Symbol) (cs :: [Symbol]) :: [Symbol] where
-    RenameColumn' 'EQ old new c cs = new ': RenameColumn old new cs
+type family RenameColumn' (ord :: Ordering) (old :: Symbol) (new :: Symbol) (c :: (Symbol, Type)) (cs :: [(Symbol, Type)]) :: [(Symbol, Type)] where
+    RenameColumn' 'EQ old new c cs = '(new, Snd c) ': RenameColumn old new cs
     RenameColumn' 'LT old new c cs = c ': RenameColumn old new cs
     RenameColumn' 'GT old new c cs = c ': RenameColumn old new cs
 
-renameColumn :: forall (oldName :: Symbol) (newName :: Symbol) (cols :: [Symbol]) (newCols :: [Symbol]).
+renameColumn :: forall (oldName :: Symbol) (newName :: Symbol) (cols :: [(Symbol, Type)]) (newCols :: [(Symbol, Type)]).
                (HasColumn oldName cols, KnownSymbol newName, newCols ~ RenameColumn oldName newName cols, KnownColumns newCols)
                => DataFrame cols -> DataFrame newCols
 renameColumn (DataFrame dfMap) =
@@ -171,10 +183,10 @@ fillNA replacementValue (DataFrame dfMap) =
         DataFrame newDfMap
 
 -- | Filters a DataFrame based on a boolean column.
-filterByBoolColumn :: forall (boolCol :: Symbol) (cols :: [Symbol]).
-                     (HasColumn boolCol cols, KnownColumns cols)
+filterByBoolColumn :: forall (boolCol :: Symbol) (cols :: [(Symbol, Type)]).
+                     (HasColumn boolCol cols, KnownColumns cols, TypeOf boolCol cols ~ Bool)
                      => Proxy boolCol -> DataFrame cols -> DataFrame cols
-filterByBoolColumn _ df = 
+filterByBoolColumn _ df =
     let
         boolColName = T.pack (symbolVal (Proxy @boolCol))
         rows = toRows df
@@ -197,12 +209,32 @@ filterByBoolColumn _ df =
         DataFrame newDfMap
 
 -- | Selects a subset of columns from a DataFrame.
-selectColumns :: forall (selectedCols :: [Symbol]) (cols :: [Symbol]).
-                (HasColumns selectedCols cols, KnownColumns selectedCols)
-                => DataFrame cols -> DataFrame selectedCols
-selectColumns df@(DataFrame dfMap) =
+selectColumns :: forall (selectedCols :: [Symbol]) (cols :: [(Symbol, Type)]).
+                (HasColumns selectedCols cols, KnownColumns (SelectCols selectedCols cols), AllKnownSymbol selectedCols)
+                => DataFrame cols -> DataFrame (SelectCols selectedCols cols)
+selectColumns (DataFrame dfMap) =
     let
-        selectedColNames = columnNames (Proxy @selectedCols)
+        selectedColNames = symbolsToTexts (Proxy @selectedCols)
         newDfMap = Map.filterWithKey (\k _ -> k `elem` selectedColNames) dfMap
     in
         DataFrame newDfMap
+
+type family SelectCols (selected :: [Symbol]) (cols :: [(Symbol, Type)]) :: [(Symbol, Type)] where
+    SelectCols '[] _ = '[]
+    SelectCols (s ': ss) cols = SelectCols' s ss cols (Find s cols)
+
+type family SelectCols' (s :: Symbol) (ss :: [Symbol]) (cols :: [(Symbol, Type)]) (found :: Maybe (Symbol, Type)) :: [(Symbol, Type)] where
+    SelectCols' s ss cols ('Just pair) = pair ': SelectCols ss cols
+    SelectCols' s ss cols 'Nothing = TypeError (Text "Column '" :<>: Text s :<>: Text "' not found.")
+
+
+type family Find (s :: Symbol) (cols :: [(Symbol, Type)]) :: Maybe (Symbol, Type) where
+    Find s '[] = 'Nothing
+    Find s ('(s, t) ': _) = 'Just '(s, t)
+    Find s (_ ': xs) = Find s xs
+
+type family Fst (t :: (k, v)) :: k where
+    Fst '(a, b) = a
+
+type family Snd (t :: (k, v)) :: v where
+    Snd '(a, b) = b

@@ -12,9 +12,9 @@ import Sara.DataFrame.IO (readCSV)
 import Sara.DataFrame.Transform
 import Sara.DataFrame.Join
 import Sara.DataFrame.Aggregate
-import Sara.DataFrame.Wrangling (filterRows, filterByBoolColumn)
+import Sara.DataFrame.Wrangling (filterRows)
 
-
+import qualified Data.Text as T
 import qualified Data.Map as Map
 import Sara.DataFrame.Types
 import Sara.DataFrame.TimeSeries as TimeSeries
@@ -39,36 +39,36 @@ main = do
 
     -- 1. Reading Data
     putStrLn "\n--- Reading employees.csv ---"
-    employeesDf <- readCSV @'["EmployeeID", "Name", "DepartmentID", "Salary", "StartDate"] "employees.csv"
+    employeesDf <- readCSV @[ '("EmployeeID", Int), '("Name", T.Text), '("DepartmentID", Int), '("Salary", Int), '("StartDate", UTCTime)] "employees.csv"
     print employeesDf
 
     -- 2. Selecting Columns
     putStrLn "\n--- Selecting Name and Salary columns ---"
-    let selectedDf = selectColumns @'["Name", "Salary"] employeesDf
+    let selectedDf = selectColumns @'[ '("Name", T.Text), '("Salary", Int)] employeesDf
     print selectedDf
 
     -- 3. Filtering Rows
     putStrLn "\n--- Filtering for employees with Salary > 75000 ---"
-    let filteredDf = filterRows (Proxy @"Salary" >.> IntValue 75000) employeesDf
+    let filteredDf = filterRows (col (Proxy @"Salary") >.> lit (75000 :: Int)) employeesDf
     print filteredDf
 
     -- 4. Mutating
     putStrLn "\n--- Adding a SalaryInThousands column ---"
-    let mutatedDf = mutate (Proxy @"SalaryInThousands") ((col (Proxy @"Salary") :: Expr '["EmployeeID", "Name", "DepartmentID", "Salary", "StartDate"] Double) /.! lit 1000.0) employeesDf
+    let mutatedDf = mutate @'("SalaryInThousands", Double) (Proxy @"SalaryInThousands") ((col (Proxy @"Salary") :: Expr '[ '("EmployeeID", Int), '("Name", T.Text), '("DepartmentID", Int), '("Salary", Int), '("StartDate", UTCTime)] Double) /.! lit 1000.0) employeesDf
     print mutatedDf
 
     -- 5. Joining DataFrames
     putStrLn "\n--- Joining employees and departments data ---"
-    departmentsDf <- readCSV @'["DepartmentID", "DepartmentName"] "departments.csv"
-    let joinedDf = joinDF @'["DepartmentID"] employeesDf departmentsDf LeftJoin
+    departmentsDf <- readCSV @'[ '("DepartmentID", Int), '("DepartmentName", T.Text)] "departments.csv"
+    let joinedDf = joinDF @'[ '("DepartmentID", Int)] employeesDf departmentsDf LeftJoin
     print joinedDf
 
     -- 6. Aggregation (Sum of Salaries by Department)
     putStrLn "\n--- Sum of Salaries by Department ---"
-    let groupedDf :: GroupedDataFrame '["DepartmentID"] '["EmployeeID", "Name", "DepartmentID", "Salary", "StartDate"]
-        groupedDf = groupBy @'["DepartmentID"] employeesDf
-    let aggregatedDf :: DataFrame '["DepartmentID", "Salary_sum"]
-        aggregatedDf = sumAgg @"Salary" @'["DepartmentID"] groupedDf
+    let groupedDf :: GroupedDataFrame '[ '("DepartmentID", Int)] '[ '("EmployeeID", Int), '("Name", T.Text), '("DepartmentID", Int), '("Salary", Int), '("StartDate", UTCTime)]
+        groupedDf = groupBy @'[ '("DepartmentID", Int)] employeesDf
+    let aggregatedDf :: DataFrame '[ '("DepartmentID", Int), '("Salary_sum", Double)]
+        aggregatedDf = sumAgg @"Salary" @'[ '("DepartmentID", Int)] groupedDf
     print aggregatedDf
 
     let sumAggV :: V.Vector DFValue -> DFValue
@@ -83,7 +83,7 @@ main = do
             Map.fromList [("Date", TimestampValue (createUTCTime 2023 1 4)), ("Value", IntValue 13)],
             Map.fromList [("Date", TimestampValue (createUTCTime 2023 1 5)), ("Value", IntValue 18)]
             ]
-    let timeSeriesDf = fromRows @'["Date", "Value"] timeSeriesData
+    let timeSeriesDf = fromRows @'[ '("Date", UTCTime), '("Value", Int)] timeSeriesData
     putStrLn "Original Time Series Data:"
     print timeSeriesDf
 
@@ -114,7 +114,7 @@ main = do
             Map.fromList [("ColA", NA), ("ColB", IntValue 2), ("ColC", NA)],
             Map.fromList [("ColA", IntValue 3), ("ColB", NA), ("ColC", DoubleValue 3.3)]
             ]
-    let naDf = fromRows @'["ColA", "ColB", "ColC"] naData
+    let naDf = fromRows @'[ '("ColA", Int), '("ColB", Int), '("ColC", Double)] naData
     putStrLn "Original DataFrame with NAs:"
     print naDf
 
@@ -162,7 +162,7 @@ main = do
             Map.fromList [("Value", NA)],
             Map.fromList [("Value", IntValue 30)]
             ]
-    let statsDf = fromRows @'["Value"] statsData
+    let statsDf = fromRows @'[ '("Value", Int)] statsData
     putStrLn "Original Data for Statistics:"
     print statsDf
 
@@ -180,7 +180,7 @@ main = do
             Map.fromList [("TextCol", TextValue "haskell"), ("NumCol", IntValue 2)],
             Map.fromList [("TextCol", NA), ("NumCol", IntValue 3)]
             ]
-    let stringDf = fromRows @'["TextCol", "NumCol"] stringData
+    let stringDf = fromRows @'[ '("TextCol", T.Text), '("NumCol", Int)] stringData
     putStrLn "Original Data for String Functions:"
     print stringDf
 
@@ -212,22 +212,18 @@ main = do
             Map.fromList [("Name", TextValue "Charlie"), ("IsStudent", BoolValue True)],
             Map.fromList [("Name", TextValue "David"), ("IsStudent", BoolValue False)]
             ]
-    let boolDf = fromRows @'["Name", "IsStudent"] boolData
+    let boolDf = fromRows @'[ '("Name", T.Text), '("IsStudent", Bool)] boolData
     putStrLn "Original Data for Boolean Indexing:"
     print boolDf
 
-    putStrLn "\n--- Filter by IsStudent == True ---"
-    let filteredBoolDf = filterByBoolColumn (Proxy @"IsStudent") boolDf
-    print filteredBoolDf
-
     -- 12. Column-wise Apply
-    putStrLn "\n--- Column-wise Apply ---"
     let applyData = [
             Map.fromList [("ColA", IntValue 1), ("ColB", DoubleValue 10.0)],
             Map.fromList [("ColA", IntValue 2), ("ColB", DoubleValue 20.0)],
             Map.fromList [("ColA", NA), ("ColB", NA)]
             ]
-    let applyDf = fromRows @'["ColA", "ColB"] applyData
+    let applyDf = fromRows @'[ '("ColA", Int), '("ColB", Double)] applyData
+    putStrLn "\n--- Column-wise Apply ---"
     putStrLn "Original Data for Column-wise Apply:"
     print applyDf
 
@@ -236,7 +232,7 @@ main = do
     print appliedDf
 
     putStrLn "\n--- Add a new column ColC as ColA + ColB ---"
-    let addColDf = addColumn @"ColC" (\row ->
+    let addColDf = addColumn @'("ColC", Double) (\row ->
             let valA = Map.lookup "ColA" row
                 valB = Map.lookup "ColB" row
             in case (valA, valB) of

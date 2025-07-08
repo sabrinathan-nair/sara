@@ -1,4 +1,4 @@
-
+{-# LANGUAGE GADTs #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE TypeFamilies #-}
@@ -21,48 +21,52 @@ module Sara.DataFrame.Predicate (
     (<=.<)
 ) where
 
+import Data.Kind (Type)
 import Sara.DataFrame.Types
 import GHC.TypeLits
 import Data.Proxy (Proxy(..))
 import qualified Data.Text as T
 import qualified Data.Map.Strict as Map
+import Data.Maybe (fromMaybe)
+
+import Sara.DataFrame.Expression (Expr, evaluateExpr)
 
 -- | A type-safe predicate for filtering a DataFrame.
 -- The 'cols' type parameter ensures that the predicate only refers to columns
 -- that are actually in the DataFrame.
-data Predicate (cols :: [Symbol]) =
-    And (Predicate cols) (Predicate cols) |
-    Or (Predicate cols) (Predicate cols) |
-    GreaterThan T.Text DFValue |
-    LessThan T.Text DFValue |
-    EqualTo T.Text DFValue |
-    GreaterThanOrEqualTo T.Text DFValue |
-    LessThanOrEqualTo T.Text DFValue
+data Predicate (cols :: [(Symbol, Type)]) where
+    And :: Predicate cols -> Predicate cols -> Predicate cols
+    Or :: Predicate cols -> Predicate cols -> Predicate cols
+    GreaterThan :: (Ord a, CanBeDFValue a) => Expr cols a -> Expr cols a -> Predicate cols
+    LessThan :: (Ord a, CanBeDFValue a) => Expr cols a -> Expr cols a -> Predicate cols
+    EqualTo :: (Eq a, CanBeDFValue a) => Expr cols a -> Expr cols a -> Predicate cols
+    GreaterThanOrEqualTo :: (Ord a, CanBeDFValue a) => Expr cols a -> Expr cols a -> Predicate cols
+    LessThanOrEqualTo :: (Ord a, CanBeDFValue a) => Expr cols a -> Expr cols a -> Predicate cols
 
 -- | A helper function to evaluate a predicate on a given row.
 evaluate :: Predicate cols -> Row -> Bool
 evaluate (And p1 p2) row = evaluate p1 row && evaluate p2 row
 evaluate (Or p1 p2) row = evaluate p1 row || evaluate p2 row
-evaluate (GreaterThan col val) row =
-    case Map.lookup col row of
-        Just v -> v > val
-        Nothing -> False
-evaluate (LessThan col val) row =
-    case Map.lookup col row of
-        Just v -> v < val
-        Nothing -> False
-evaluate (EqualTo col val) row =
-    case Map.lookup col row of
-        Just v -> v == val
-        Nothing -> False
-evaluate (GreaterThanOrEqualTo col val) row =
-    case Map.lookup col row of
-        Just v -> v >= val
-        Nothing -> False
-evaluate (LessThanOrEqualTo col val) row =
-    case Map.lookup col row of
-        Just v -> v <= val
-        Nothing -> False
+evaluate (GreaterThan e1 e2) row = fromMaybe False $ do
+    v1 <- evaluateExpr e1 row
+    v2 <- evaluateExpr e2 row
+    return (v1 > v2)
+evaluate (LessThan e1 e2) row = fromMaybe False $ do
+    v1 <- evaluateExpr e1 row
+    v2 <- evaluateExpr e2 row
+    return (v1 < v2)
+evaluate (EqualTo e1 e2) row = fromMaybe False $ do
+    v1 <- evaluateExpr e1 row
+    v2 <- evaluateExpr e2 row
+    return (v1 == v2)
+evaluate (GreaterThanOrEqualTo e1 e2) row = fromMaybe False $ do
+    v1 <- evaluateExpr e1 row
+    v2 <- evaluateExpr e2 row
+    return (v1 >= v2)
+evaluate (LessThanOrEqualTo e1 e2) row = fromMaybe False $ do
+    v1 <- evaluateExpr e1 row
+    v2 <- evaluateExpr e2 row
+    return (v1 <= v2)
 
 -- | Infix operator for logical AND.
 (&&&) :: Predicate cols -> Predicate cols -> Predicate cols
@@ -73,21 +77,21 @@ evaluate (LessThanOrEqualTo col val) row =
 (|||) = Or
 
 -- | Infix operator for greater than.
-(>.>) :: forall col cols. (KnownSymbol col, HasColumn col cols) => Proxy col -> DFValue -> Predicate cols
-(>.>) _ val = GreaterThan (T.pack (symbolVal (Proxy @col))) val
+(>.>) :: (Ord a, CanBeDFValue a) => Expr cols a -> Expr cols a -> Predicate cols
+(>.>) = GreaterThan
 
 -- | Infix operator for less than.
-(<.<) :: forall col cols. (KnownSymbol col, HasColumn col cols) => Proxy col -> DFValue -> Predicate cols
-(<.<) _ val = LessThan (T.pack (symbolVal (Proxy @col))) val
+(<.<) :: (Ord a, CanBeDFValue a) => Expr cols a -> Expr cols a -> Predicate cols
+(<.<) = LessThan
 
 -- | Infix operator for equal to.
-(===) :: forall col cols. (KnownSymbol col, HasColumn col cols) => Proxy col -> DFValue -> Predicate cols
-(===) _ val = EqualTo (T.pack (symbolVal (Proxy @col))) val
+(===) :: (Eq a, CanBeDFValue a) => Expr cols a -> Expr cols a -> Predicate cols
+(===) = EqualTo
 
 -- | Infix operator for greater than or equal to.
-(>=.>) :: forall col cols. (KnownSymbol col, HasColumn col cols) => Proxy col -> DFValue -> Predicate cols
-(>=.>) _ val = GreaterThanOrEqualTo (T.pack (symbolVal (Proxy @col))) val
+(>=.>) :: (Ord a, CanBeDFValue a) => Expr cols a -> Expr cols a -> Predicate cols
+(>=.>) = GreaterThanOrEqualTo
 
 -- | Infix operator for less than or equal to.
-(<=.<) :: forall col cols. (KnownSymbol col, HasColumn col cols) => Proxy col -> DFValue -> Predicate cols
-(<=.<) _ val = LessThanOrEqualTo (T.pack (symbolVal (Proxy @col))) val
+(<=.<) :: (Ord a, CanBeDFValue a) => Expr cols a -> Expr cols a -> Predicate cols
+(<=.<) = LessThanOrEqualTo

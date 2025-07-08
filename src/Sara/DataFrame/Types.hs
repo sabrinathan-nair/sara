@@ -35,7 +35,10 @@ module Sara.DataFrame.Types (
     type Nub,
     HasColumn,
     HasColumns,
-    JoinCols
+    JoinCols,
+    TypeOf,
+    MapSymbols,
+    CanAggregate(..)
 ) where
 
 import qualified Data.Text as T
@@ -51,9 +54,10 @@ import Data.Time.Format (formatTime, parseTimeM, defaultTimeLocale)
 import Text.Read (readMaybe)
 import Control.DeepSeq
 import GHC.Generics (Generic)
-import GHC.TypeLits
-import Data.Kind (Constraint)
+import GHC.TypeLits (ErrorMessage(Text, (:<>:)), Symbol, KnownSymbol, TypeError, CmpSymbol, symbolVal)
+import Data.Kind (Type, Constraint)
 import Data.Proxy (Proxy(..))
+import Data.Type.Bool (If)
 
 -- | A type to represent a single value in a DataFrame.
 -- It can hold different types of data such as integers, doubles, text, dates, booleans, or missing values (NA).
@@ -107,16 +111,16 @@ type Row = Map T.Text DFValue
 
 -- | The DataFrame itself, represented as a newtype wrapper around a 'Map' from column names ('T.Text') to 'Column's.
 -- This structure allows for efficient column-wise operations and access.
-newtype DataFrame (cols :: [Symbol]) = DataFrame (Map T.Text Column)
+newtype DataFrame (cols :: [(Symbol, Type)]) = DataFrame (Map T.Text Column)
 
 -- | Type class to get the runtime Text names from a type-level list of Symbols.
-class KnownColumns (cols :: [Symbol]) where
+class KnownColumns (cols :: [(Symbol, Type)]) where
     columnNames :: Proxy cols -> [T.Text]
 
 instance KnownColumns '[] where
     columnNames _ = []
 
-instance (KnownSymbol x, KnownColumns xs) => KnownColumns (x ': xs) where
+instance (KnownSymbol x, KnownColumns xs) => KnownColumns ('(x, a) ': xs) where
     columnNames _ = T.pack (symbolVal (Proxy @x)) : columnNames (Proxy @xs)
 
 instance (KnownColumns cols) => Show (DataFrame cols) where
@@ -138,11 +142,11 @@ data SortOrder = Ascending  -- ^ Sort in ascending order.
     deriving (Show, Eq)
 
 -- | A type-safe criterion for sorting a DataFrame.
-data SortCriterion (cols :: [Symbol]) where
+data SortCriterion (cols :: [(Symbol, Type)]) where
     SortCriterion :: (KnownSymbol col, HasColumn col cols) => Proxy col -> SortOrder -> SortCriterion cols
 
 -- | A type synonym for a sortable column.
-type SortableColumn (col :: Symbol) (cols :: [Symbol]) = (KnownSymbol col, HasColumn col cols)
+type SortableColumn (col :: Symbol) (cols :: [(Symbol, Type)]) = (KnownSymbol col, HasColumn col cols)
 
 -- | Specifies the axis along which to concatenate DataFrames.
 data ConcatAxis = ConcatRows    -- ^ Concatenate DataFrames row-wise.
@@ -239,14 +243,34 @@ type family Elem (x :: k) (ys :: [k]) :: Constraint where
     Elem x (y ': ys) = Elem x ys
 
 -- | A constraint synonym for checking if a column exists in a DataFrame.
-type HasColumn (col :: Symbol) (cols :: [Symbol]) = (KnownSymbol col, Elem col cols)
+type HasColumn (col :: Symbol) (cols :: [(Symbol, Type)]) = (KnownSymbol col, Elem col (MapSymbols cols))
 
 -- | Constraint to ensure a list of columns exists in another list of columns.
-type family HasColumns (subset :: [Symbol]) (superset :: [Symbol]) :: Constraint where
+type family HasColumns (subset :: [Symbol]) (superset :: [(Symbol, Type)]) :: Constraint where
     HasColumns '[] _ = ()
     HasColumns (s ': ss) superset = (HasColumn s superset, HasColumns ss superset)
 
 -- | Type family to compute the columns of a joined DataFrame.
-type family JoinCols (cols1 :: [Symbol]) (cols2 :: [Symbol]) :: [Symbol] where
+type family JoinCols (cols1 :: [(Symbol, Type)]) (cols2 :: [(Symbol, Type)]) :: [(Symbol, Type)] where
     JoinCols cols1 cols2 = Nub (Append cols1 cols2)
 
+-- | Type family to get the type of a column given its name and the DataFrame's schema.
+type family TypeOf (col :: Symbol) (cols :: [(Symbol, Type)]) :: Type where
+    TypeOf col ('(col, colType) ': xs) = colType
+    TypeOf col ('(otherCol, _) ': xs) = TypeOf col xs
+    TypeOf col '[] = TypeError (Text "Column '" :<>: Text col :<>: Text "' not found.")
+
+-- Helper type family to extract just the symbols from a list of (Symbol, Type) tuples
+type family MapSymbols (xs :: [(Symbol, Type)]) :: [Symbol] where
+    MapSymbols '[] = '[]
+    MapSymbols ('(s, t) ': xs) = s ': MapSymbols xs
+
+-- | A type class for values that can be aggregated (converted to Double).
+class CanAggregate a where
+    toAggDouble :: a -> Double
+
+instance CanAggregate Int where
+    toAggDouble = fromIntegral
+
+instance CanAggregate Double where
+    toAggDouble = id

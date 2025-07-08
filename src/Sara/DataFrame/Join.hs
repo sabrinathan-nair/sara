@@ -18,13 +18,14 @@ import qualified Data.Map.Strict as Map
 import qualified Data.Vector as V
 import Data.List (nub)
 import Data.Maybe (fromMaybe)
-import Sara.DataFrame.Types (DFValue(..), Column, Row, DataFrame(..), JoinType(..), toRows, KnownColumns, HasColumns, JoinCols, columnNames)
+import Sara.DataFrame.Types (DFValue(..), Column, Row, DataFrame(..), JoinType(..), toRows, KnownColumns, HasColumns, JoinCols, columnNames, MapSymbols)
 import GHC.TypeLits
 import Data.Proxy (Proxy(..))
+import Data.Kind (Type)
 
 -- | Joins two DataFrames based on common columns and a specified join type.
-joinDF :: forall (onCols :: [Symbol]) (cols1 :: [Symbol]) (cols2 :: [Symbol]) (colsOut :: [Symbol]).
-          ( HasColumns onCols cols1, HasColumns onCols cols2
+joinDF :: forall (onCols :: [(Symbol, Type)]) (cols1 :: [(Symbol, Type)]) (cols2 :: [(Symbol, Type)]) (colsOut :: [(Symbol, Type)]).
+          ( HasColumns (MapSymbols onCols) cols1, HasColumns (MapSymbols onCols) cols2
           , KnownColumns onCols, KnownColumns cols1, KnownColumns cols2
           , colsOut ~ JoinCols cols1 cols2, KnownColumns colsOut
           )
