@@ -49,7 +49,7 @@ import qualified Data.Map.Strict as Map
 import Data.Vector (Vector)
 import qualified Data.Vector as V
 import Data.Aeson
-import Data.Aeson.Types (Parser)
+import Data.Aeson.Types (Parser, Value(..))
 import Data.Scientific (toRealFloat)
 import Data.Time.Format (formatTime, parseTimeM, defaultTimeLocale)
 import Text.Read (readMaybe)
@@ -58,7 +58,6 @@ import GHC.Generics (Generic)
 import GHC.TypeLits (ErrorMessage(Text, (:<>:)), Symbol, KnownSymbol, TypeError, CmpSymbol, symbolVal)
 import Data.Kind (Type, Constraint)
 import Data.Proxy (Proxy(..))
-import Data.Type.Bool (If)
 import Data.Typeable (TypeRep, Typeable, typeRep)
 
 -- | A type to represent a single value in a DataFrame.

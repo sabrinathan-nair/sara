@@ -19,7 +19,6 @@ import Sara.DataFrame.Aggregate
 import Sara.DataFrame.Expression
 import Sara.DataFrame.Predicate
 import Data.Proxy (Proxy(..))
-import Data.Kind (Type)
 
 main :: IO ()
 main = hspec $ do
@@ -45,7 +44,9 @@ main = hspec $ do
             df <- createTestDataFrame
             let appliedDf = applyColumn (Proxy @"Age") ((+ 2) :: Int -> Int) df
             let (DataFrame appliedMap) = appliedDf
-            let (Just (IntValue age)) = (appliedMap Map.! "Age") V.!? 0
+            let age = case (appliedMap Map.! "Age") V.!? 0 of
+                          Just (IntValue i) -> i
+                          _ -> error "Expected IntValue for Age" -- Should not happen in this test
             age `shouldBe` 32
 
     describe "Type-Safe sortDataFrame" $ do
@@ -53,16 +54,20 @@ main = hspec $ do
             df <- createTestDataFrame
             let sortedDf = sortDataFrame [SortCriterion (Proxy @"Age") Ascending] df
             let (DataFrame sortedMap) = sortedDf
-            let (Just (TextValue name)) = (sortedMap Map.! "Name") V.!? 0
+            let name = case (sortedMap Map.! "Name") V.!? 0 of
+                          Just (TextValue t) -> t
+                          _ -> error "Expected TextValue for Name"
             name `shouldBe` "Bob"
 
     describe "Type-Safe mutate" $ do
         it "adds a new column based on an expression" $ do
             df <- createTestDataFrame
             let expr = (col (Proxy @"Age") :: Expr '[ '("Name", T.Text), '("Age", Int), '("Salary", Double)] Int) +.+ lit (5 :: Int)
-            let mutatedDf = mutate @'("AgePlusFive", Int) (Proxy @"AgePlusFive") expr df
+            let mutatedDf = mutate @"AgePlusFive" (Proxy @"AgePlusFive") expr df
             let (DataFrame mutatedMap) = mutatedDf
-            let (Just (IntValue val)) = (mutatedMap Map.! "AgePlusFive") V.!? 0
+            let val = case (mutatedMap Map.! "AgePlusFive") V.!? 0 of
+                          Just (IntValue i) -> i
+                          _ -> error "Expected IntValue for AgePlusFive"
             val `shouldBe` 35
 
     describe "Type-Safe Aggregation" $ do
@@ -81,8 +86,12 @@ main = hspec $ do
             let groupedDf = groupBy @'[ '("Category", T.Text)] df
             let aggregatedDf = sumAgg @"Value" @'[ '("Category", T.Text)] groupedDf
             let (DataFrame aggMap) = aggregatedDf
-            let (Just (DoubleValue sumA)) = (aggMap Map.! "Value_sum") V.!? 0
-            let (Just (DoubleValue sumB)) = (aggMap Map.! "Value_sum") V.!? 1
+            let sumA = case (aggMap Map.! "Value_sum") V.!? 0 of
+                          Just (DoubleValue d) -> d
+                          _ -> error "Expected DoubleValue for sumA"
+            let sumB = case (aggMap Map.! "Value_sum") V.!? 1 of
+                          Just (DoubleValue d) -> d
+                          _ -> error "Expected DoubleValue for sumB"
             sumA `shouldBe` 30.0
             sumB `shouldBe` 70.0
 
@@ -91,8 +100,12 @@ main = hspec $ do
             let groupedDf = groupBy @'[ '("Category", T.Text)] df
             let aggregatedDf = meanAgg @"Value" @'[ '("Category", T.Text)] groupedDf
             let (DataFrame aggMap) = aggregatedDf
-            let (Just (DoubleValue meanA)) = (aggMap Map.! "Value_mean") V.!? 0
-            let (Just (DoubleValue meanB)) = (aggMap Map.! "Value_mean") V.!? 1
+            let meanA = case (aggMap Map.! "Value_mean") V.!? 0 of
+                          Just (DoubleValue d) -> d
+                          _ -> error "Expected DoubleValue for meanA"
+            let meanB = case (aggMap Map.! "Value_mean") V.!? 1 of
+                          Just (DoubleValue d) -> d
+                          _ -> error "Expected DoubleValue for meanB"
             meanA `shouldBe` 15.0
             meanB `shouldBe` 35.0
 
@@ -101,7 +114,11 @@ main = hspec $ do
             let groupedDf = groupBy @'[ '("Category", T.Text)] df
             let aggregatedDf = countAgg @"Value" @'[ '("Category", T.Text)] groupedDf
             let (DataFrame aggMap) = aggregatedDf
-            let (Just (IntValue countA)) = (aggMap Map.! "Value_count") V.!? 0
-            let (Just (IntValue countB)) = (aggMap Map.! "Value_count") V.!? 1
+            let countA = case (aggMap Map.! "Value_count") V.!? 0 of
+                          Just (IntValue i) -> i
+                          _ -> error "Expected IntValue for countA"
+            let countB = case (aggMap Map.! "Value_count") V.!? 1 of
+                          Just (IntValue i) -> i
+                          _ -> error "Expected IntValue for countB"
             countA `shouldBe` 2
             countB `shouldBe` 2
