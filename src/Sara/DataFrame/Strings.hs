@@ -16,7 +16,7 @@ module Sara.DataFrame.Strings (
     replace
 ) where
 
-import Sara.DataFrame.Types (DataFrame(..), DFValue(..), KnownColumns(..), HasColumn)
+import Sara.DataFrame.Types (DataFrame(..), DFValue(..), KnownColumns(..), HasColumn, TypeOf)
 import qualified Data.Vector as V
 import qualified Data.Map.Strict as Map
 import qualified Data.Text as T
@@ -60,7 +60,7 @@ contains colProxy pattern (DataFrame dfMap) =
     in DataFrame $ Map.insert (colName `T.append` "_contains_" `T.append` pattern) (V.map (applyTextPredicate (T.isInfixOf pattern)) (dfMap Map.! colName)) dfMap
 
 -- | Replaces occurrences of a substring in the specified column.
-replace :: forall (col :: Symbol) cols. (KnownSymbol col, HasColumn col cols, KnownColumns cols) => Proxy col -> T.Text -> T.Text -> DataFrame cols -> DataFrame cols
+replace :: forall (col :: Symbol) cols. (KnownSymbol col, HasColumn col cols, KnownColumns cols, TypeOf col cols ~ T.Text) => Proxy col -> T.Text -> T.Text -> DataFrame cols -> DataFrame cols
 replace colProxy old new (DataFrame dfMap) =
     let colName = T.pack (symbolVal colProxy)
     in DataFrame $ Map.adjust (V.map (applyTextTransform (T.replace old new))) colName dfMap
