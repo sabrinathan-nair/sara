@@ -18,19 +18,20 @@ module Sara.DataFrame.Missing (
     notna
 ) where
 
-import Sara.DataFrame.Types (DFValue(..), DataFrame(..), Column, Row, toRows, KnownColumns)
+import Sara.DataFrame.Types (DFValue(..), DataFrame(..), Column, Row, toRows, fromRows, KnownColumns, CanBeDFValue(..))
+import Data.Typeable (Typeable)
+import Data.Proxy (Proxy(..))
 import qualified Data.Vector as V
 import qualified Data.Map.Strict as Map
 import qualified Data.Text as T
 import Data.List (foldl')
-import Sara.DataFrame.TimeSeries (fromRows)
 
 -- | Fills NA values in a DataFrame with a specified DFValue.
-fillna :: KnownColumns cols => DataFrame cols -> Maybe T.Text -> DFValue -> DataFrame cols
-fillna (DataFrame dfMap) colNameM fillVal = DataFrame $ Map.mapWithKey (\k col ->
+fillna :: forall a cols. (KnownColumns cols, Typeable a, CanBeDFValue a) => DataFrame cols -> Proxy a -> Maybe T.Text -> a -> DataFrame cols
+fillna (DataFrame dfMap) _ colNameM fillVal = DataFrame $ Map.mapWithKey (\k col ->
     case colNameM of
-        Just cn | cn == k -> V.map (\x -> if x == NA then fillVal else x) col
-        Nothing -> V.map (\x -> if x == NA then fillVal else x) col
+        Just cn | cn == k -> V.map (\x -> if x == NA then toDFValue fillVal else x) col
+        Nothing -> V.map (\x -> if x == NA then toDFValue fillVal else x) col
         _ -> col
     ) dfMap
 

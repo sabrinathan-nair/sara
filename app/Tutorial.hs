@@ -39,7 +39,7 @@ main = do
 
     -- 1. Reading Data
     putStrLn "\n--- Reading employees.csv ---"
-    employeesDf <- readCSV @[ '("EmployeeID", Int), '("Name", T.Text), '("DepartmentID", Int), '("Salary", Int), '("StartDate", UTCTime)] "employees.csv"
+    employeesDf <- readCSV (Proxy @[ '("EmployeeID", Int), '("Name", T.Text), '("DepartmentID", Int), '("Salary", Int), '("StartDate", UTCTime)]) "employees.csv"
     print employeesDf
 
     -- 2. Selecting Columns
@@ -59,7 +59,7 @@ main = do
 
     -- 5. Joining DataFrames
     putStrLn "\n--- Joining employees and departments data ---"
-    departmentsDf <- readCSV @'[ '("DepartmentID", Int), '("DepartmentName", T.Text)] "departments.csv"
+    departmentsDf <- readCSV (Proxy @'[ '("DepartmentID", Int), '("DepartmentName", T.Text)]) "departments.csv"
     let joinedDf = joinDF @'[ '("DepartmentID", Int)] employeesDf departmentsDf LeftJoin
     print joinedDf
 
@@ -120,7 +120,7 @@ main = do
 
     -- Fill NA with a specific value
     putStrLn "\n--- Fill NA with 0 ---"
-    let filledDf = fillna naDf Nothing (IntValue 0)
+    let filledDf = fillna naDf (Proxy @Int) Nothing 0
     print filledDf
 
     -- Forward Fill

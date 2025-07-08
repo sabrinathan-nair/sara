@@ -19,7 +19,7 @@ module Sara.DataFrame.TimeSeries (
     rollingApply
 ) where
 
-import Sara.DataFrame.Types (DataFrame(..), Row, DFValue(..), KnownColumns(..), toRows, fromRows, HasColumn)
+import Sara.DataFrame.Types (DataFrame(..), Row, DFValue(..), KnownColumns(..), toRows, fromRows, HasColumn, TypeOf, CanAggregate(..), CanBeDFValue(..))
 import qualified Data.Vector as V
 import qualified Data.Map.Strict as Map
 import qualified Data.Text as T
@@ -54,31 +54,35 @@ parseUTCTime _ = Nothing
 
 
 -- | Group the rows of a DataFrame by a given time period.
-groupByTime :: forall cols. KnownColumns cols => DataFrame cols -> String -> ResampleRule -> Map.Map Day [Row]
-groupByTime (DataFrame dfMap) timeColumn rule = foldl' reducer Map.empty (toRows (DataFrame dfMap :: DataFrame cols))
+groupByTime :: forall (timeCol :: Symbol) cols.
+              (KnownSymbol timeCol, HasColumn timeCol cols, TypeOf timeCol cols ~ UTCTime, KnownColumns cols)
+              => Proxy timeCol -> ResampleRule -> DataFrame cols -> Map.Map Day [Row]
+groupByTime timeColProxy rule (DataFrame dfMap) = foldl' reducer Map.empty (toRows (DataFrame dfMap :: DataFrame cols))
   where
-    reducer acc row = 
-        let key = truncateTime (row Map.! (T.pack timeColumn))
+    timeColName = T.pack (symbolVal timeColProxy)
+    reducer acc row =
+        let (TimestampValue t) = row Map.! timeColName -- Guaranteed to be TimestampValue by TypeOf constraint
+            key = truncateTime t
         in Map.insertWith (++) key [row] acc
 
-    truncateTime :: DFValue -> Day
-    truncateTime (TimestampValue t) = 
+    truncateTime :: UTCTime -> Day
+    truncateTime t =
         case rule of
             Daily -> utctDay t
             Monthly -> let (y, m, _) = toGregorian $ utctDay t in fromGregorian y m 1
             Yearly -> let (y, _, _) = toGregorian $ utctDay t in fromGregorian y 1 1
-    truncateTime _ = error "Time column must be of type TimestampValue"
 
 -- | Resample a DataFrame based on a time column.
-resample :: forall (col :: Symbol) cols. (KnownSymbol col, HasColumn col cols, KnownColumns cols) => Proxy col -> ResampleRule -> (V.Vector DFValue -> DFValue) -> DataFrame cols -> DataFrame cols
+resample :: forall (col :: Symbol) cols. (KnownSymbol col, HasColumn col cols, KnownColumns cols, TypeOf col cols ~ UTCTime) => Proxy col -> ResampleRule -> (V.Vector DFValue -> DFValue) -> DataFrame cols -> DataFrame cols
 resample colProxy rule aggFunc (DataFrame dfMap) =
     let colName = T.pack (symbolVal colProxy)
-        grouped = groupByTime (DataFrame dfMap :: DataFrame cols) (T.unpack colName) rule
+        grouped = groupByTime colProxy rule (DataFrame dfMap :: DataFrame cols)
         aggData = Map.map (\rows ->
             let dfFromRows = fromRows rows
             in applyAgg dfFromRows
             ) grouped
         newDf = concatDFs $ Map.elems aggData
+
     in newDf
     where
         applyAgg :: DataFrame cols -> DataFrame cols
@@ -100,21 +104,19 @@ shift colProxy periods (DataFrame dfMap) =
     in DataFrame newDfMap
 
 -- | Calculate the percentage change between the current and a prior element.
-pctChange :: forall (col :: Symbol) cols. (KnownSymbol col, HasColumn col cols, KnownColumns cols) => Proxy col -> DataFrame cols -> DataFrame cols
+pctChange :: forall (col :: Symbol) cols a.
+              (KnownSymbol col, HasColumn col cols, KnownColumns cols, TypeOf col cols ~ a, CanAggregate a, CanBeDFValue a)
+              => Proxy col -> DataFrame cols -> DataFrame cols
 pctChange colProxy (DataFrame dfMap) =
     let colName = T.pack (symbolVal colProxy)
         col = dfMap Map.! colName
         pctChangeCol = V.zipWith (\current previous ->
-            case (toDouble current, toDouble previous) of
-                (c, p) -> DoubleValue $ (c - p) / p
+            case (fromDFValue @a current, fromDFValue @a previous) of
+                (Just c, Just p) -> DoubleValue $ (toAggDouble c - toAggDouble p) / toAggDouble p
+                _ -> NA
             ) (V.drop 1 col) (V.take (V.length col - 1) col)
         newDfMap = Map.insert (T.pack $ T.unpack colName ++ "_pct_change") (NA `V.cons` pctChangeCol) dfMap
     in DataFrame newDfMap
-    where
-        toDouble :: DFValue -> Double
-        toDouble (IntValue i) = fromIntegral i
-        toDouble (DoubleValue d) = d
-        toDouble _ = 0.0
 
 -- | Apply a rolling window function to a column.
 rollingApply :: forall (col :: Symbol) cols. (KnownSymbol col, HasColumn col cols, KnownColumns cols) => Proxy col -> Int -> (V.Vector DFValue -> DFValue) -> DataFrame cols -> DataFrame cols
