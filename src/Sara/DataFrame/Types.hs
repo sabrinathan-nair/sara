@@ -58,6 +58,7 @@ import GHC.TypeLits (ErrorMessage(Text, (:<>:)), Symbol, KnownSymbol, TypeError,
 import Data.Kind (Type, Constraint)
 import Data.Proxy (Proxy(..))
 import Data.Type.Bool (If)
+import Data.Typeable (TypeRep, Typeable, typeRep)
 
 -- | A type to represent a single value in a DataFrame.
 -- It can hold different types of data such as integers, doubles, text, dates, booleans, or missing values (NA).
@@ -116,12 +117,17 @@ newtype DataFrame (cols :: [(Symbol, Type)]) = DataFrame (Map T.Text Column)
 -- | Type class to get the runtime Text names from a type-level list of Symbols.
 class KnownColumns (cols :: [(Symbol, Type)]) where
     columnNames :: Proxy cols -> [T.Text]
+    columnTypes :: Proxy cols -> [TypeRep]
 
 instance KnownColumns '[] where
     columnNames _ = []
+    columnTypes _ = []
 
-instance (KnownSymbol x, KnownColumns xs) => KnownColumns ('(x, a) ': xs) where
+instance (KnownSymbol x, Typeable a, KnownColumns xs) => KnownColumns ('(x, a) ': xs) where
     columnNames _ = T.pack (symbolVal (Proxy @x)) : columnNames (Proxy @xs)
+    columnTypes _ = typeRep (Proxy @a) : columnTypes (Proxy @xs)
+
+
 
 instance (KnownColumns cols) => Show (DataFrame cols) where
     show (DataFrame dfMap) =

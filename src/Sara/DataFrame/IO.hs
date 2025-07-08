@@ -5,6 +5,8 @@
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE KindSignatures #-}
+{-# LANGUAGE TypeApplications #-}
 
 module Sara.DataFrame.IO (
     readCSV,
@@ -20,7 +22,7 @@ import qualified Data.Text.Encoding as TE
 import qualified Data.Vector as V
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
-import Data.Time (Day)
+import Data.Time (Day, UTCTime)
 import Data.Maybe (fromMaybe)
 import Text.Read (readMaybe)
 import Data.Time.Format (formatTime, parseTimeM, defaultTimeLocale)
@@ -28,26 +30,44 @@ import qualified Data.ByteString.Char8 as BC
 import qualified Data.HashMap.Strict as HM
 import Data.Char (toUpper)
 import Data.Aeson as A
-import Data.Proxy (Proxy)
+import Data.Proxy (Proxy(..))
+import Data.Typeable (TypeRep, Typeable, typeRep)
+import GHC.TypeLits (Symbol)
+import Data.Kind (Type)
 
 import Sara.DataFrame.Types
 
 -- | Attempts to parse a ByteString into a DFValue type.
-parseValue :: BC.ByteString -> DFValue
-parseValue bs
+parseValue :: TypeRep -> BC.ByteString -> DFValue
+parseValue expectedType bs
     | BC.null bs = NA
     | bs == (TE.encodeUtf8 . T.pack) "NA" = NA
-    | bs == (TE.encodeUtf8 . T.pack) "TRUE" = BoolValue True
-    | bs == (TE.encodeUtf8 . T.pack) "FALSE" = BoolValue False
     | otherwise = 
         let s = TE.decodeUtf8 bs
-        in  case (readMaybe (T.unpack s) :: Maybe Int) of
-                Just i -> IntValue i
-                Nothing -> case (readMaybe (T.unpack s) :: Maybe Double) of
-                    Just d -> DoubleValue d
-                    Nothing -> case parseTimeM True defaultTimeLocale "%Y-%m-%d" (T.unpack s) :: Maybe Day of
+        in  case () of
+                _ | expectedType == typeRep (Proxy @Int) ->
+                    case readMaybe (T.unpack s) :: Maybe Int of
+                        Just i -> IntValue i
+                        Nothing -> error $ "Type mismatch: Expected Int, got " ++ T.unpack s
+                _ | expectedType == typeRep (Proxy @Double) ->
+                    case readMaybe (T.unpack s) :: Maybe Double of
+                        Just d -> DoubleValue d
+                        Nothing -> error $ "Type mismatch: Expected Double, got " ++ T.unpack s
+                _ | expectedType == typeRep (Proxy @T.Text) -> TextValue s
+                _ | expectedType == typeRep (Proxy @Day) ->
+                    case parseTimeM True defaultTimeLocale "%Y-%m-%d" (T.unpack s) :: Maybe Day of
                         Just day -> DateValue day
-                        Nothing -> TextValue s
+                        Nothing -> error $ "Type mismatch: Expected Day (YYYY-MM-DD), got " ++ T.unpack s
+                _ | expectedType == typeRep (Proxy @UTCTime) ->
+                    case parseTimeM True defaultTimeLocale "%Y-%m-%dT%H:%M:%S%QZ" (T.unpack s) :: Maybe UTCTime of
+                        Just t -> TimestampValue t
+                        Nothing -> error $ "Type mismatch: Expected UTCTime (YYYY-MM-DDTHH:MM:SSZ), got " ++ T.unpack s
+                _ | expectedType == typeRep (Proxy @Bool) ->
+                    case T.toLower s of
+                        "true" -> BoolValue True
+                        "false" -> BoolValue False
+                        _ -> error $ "Type mismatch: Expected Bool, got " ++ T.unpack s
+                _ -> error $ "Unsupported type: " ++ show expectedType
 
 -- | Converts a DFValue to a ByteString for writing to CSV.
 valueToByteString :: DFValue -> BC.ByteString
@@ -59,8 +79,10 @@ valueToByteString (BoolValue b) = BC.pack (map toUpper (show b))
 valueToByteString NA = BC.pack "NA"
 
 -- | Reads a CSV file from the given file path and converts it into a DataFrame.
-readCSV :: forall cols. KnownColumns cols => FilePath -> IO (DataFrame cols)
-readCSV filePath = do
+readCSV :: forall (cols :: [(Symbol, Type)]). KnownColumns cols => Proxy cols -> FilePath -> IO (DataFrame cols)
+readCSV p filePath = do
+    let expectedColNames = columnNames p
+        expectedColTypes = columnTypes p
     csvData <- BL.readFile filePath
     case C.decodeByName csvData :: Either String (C.Header, V.Vector C.NamedRecord) of
         Left err -> error $ "CSV parsing error: " ++ err
@@ -68,19 +90,20 @@ readCSV filePath = do
             if V.null records
                 then return $ DataFrame Map.empty
                 else do
-                    let columnNames = V.map TE.decodeUtf8 header
-                        -- Initialize an empty map for columns
-                        initialColumnsMap = Map.fromList $ V.toList $ V.map (\colName -> (colName, V.empty)) columnNames
-
-                        -- Fold over records to build columns
-                        finalColumnsMap = V.foldl' (\accMap record ->
-                                Map.mapWithKey (\colName colVec ->
-                                    let val = parseValue $ fromMaybe BC.empty (HM.lookup (TE.encodeUtf8 colName) record)
-                                    in V.snoc colVec val
-                                ) accMap
-                            ) initialColumnsMap records
-
-                    return $ DataFrame finalColumnsMap
+                    let actualColumnNames = V.map TE.decodeUtf8 header
+                    if V.fromList expectedColNames /= actualColumnNames
+                        then error $ "CSV header mismatch. Expected: " ++ show expectedColNames ++ ", Got: " ++ show (V.toList actualColumnNames)
+                        else do
+                            let initialColumnsMap = Map.fromList $ V.toList $ V.map (\colName -> (colName, V.empty)) actualColumnNames
+                                expectedColTypeMap = Map.fromList $ zip expectedColNames expectedColTypes
+                                finalColumnsMap = V.foldl' (\accMap record ->
+                                        Map.mapWithKey (\colName colVec ->
+                                            let expectedType = fromMaybe (error $ "Type not found for column: " ++ T.unpack colName) $ Map.lookup colName expectedColTypeMap
+                                                val = parseValue expectedType $ fromMaybe BC.empty (HM.lookup (TE.encodeUtf8 colName) record)
+                                            in V.snoc colVec val
+                                        ) accMap
+                                    ) initialColumnsMap records
+                            return $ DataFrame finalColumnsMap
 
 -- | Writes a DataFrame to a CSV file at the given file path.
 writeCSV :: KnownColumns cols => FilePath -> DataFrame cols -> IO ()
