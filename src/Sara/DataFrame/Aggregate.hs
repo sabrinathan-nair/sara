@@ -77,7 +77,7 @@ sumAgg :: forall (aggCol :: Symbol) (groupCols :: [(Symbol, Type)]) (cols :: [(S
 sumAgg groupedDf =
     let
         aggColName = T.pack (symbolVal (Proxy @aggCol))
-        aggFunc col = DoubleValue $ V.sum $ V.map (toAggDouble @a . fromJust . fromDFValue @a) col
+        aggFunc col = DoubleValue $ V.sum $ V.map (toAggDouble @a) $ V.catMaybes $ V.map (fromDFValue @a) col
         aggregatedRows = Map.map (\(DataFrame dfMap) ->
             case Map.lookup aggColName dfMap of
                 Just col -> aggFunc col

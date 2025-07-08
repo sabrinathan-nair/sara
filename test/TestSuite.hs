@@ -15,6 +15,7 @@ import Sara.DataFrame.IO (readCSV)
 import Sara.DataFrame.Transform
 import Sara.DataFrame.Types
 import Sara.DataFrame.Wrangling
+import Sara.DataFrame.Aggregate
 import Sara.DataFrame.Expression
 import Sara.DataFrame.Predicate
 import Data.Proxy (Proxy(..))
@@ -63,3 +64,44 @@ main = hspec $ do
             let (DataFrame mutatedMap) = mutatedDf
             let (Just (IntValue val)) = (mutatedMap Map.! "AgePlusFive") V.!? 0
             val `shouldBe` 35
+
+    describe "Type-Safe Aggregation" $ do
+        let createAggTestDataFrame :: IO (DataFrame '[ '("Category", T.Text), '("Value", Int)])
+            createAggTestDataFrame = do
+                let rows = [
+                        Map.fromList [("Category", TextValue "A"), ("Value", IntValue 10)],
+                        Map.fromList [("Category", TextValue "A"), ("Value", IntValue 20)],
+                        Map.fromList [("Category", TextValue "B"), ("Value", IntValue 30)],
+                        Map.fromList [("Category", TextValue "B"), ("Value", IntValue 40)]
+                        ]
+                return $ fromRows @'[ '("Category", T.Text), '("Value", Int)] rows
+
+        it "performs sum aggregation correctly" $ do
+            df <- createAggTestDataFrame
+            let groupedDf = groupBy @'[ '("Category", T.Text)] df
+            let aggregatedDf = sumAgg @"Value" @'[ '("Category", T.Text)] groupedDf
+            let (DataFrame aggMap) = aggregatedDf
+            let (Just (DoubleValue sumA)) = (aggMap Map.! "Value_sum") V.!? 0
+            let (Just (DoubleValue sumB)) = (aggMap Map.! "Value_sum") V.!? 1
+            sumA `shouldBe` 30.0
+            sumB `shouldBe` 70.0
+
+        it "performs mean aggregation correctly" $ do
+            df <- createAggTestDataFrame
+            let groupedDf = groupBy @'[ '("Category", T.Text)] df
+            let aggregatedDf = meanAgg @"Value" @'[ '("Category", T.Text)] groupedDf
+            let (DataFrame aggMap) = aggregatedDf
+            let (Just (DoubleValue meanA)) = (aggMap Map.! "Value_mean") V.!? 0
+            let (Just (DoubleValue meanB)) = (aggMap Map.! "Value_mean") V.!? 1
+            meanA `shouldBe` 15.0
+            meanB `shouldBe` 35.0
+
+        it "performs count aggregation correctly" $ do
+            df <- createAggTestDataFrame
+            let groupedDf = groupBy @'[ '("Category", T.Text)] df
+            let aggregatedDf = countAgg @"Value" @'[ '("Category", T.Text)] groupedDf
+            let (DataFrame aggMap) = aggregatedDf
+            let (Just (IntValue countA)) = (aggMap Map.! "Value_count") V.!? 0
+            let (Just (IntValue countB)) = (aggMap Map.! "Value_count") V.!? 1
+            countA `shouldBe` 2
+            countB `shouldBe` 2
