@@ -54,7 +54,7 @@ main = do
 
     -- 4. Mutating
     putStrLn "\n--- Adding a SalaryInThousands column ---"
-    let mutatedDf = mutate @'("SalaryInThousands", Double) (Proxy @"SalaryInThousands") ((col (Proxy @"Salary") :: Expr '[ '("EmployeeID", Int), '("Name", T.Text), '("DepartmentID", Int), '("Salary", Int), '("StartDate", UTCTime)] Double) /.! lit 1000.0) employeesDf
+    let mutatedDf = mutate @"SalaryInThousands" @Double (Proxy @"SalaryInThousands") ((col (Proxy @"Salary") :: Expr '[ '("EmployeeID", Int), '("Name", T.Text), '("DepartmentID", Int), '("Salary", Int), '("StartDate", UTCTime)] Double) /.! lit 1000.0) employeesDf
     print mutatedDf
 
     -- 5. Joining DataFrames
@@ -228,7 +228,7 @@ main = do
     print applyDf
 
     putStrLn "\n--- Apply function (multiply by 2) to ColB ---"
-    let appliedDf = applyColumn (Proxy @"ColB") (\d -> d * 2 :: Double) applyDf
+    let appliedDf = applyColumn (Proxy @"ColB") (\d -> d * 2) applyDf
     print appliedDf
 
     putStrLn "\n--- Add a new column ColC as ColA + ColB ---"

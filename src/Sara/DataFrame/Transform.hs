@@ -97,13 +97,13 @@ melt df =
         DataFrame newDfMap
 
 -- | Applies a function to a specified column in a DataFrame in a type-safe way.
-applyColumn :: forall (col :: Symbol) a (cols :: [(Symbol, Type)]).
-              (HasColumn col cols, KnownColumns cols, CanBeDFValue a, TypeOf col cols ~ a)
-              => Proxy col -> (a -> a) -> DataFrame cols -> DataFrame cols
+applyColumn :: forall col oldType newType cols newCols.
+              (HasColumn col cols, KnownColumns cols, CanBeDFValue oldType, CanBeDFValue newType, TypeOf col cols ~ oldType, newCols ~ UpdateColumn col newType cols, KnownColumns newCols)
+              => Proxy col -> (oldType -> newType) -> DataFrame cols -> DataFrame newCols
 applyColumn _ f (DataFrame dfMap) =
     let
         colName = T.pack (symbolVal (Proxy :: Proxy col))
-        transform v = fromMaybe v (toDFValue . f <$> fromDFValue v)
+        transform v = fromMaybe NA (toDFValue . f <$> fromDFValue v)
     in case Map.lookup colName dfMap of
         Just c ->
             let updatedCol = V.map transform c
@@ -111,11 +111,11 @@ applyColumn _ f (DataFrame dfMap) =
         Nothing ->
             DataFrame dfMap
 
--- | Adds new columns or modifies existing ones based on a type-safe expression.
-mutate :: forall (newCol :: (Symbol, Type)) a cols (newCols :: [(Symbol, Type)]).
-         (KnownSymbol (Fst newCol), CanBeDFValue a, KnownColumns cols, newCols ~ AddColumn newCol cols, KnownColumns newCols)
-         => Proxy (Fst newCol)
-         -> Expr cols a
+-- | Adds a new column or modifies an existing one based on a type-safe expression.
+mutate :: forall newColName newColType cols newCols.
+         (KnownSymbol newColName, CanBeDFValue newColType, KnownColumns cols, newCols ~ AddColumn '(newColName, newColType) cols, KnownColumns newCols)
+         => Proxy newColName
+         -> Expr cols newColType
          -> DataFrame cols
          -> DataFrame newCols
 mutate newColProxy expr df@(DataFrame dfMap) =

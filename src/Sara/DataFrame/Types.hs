@@ -38,7 +38,8 @@ module Sara.DataFrame.Types (
     JoinCols,
     TypeOf,
     MapSymbols,
-    CanAggregate(..)
+    CanAggregate(..),
+    UpdateColumn
 ) where
 
 import qualified Data.Text as T
@@ -287,3 +288,9 @@ instance CanAggregate Int where
 
 instance CanAggregate Double where
     toAggDouble = id
+
+-- | A type family to update the type of a column in a schema.
+type family UpdateColumn (colName :: Symbol) (newType :: Type) (cols :: [(Symbol, Type)]) :: [(Symbol, Type)] where
+  UpdateColumn colName newType '[] = '[]
+  UpdateColumn colName newType ('(colName, oldType) ': rest) = '(colName, newType) ': rest
+  UpdateColumn colName newType (col ': rest) = col ': UpdateColumn colName newType rest
