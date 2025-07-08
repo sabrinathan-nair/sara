@@ -149,7 +149,7 @@ data SortOrder = Ascending  -- ^ Sort in ascending order.
 
 -- | A type-safe criterion for sorting a DataFrame.
 data SortCriterion (cols :: [(Symbol, Type)]) where
-    SortCriterion :: (KnownSymbol col, HasColumn col cols, Ord (TypeOf col cols)) => Proxy col -> SortOrder -> SortCriterion cols
+    SortCriterion :: (KnownSymbol col, HasColumn col cols) => Proxy col -> SortOrder -> SortCriterion cols
 
 -- | A type synonym for a sortable column.
 type SortableColumn (col :: Symbol) (cols :: [(Symbol, Type)]) = (KnownSymbol col, HasColumn col cols)
@@ -243,13 +243,17 @@ type family Nub (xs :: [k]) :: [k] where
     Nub '[] = '[]
     Nub (x ': xs) = x ': Nub (Remove x xs)
 
--- | A constraint to check if a column is present in a list of columns.
-type family Elem (x :: k) (ys :: [k]) :: Constraint where
-    Elem x (x ': ys) = ()
-    Elem x (y ': ys) = Elem x ys
+-- | A constraint to check if a column is present in a list of columns, with a custom type error.
+type family CheckHasColumn (s :: Symbol) (ss :: [(Symbol, Type)]) :: Constraint where
+  CheckHasColumn s '[] = TypeError ('Text "Column '" ':<>: 'Text s ':<>: 'Text "' not found in DataFrame.")
+  CheckHasColumn s ('(h, t) ': rest) = CheckHasColumnImpl (CmpSymbol s h) s rest
+
+type family CheckHasColumnImpl (o :: Ordering) (s :: Symbol) (rest :: [(Symbol, Type)]) :: Constraint where
+  CheckHasColumnImpl 'EQ s rest = ()
+  CheckHasColumnImpl _ s rest = CheckHasColumn s rest
 
 -- | A constraint synonym for checking if a column exists in a DataFrame.
-type HasColumn (col :: Symbol) (cols :: [(Symbol, Type)]) = (KnownSymbol col, Elem col (MapSymbols cols))
+type HasColumn (col :: Symbol) (cols :: [(Symbol, Type)]) = (KnownSymbol col, CheckHasColumn col cols)
 
 -- | Constraint to ensure a list of columns exists in another list of columns.
 type family HasColumns (subset :: [Symbol]) (superset :: [(Symbol, Type)]) :: Constraint where
@@ -262,9 +266,12 @@ type family JoinCols (cols1 :: [(Symbol, Type)]) (cols2 :: [(Symbol, Type)]) :: 
 
 -- | Type family to get the type of a column given its name and the DataFrame's schema.
 type family TypeOf (col :: Symbol) (cols :: [(Symbol, Type)]) :: Type where
-    TypeOf col ('(col, colType) ': xs) = colType
-    TypeOf col ('(otherCol, _) ': xs) = TypeOf col xs
-    TypeOf col '[] = TypeError (Text "Column '" :<>: Text col :<>: Text "' not found.")
+    TypeOf col '[] = TypeError ('Text "Column '" ':<>: 'Text col ':<>: 'Text "' not found.")
+    TypeOf col ('(name, t) ': rest) = TypeOfImpl (CmpSymbol col name) t (TypeOf col rest)
+
+type family TypeOfImpl (o :: Ordering) (t :: Type) (rest :: Type) :: Type where
+  TypeOfImpl 'EQ t rest = t
+  TypeOfImpl _ t rest = rest
 
 -- Helper type family to extract just the symbols from a list of (Symbol, Type) tuples
 type family MapSymbols (xs :: [(Symbol, Type)]) :: [Symbol] where

@@ -8,14 +8,12 @@ module Sara.DataFrame.Static (
 ) where
 
 import Language.Haskell.TH
-import Data.Csv (FromNamedRecord, decodeByName, decode, HasHeader(NoHeader), parseField, NamedRecord)
+import Data.Csv (FromNamedRecord, decodeByName, decode, HasHeader(NoHeader))
 import qualified Data.ByteString.Lazy as BL
 import qualified Data.Vector as V
 import Data.Char (toLower)
 import GHC.Generics (Generic)
-import qualified Data.Map.Strict as M
 import qualified Data.ByteString.Char8 as BC
-import qualified Data.ByteString.Lazy.Char8 as BLC
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
 
