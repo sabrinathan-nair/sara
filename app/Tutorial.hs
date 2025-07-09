@@ -89,23 +89,23 @@ main = do
 
     -- Resampling
     putStrLn "\n--- Resampling Daily Data to Monthly (Sum) ---"
-    let resampledDf = resample (Proxy @"Date") Monthly sumAggV timeSeriesDf
-    print resampledDf
+    -- let resampledDf = resample (Proxy @"Date") Monthly sumAggV timeSeriesDf
+    -- print resampledDf
 
     -- Rolling Average
     putStrLn "\n--- Rolling Average (Window 2) on Value ---"
-    let rollingDf = TimeSeries.rollingApply (Proxy @"Value") 2 (Stats.meanV :: V.Vector DFValue -> DFValue) timeSeriesDf
-    print rollingDf
+    -- let rollingDf = TimeSeries.rollingApply (Proxy @"Value") 2 (Stats.meanV :: V.Vector DFValue -> DFValue) timeSeriesDf
+    -- print rollingDf
 
     -- Shifting
     putStrLn "\n--- Shifting Value column by 1 period ---"
-    let shiftedDf = TimeSeries.shift (Proxy @"Value") 1 timeSeriesDf
-    print shiftedDf
+    -- let shiftedDf = TimeSeries.shift (Proxy @"Value") 1 timeSeriesDf
+    -- print shiftedDf
 
     -- Percentage Change
     putStrLn "\n--- Percentage Change on Value column ---"
-    let pctChangeDf = TimeSeries.pctChange (Proxy @"Value") timeSeriesDf
-    print pctChangeDf
+    -- let pctChangeDf = TimeSeries.pctChange (Proxy @"Value") timeSeriesDf
+    -- print pctChangeDf
 
     -- 8. Missing Data Handling
     putStrLn "\n--- Missing Data Handling ---"

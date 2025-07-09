@@ -18,7 +18,7 @@ import qualified Data.Map.Strict as Map
 import qualified Data.Vector as V
 import Data.List (nub)
 import Data.Maybe (fromMaybe)
-import Sara.DataFrame.Types (DFValue(..), Column, Row, DataFrame(..), JoinType(..), toRows, KnownColumns, HasColumns, JoinCols, columnNames, MapSymbols)
+import Sara.DataFrame.Types (DFValue(..), Column, Row, DataFrame(..), JoinType(..), toRows, KnownColumns, HasColumns, JoinCols, columnNames, MapSymbols, TypeLevelRow, toTypeLevelRow, fromTypeLevelRow)
 import GHC.TypeLits
 import Data.Proxy (Proxy(..))
 import Data.Kind (Type)
@@ -36,8 +36,8 @@ joinDF df1 df2 joinType =
         rows2 = toRows df2
         onColsNames = columnNames (Proxy @onCols)
 
-        getJoinKey :: Row -> Row
-        getJoinKey row = Map.filterWithKey (\k _ -> k `elem` onColsNames) row
+        getJoinKey :: Row -> TypeLevelRow onCols
+        getJoinKey row = toTypeLevelRow @onCols row
 
         combineRows :: Row -> Row -> Row
         combineRows r1 r2 = Map.union r1 r2

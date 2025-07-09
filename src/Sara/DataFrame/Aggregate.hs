@@ -30,9 +30,9 @@ import Data.Maybe (fromJust)
 import Data.Kind (Type)
 
 -- | A DataFrame grouped by certain columns.
--- The outer Map's keys are the unique combinations of values from the grouping columns (represented as a Row),
+-- The outer Map's keys are the unique combinations of values from the grouping columns (represented as a TypeLevelRow),
 -- and the values are DataFrames containing the rows belonging to that group.
-type GroupedDataFrame (groupCols :: [(Symbol, Type)]) (originalCols :: [(Symbol, Type)]) = Map Row (DataFrame originalCols)
+type GroupedDataFrame (groupCols :: [(Symbol, Type)]) (originalCols :: [(Symbol, Type)]) = Map (TypeLevelRow groupCols) (DataFrame originalCols)
 
 type family SymbolsToSchema (syms :: [Symbol]) (originalSchema :: [(Symbol, Type)]) :: [(Symbol, Type)] where
     SymbolsToSchema '[] _ = '[]
@@ -45,9 +45,8 @@ groupBy :: forall (groupCols :: [(Symbol, Type)]) (cols :: [(Symbol, Type)]).
 groupBy df =
     let
         rows = toRows df
-        groupColNames = columnNames (Proxy @groupCols)
-        getGroupKey :: Row -> Row
-        getGroupKey row = Map.filterWithKey (\k _ -> k `elem` groupColNames) row
+        getGroupKey :: Row -> TypeLevelRow groupCols
+        getGroupKey row = toTypeLevelRow @groupCols row
 
         initialGroupedMap = Map.empty
         groupedMap = foldl' (\accMap row ->
@@ -93,7 +92,7 @@ sumAgg groupedDf =
                 let
                     groupKeys = Map.keys aggregatedRows
                     groupKeyColumns = Map.fromList $ map (\name ->
-                        (name, V.fromList $ map (\keyRow -> Map.findWithDefault NA name keyRow) groupKeys)
+                        (name, V.fromList $ map (\keyRow -> Map.findWithDefault NA name (fromTypeLevelRow keyRow)) groupKeys)
                         ) groupColNames
                     aggColumn = V.fromList $ Map.elems aggregatedRows
                 in
@@ -132,7 +131,7 @@ meanAgg groupedDf =
                 let
                     groupKeys = Map.keys aggregatedRows
                     groupKeyColumns = Map.fromList $ map (\name ->
-                        (name, V.fromList $ map (\keyRow -> Map.findWithDefault NA name keyRow) groupKeys)
+                        (name, V.fromList $ map (\keyRow -> Map.findWithDefault NA name (fromTypeLevelRow keyRow)) groupKeys)
                         ) groupColNames
                     aggColumn = V.fromList $ Map.elems aggregatedRows
                 in
@@ -167,7 +166,7 @@ countAgg groupedDf =
                 let
                     groupKeys = Map.keys aggregatedRows
                     groupKeyColumns = Map.fromList $ map (\name ->
-                        (name, V.fromList $ map (\keyRow -> Map.findWithDefault NA name keyRow) groupKeys)
+                        (name, V.fromList $ map (\keyRow -> Map.findWithDefault NA name (fromTypeLevelRow keyRow)) groupKeys)
                         ) groupColNames
                     aggColumn = V.fromList $ Map.elems aggregatedRows
                 in

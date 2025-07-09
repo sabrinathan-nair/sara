@@ -39,7 +39,10 @@ module Sara.DataFrame.Types (
     TypeOf,
     MapSymbols,
     CanAggregate(..),
-    UpdateColumn
+    UpdateColumn,
+    TypeLevelRow,
+    toTypeLevelRow,
+    fromTypeLevelRow
 ) where
 
 import qualified Data.Text as T
@@ -113,6 +116,23 @@ type Row = Map T.Text DFValue
 -- | The DataFrame itself, represented as a newtype wrapper around a 'Map' from column names ('T.Text') to 'Column's.
 -- This structure allows for efficient column-wise operations and access.
 newtype DataFrame (cols :: [(Symbol, Type)]) = DataFrame (Map T.Text Column)
+
+-- | A type to represent a single row with its schema at the type level.
+newtype TypeLevelRow (cols :: [(Symbol, Type)]) = TypeLevelRow (Map T.Text DFValue)
+    deriving (Show, Eq, Ord) -- Placeholder for now, might need custom instances
+
+
+
+-- | Converts a runtime Row to a type-level Row, ensuring schema conformity.
+toTypeLevelRow :: forall cols. KnownColumns cols => Row -> TypeLevelRow cols
+toTypeLevelRow row =
+    let expectedNames = columnNames (Proxy @cols)
+        filteredRow = Map.filterWithKey (\k _ -> k `elem` expectedNames) row
+    in TypeLevelRow filteredRow
+
+-- | Converts a type-level Row back to a runtime Row.
+fromTypeLevelRow :: TypeLevelRow cols -> Row
+fromTypeLevelRow (TypeLevelRow row) = row
 
 -- | Type class to get the runtime Text names from a type-level list of Symbols.
 class KnownColumns (cols :: [(Symbol, Type)]) where

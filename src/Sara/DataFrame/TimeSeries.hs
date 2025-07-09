@@ -9,15 +9,7 @@
 {-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE TypeApplications #-}
 
-module Sara.DataFrame.TimeSeries (
-    resample,
-    ResampleRule(..),
-    shift,
-    pctChange,
-    fromRows,
-    groupByTime,
-    rollingApply
-) where
+module Sara.DataFrame.TimeSeries where
 
 import Sara.DataFrame.Types (DataFrame(..), Row, DFValue(..), KnownColumns(..), toRows, fromRows, HasColumn, TypeOf, CanAggregate(..), CanBeDFValue(..))
 import qualified Data.Vector as V
