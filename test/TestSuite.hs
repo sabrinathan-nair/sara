@@ -122,3 +122,5 @@ main = hspec $ do
                           _ -> error "Expected IntValue for countB"
             countA `shouldBe` 2
             countB `shouldBe` 2
+
+    
