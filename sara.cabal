@@ -41,14 +41,7 @@ library
   default-language:    Haskell2010
   ghc-options:         -Wall
 
-executable sara
-  main-is:          Main.hs
-  hs-source-dirs:      app, src
-  build-depends:       base, sara, text, containers, vector, time, bytestring, aeson, filepath, process, directory, cassava, template-haskell, parallel, vector-strategies
-  default-language:    Haskell2010
-  ghc-options:         -Wall
-  other-modules:
-    Sara.DataFrame.Static
+
 
 executable sara-tutorial
   main-is:          Tutorial.hs

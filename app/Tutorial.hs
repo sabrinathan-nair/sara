@@ -5,6 +5,7 @@
 {-# LANGUAGE ExplicitForAll #-}
 {-# LANGUAGE PolyKinds #-}
 {-# LANGUAGE KindSignatures #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 module Main where
 
@@ -13,6 +14,7 @@ import Sara.DataFrame.Transform
 import Sara.DataFrame.Join
 import Sara.DataFrame.Aggregate
 import Sara.DataFrame.Wrangling (filterRows)
+import Sara.DataFrame.Static (inferCsvSchema)
 
 import qualified Data.Text as T
 import qualified Data.Map as Map
@@ -33,13 +35,16 @@ import Data.Proxy (Proxy(..))
 createUTCTime :: Integer -> Int -> Int -> UTCTime
 createUTCTime y m d = UTCTime (fromGregorian y m d) 0
 
+$(inferCsvSchema "EmployeesSchema" "employees.csv")
+$(inferCsvSchema "DepartmentsSchema" "departments.csv")
+
 main :: IO ()
 main = do
     putStrLn "Starting the Sara Tutorial..."
 
     -- 1. Reading Data
     putStrLn "\n--- Reading employees.csv ---"
-    employeesDf <- readCSV (Proxy @[ '("EmployeeID", Int), '("Name", T.Text), '("DepartmentID", Int), '("Salary", Int), '("StartDate", UTCTime)]) "employees.csv"
+    employeesDf <- readCSV (Proxy @EmployeesSchema) "employees.csv"
     print employeesDf
 
     -- 2. Selecting Columns
@@ -54,18 +59,18 @@ main = do
 
     -- 4. Mutating
     putStrLn "\n--- Adding a SalaryInThousands column ---"
-    let mutatedDf = mutate @"SalaryInThousands" @Double (Proxy @"SalaryInThousands") ((col (Proxy @"Salary") :: Expr '[ '("EmployeeID", Int), '("Name", T.Text), '("DepartmentID", Int), '("Salary", Int), '("StartDate", UTCTime)] Double) /.! lit 1000.0) employeesDf
+    let mutatedDf = mutate @"SalaryInThousands" @Double (Proxy @"SalaryInThousands") ((col (Proxy @"Salary") :: Expr EmployeesSchema Double) /.! lit 1000.0) employeesDf
     print mutatedDf
 
     -- 5. Joining DataFrames
     putStrLn "\n--- Joining employees and departments data ---"
-    departmentsDf <- readCSV (Proxy @'[ '("DepartmentID", Int), '("DepartmentName", T.Text)]) "departments.csv"
+    departmentsDf <- readCSV (Proxy @DepartmentsSchema) "departments.csv"
     let joinedDf = joinDF @'[ '("DepartmentID", Int)] employeesDf departmentsDf LeftJoin
     print joinedDf
 
     -- 6. Aggregation (Sum of Salaries by Department)
     putStrLn "\n--- Sum of Salaries by Department ---"
-    let groupedDf :: GroupedDataFrame '[ '("DepartmentID", Int)] '[ '("EmployeeID", Int), '("Name", T.Text), '("DepartmentID", Int), '("Salary", Int), '("StartDate", UTCTime)]
+    let groupedDf :: GroupedDataFrame '[ '("DepartmentID", Int)] EmployeesSchema
         groupedDf = groupBy @'[ '("DepartmentID", Int)] employeesDf
     let aggregatedDf :: DataFrame '[ '("DepartmentID", Int), '("Salary_sum", Double)]
         aggregatedDf = sumAgg @"Salary" @'[ '("DepartmentID", Int)] groupedDf
