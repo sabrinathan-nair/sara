@@ -58,7 +58,8 @@ test-suite sara-test
   default-language:    Haskell2010
   ghc-options:         -Wall
   other-modules:
-    Sara.DataFrame.IO
+    Sara.DataFrame.Aggregate
+    , Sara.DataFrame.IO
     , Sara.DataFrame.Missing
     , Sara.DataFrame.Statistics
     , Sara.DataFrame.Strings

@@ -19,7 +19,7 @@ import Sara.DataFrame.Static (inferCsvSchema)
 import qualified Data.Text as T
 import qualified Data.Map as Map
 import Sara.DataFrame.Types
-import Sara.DataFrame.TimeSeries as TimeSeries
+
 import Sara.DataFrame.Missing
 import Sara.DataFrame.Statistics as Stats -- Qualify Statistics to avoid ambiguity with TimeSeries.rollingApply
 import Sara.DataFrame.Strings as Strings (lower, upper, strip, contains, replace)
@@ -27,7 +27,7 @@ import Sara.DataFrame.Expression (Expr, col, lit, (/.!))
 import Sara.DataFrame.Predicate ((>.>))
 
 import Data.Time (UTCTime(..), fromGregorian)
-import qualified Data.Vector as V
+
 import Data.Proxy (Proxy(..))
 
 
@@ -76,8 +76,7 @@ main = do
         aggregatedDf = sumAgg @"Salary" @'[ '("DepartmentID", Int)] groupedDf
     print aggregatedDf
 
-    let sumAggV :: V.Vector DFValue -> DFValue
-        sumAggV vec = DoubleValue $ V.sum $ V.map (\val -> case val of IntValue i -> fromIntegral i; DoubleValue d -> d; _ -> 0.0) vec
+    
 
     -- 7. Time Series Functionality
     putStrLn "\n--- Time Series Analysis ---"

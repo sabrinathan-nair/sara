@@ -31,7 +31,7 @@ import qualified Data.HashMap.Strict as HM
 import Data.Char (toUpper)
 import Data.Aeson as A
 import Data.Proxy (Proxy(..))
-import Data.Typeable (TypeRep, Typeable, typeRep)
+import Data.Typeable (TypeRep, typeRep)
 import GHC.TypeLits (Symbol)
 import Data.Kind (Type)
 
@@ -75,6 +75,7 @@ valueToByteString (IntValue i) = BC.pack (show i)
 valueToByteString (DoubleValue d) = BC.pack (show d)
 valueToByteString (TextValue t) = TE.encodeUtf8 t
 valueToByteString (DateValue d) = BC.pack (formatTime defaultTimeLocale "%Y-%m-%d" d)
+valueToByteString (TimestampValue t) = BC.pack (formatTime defaultTimeLocale "%Y-%m-%dT%H:%M:%S%QZ" t)
 valueToByteString (BoolValue b) = BC.pack (map toUpper (show b))
 valueToByteString NA = BC.pack "NA"
 
@@ -123,24 +124,47 @@ writeCSV filePath (DataFrame dfMap) = do
     BL.writeFile filePath $ C.encodeByName headerBS (V.toList rows)
 
 -- | Reads a JSON file into a DataFrame.
-readJSON :: forall cols. KnownColumns cols => FilePath -> IO (DataFrame cols)
-readJSON filePath = do
+readJSON :: forall cols. KnownColumns cols => Proxy cols -> FilePath -> IO (DataFrame cols)
+readJSON p filePath = do
+    let expectedColNames = columnNames p
+        expectedColTypes = columnTypes p
+        expectedColTypeMap = Map.fromList $ zip expectedColNames expectedColTypes
+
     jsonData <- BL.readFile filePath
     case A.eitherDecode jsonData :: Either String [Map T.Text DFValue] of
         Left err -> error $ "JSON parsing error: " ++ err
         Right rows -> do
             if null rows
                 then return $ DataFrame Map.empty
-                else
-                    let
-                        -- Assuming all rows have the same columns
-                        columnNames = Map.keys (head rows)
-                        -- Convert list of rows to Map of columns
-                        dfMap = Map.fromList $ map (\colName ->
-                            (colName, V.fromList $ map (\row -> Map.findWithDefault NA colName row) rows)
-                            ) columnNames
-                    in
-                        return $ DataFrame dfMap
+                else do
+                    let actualColumnNames = Map.keys (head rows)
+                    -- Validate column names
+                    if V.fromList expectedColNames /= V.fromList actualColumnNames
+                        then error $ "JSON header mismatch. Expected: " ++ show expectedColNames ++ ", Got: " ++ show actualColumnNames
+                        else do
+                            let initialColumnsMap = Map.fromList $ V.toList $ V.map (\colName -> (colName, V.empty)) (V.fromList actualColumnNames)
+                                finalColumnsMap = V.foldl' (\accMap row ->
+                                        Map.mapWithKey (\colName colVec ->
+                                            let expectedType = fromMaybe (error $ "Type not found for column: " ++ T.unpack colName) $ Map.lookup colName expectedColTypeMap
+                                                val = fromMaybe NA (Map.lookup colName row) -- Get DFValue from row
+                                            in V.snoc colVec (validateDFValue expectedType val) -- Validate DFValue against expectedType
+                                        ) accMap
+                                    ) initialColumnsMap (V.fromList rows) -- Convert rows to Vector for foldl'
+
+                            return $ DataFrame finalColumnsMap
+
+-- Helper function to validate DFValue against expected TypeRep
+validateDFValue :: TypeRep -> DFValue -> DFValue
+validateDFValue expectedType val =
+    case val of
+        IntValue _    | expectedType == typeRep (Proxy @Int) -> val
+        DoubleValue _ | expectedType == typeRep (Proxy @Double) -> val
+        TextValue _   | expectedType == typeRep (Proxy @T.Text) -> val
+        DateValue _   | expectedType == typeRep (Proxy @Day) -> val
+        TimestampValue _ | expectedType == typeRep (Proxy @UTCTime) -> val
+        BoolValue _   | expectedType == typeRep (Proxy @Bool) -> val
+        NA            -> NA -- NA is always valid
+        _             -> error $ "Type mismatch in JSON data: Expected " ++ show expectedType ++ ", got " ++ show val
 
 -- | Writes a DataFrame to a JSON file.
 writeJSON :: KnownColumns cols => FilePath -> DataFrame cols -> IO ()
