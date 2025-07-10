@@ -4,21 +4,22 @@ version:             0.1.0.0
 build-type:          Simple
 
 library
-  exposed-modules:     Sara.DataFrame.Types
-                     , Sara.DataFrame.IO
-                     , Sara.DataFrame.Transform
-                     , Sara.DataFrame.Wrangling
+  exposed-modules:     Sara.DataFrame.IO
                      , Sara.DataFrame.Aggregate
-                     , Sara.DataFrame.Join
                      , Sara.DataFrame.Concat
-                     , Sara.REPL
-                     , Sara.DataFrame.TimeSeries
+                     , Sara.DataFrame.Expression
+                     , Sara.DataFrame.Join
                      , Sara.DataFrame.Missing
+                     , Sara.DataFrame.Predicate
+                     , Sara.DataFrame.SQL
+                     , Sara.DataFrame.Static
                      , Sara.DataFrame.Statistics
                      , Sara.DataFrame.Strings
-                     , Sara.DataFrame.Static
-                     , Sara.DataFrame.Predicate
-                     , Sara.DataFrame.Expression
+                     , Sara.DataFrame.TimeSeries
+                     , Sara.DataFrame.Transform
+                     , Sara.DataFrame.Types
+                     , Sara.DataFrame.Wrangling
+                     , Sara.REPL
   hs-source-dirs:      src
   build-depends:       base >=4.14 && <5
                      , text
@@ -38,6 +39,7 @@ library
                      , filepath
                      , directory
                      , scientific
+                     , sqlite-simple
   default-language:    Haskell2010
   ghc-options:         -Wall
 

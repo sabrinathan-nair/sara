@@ -12,7 +12,8 @@ module Sara.DataFrame.IO (
     readCSV,
     writeCSV,
     readJSON,
-    writeJSON
+    writeJSON,
+    validateDFValue
 ) where
 
 import qualified Data.ByteString.Lazy as BL

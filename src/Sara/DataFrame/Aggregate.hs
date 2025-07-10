@@ -9,13 +9,18 @@
 {-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE FlexibleInstances #-}
 
 module Sara.DataFrame.Aggregate (
     GroupedDataFrame,
     groupBy,
     sumAgg,
     meanAgg,
-    countAgg
+    countAgg,
+    AggOp(..),
+    AggregationResult,
+    Aggregatable
 ) where
 
 import qualified Data.Text as T
@@ -26,7 +31,7 @@ import Data.List (foldl')
 import Sara.DataFrame.Types
 import GHC.TypeLits
 import Data.Proxy (Proxy(..))
-import Data.Maybe (fromJust)
+
 import Data.Kind (Type)
 
 -- | A DataFrame grouped by certain columns.
@@ -65,111 +70,131 @@ groupBy df =
 type family AggColName (col :: Symbol) (op :: Symbol) :: Symbol where
     AggColName col op = AppendSymbol (AppendSymbol col "_") op
 
+-- | A data type to represent an aggregation operation.
+data AggOp = Sum | Mean | Count
+
+-- | A type family to determine the result type of an aggregation.
+type family AggregationResult (op :: AggOp) (a :: Type) :: Type where
+    AggregationResult 'Sum Int = Int
+    AggregationResult 'Sum Double = Double
+    AggregationResult 'Mean Int = Double
+    AggregationResult 'Mean Double = Double
+    AggregationResult 'Count a = Int
+
+-- | A type class for aggregatable types.
+class (CanBeDFValue a, CanBeDFValue (AggregationResult op a)) => Aggregatable (op :: AggOp) (a :: Type) where
+    aggregateOp :: Proxy op -> V.Vector a -> AggregationResult op a
+
+instance Aggregatable 'Sum Int where
+    aggregateOp _ = V.sum
+
+instance Aggregatable 'Sum Double where
+    aggregateOp _ = V.sum
+
+instance Aggregatable 'Mean Int where
+    aggregateOp _ v = fromIntegral (V.sum v) / fromIntegral (V.length v)
+
+instance Aggregatable 'Mean Double where
+    aggregateOp _ v = V.sum v / fromIntegral (V.length v)
+
+instance CanBeDFValue a => Aggregatable 'Count a where
+    aggregateOp _ = V.length
+
 -- | Aggregates a GroupedDataFrame by summing a specified column.
-sumAgg :: forall (aggCol :: Symbol) (groupCols :: [(Symbol, Type)]) (cols :: [(Symbol, Type)]) (outCols :: [(Symbol, Type)]) (newAggCol :: Symbol) a.
-          ( HasColumn aggCol cols, KnownColumns groupCols
-          , newAggCol ~ AggColName aggCol "sum", KnownSymbol newAggCol
-          , outCols ~ Nub (Append groupCols '[ '(newAggCol, Double)]), KnownColumns outCols
-          , CanBeDFValue a, CanAggregate a, TypeOf aggCol cols ~ a
+sumAgg :: forall (aggCol :: Symbol) (groupCols :: [(Symbol, Type)]) (cols :: [(Symbol,Type)]) a newAggCol outCols.
+          ( HasColumn aggCol cols
+          , KnownColumns groupCols
+          , a ~ TypeOf aggCol cols
+          , Aggregatable 'Sum a
+          , newAggCol ~ AggColName aggCol "sum"
+          , outCols ~ Nub (Append groupCols '[ '(newAggCol, AggregationResult 'Sum a)])
+          , KnownColumns outCols
+          , KnownSymbol newAggCol
+          , CanBeDFValue (AggregationResult 'Sum a)
           )
        => GroupedDataFrame groupCols cols -> DataFrame outCols
 sumAgg groupedDf =
     let
-        aggColName = T.pack (symbolVal (Proxy @aggCol))
-        aggFunc col = DoubleValue $ V.sum $ V.map (toAggDouble @a) $ V.catMaybes $ V.map (fromDFValue @a) col
-        aggregatedRows = Map.map (\(DataFrame dfMap) ->
-            case Map.lookup aggColName dfMap of
-                Just col -> aggFunc col
-                Nothing -> NA -- Should not happen due to HasColumn constraint
-            ) groupedDf
+        aggColName = T.pack $ symbolVal (Proxy @aggCol)
+        newAggColName = T.pack $ symbolVal (Proxy @newAggCol)
 
-        groupColNames = columnNames (Proxy @groupCols)
-        newAggColName = T.pack (symbolVal (Proxy @newAggCol))
+        processGroup :: TypeLevelRow groupCols -> DataFrame cols -> Row
+        processGroup (TypeLevelRow groupKey) (DataFrame dfMap) =
+            let
+                aggColVector = case Map.lookup aggColName dfMap of
+                    Just col -> V.catMaybes $ V.map (fromDFValue @a) col
+                    Nothing -> V.empty
 
-        newDfMap = if Map.null aggregatedRows
-            then Map.empty
-            else
-                let
-                    groupKeys = Map.keys aggregatedRows
-                    groupKeyColumns = Map.fromList $ map (\name ->
-                        (name, V.fromList $ map (\keyRow -> Map.findWithDefault NA name (fromTypeLevelRow keyRow)) groupKeys)
-                        ) groupColNames
-                    aggColumn = V.fromList $ Map.elems aggregatedRows
-                in
-                    Map.insert newAggColName aggColumn groupKeyColumns
+                aggResult = aggregateOp (Proxy @'Sum) aggColVector
+            in
+                Map.insert newAggColName (toDFValue aggResult) groupKey
+
+        newRows = Map.elems $ Map.mapWithKey processGroup groupedDf
     in
-        DataFrame newDfMap
+        fromRows newRows
 
 -- | Aggregates a GroupedDataFrame by calculating the mean of a specified column.
-meanAgg :: forall (aggCol :: Symbol) (groupCols :: [(Symbol, Type)]) (cols :: [(Symbol, Type)]) (outCols :: [(Symbol, Type)]) (newAggCol :: Symbol) a.
-           ( HasColumn aggCol cols, KnownColumns groupCols
-           , newAggCol ~ AggColName aggCol "mean", KnownSymbol newAggCol
-           , outCols ~ Nub (Append groupCols '[ '(newAggCol, Double)]), KnownColumns outCols
-           , CanBeDFValue a, CanAggregate a, TypeOf aggCol cols ~ a
+meanAgg :: forall (aggCol :: Symbol) (groupCols :: [(Symbol, Type)]) (cols :: [(Symbol,Type)]) a newAggCol outCols.
+           ( HasColumn aggCol cols
+           , KnownColumns groupCols
+           , a ~ TypeOf aggCol cols
+           , Aggregatable 'Mean a
+           , newAggCol ~ AggColName aggCol "mean"
+           , outCols ~ Nub (Append groupCols '[ '(newAggCol, AggregationResult 'Mean a)])
+           , KnownColumns outCols
+           , KnownSymbol newAggCol
+           , CanBeDFValue (AggregationResult 'Mean a)
            )
         => GroupedDataFrame groupCols cols -> DataFrame outCols
 meanAgg groupedDf =
     let
-        aggColName = T.pack (symbolVal (Proxy @aggCol))
-        aggFunc col =
+        aggColName = T.pack $ symbolVal (Proxy @aggCol)
+        newAggColName = T.pack $ symbolVal (Proxy @newAggCol)
+
+        processGroup :: TypeLevelRow groupCols -> DataFrame cols -> Row
+        processGroup (TypeLevelRow groupKey) (DataFrame dfMap) =
             let
-                validValues = V.catMaybes $ V.map (fromDFValue @a) col
-                (total, count) = V.foldl' (\(accSum, accCount) x -> (accSum + toAggDouble @a x, accCount + 1 :: Int)) (0.0, 0 :: Int) validValues
-            in if count > 0 then DoubleValue (total / fromIntegral count) else NA
-        aggregatedRows = Map.map (\(DataFrame dfMap) ->
-            case Map.lookup aggColName dfMap of
-                Just col -> aggFunc col
-                Nothing -> NA -- Should not happen due to HasColumn constraint
-            ) groupedDf
+                aggColVector = case Map.lookup aggColName dfMap of
+                    Just col -> V.catMaybes $ V.map (fromDFValue @a) col
+                    Nothing -> V.empty
 
-        groupColNames = columnNames (Proxy @groupCols)
-        newAggColName = T.pack (symbolVal (Proxy @newAggCol))
+                aggResult = aggregateOp (Proxy @'Mean) aggColVector
+            in
+                Map.insert newAggColName (toDFValue aggResult) groupKey
 
-        newDfMap = if Map.null aggregatedRows
-            then Map.empty
-            else
-                let
-                    groupKeys = Map.keys aggregatedRows
-                    groupKeyColumns = Map.fromList $ map (\name ->
-                        (name, V.fromList $ map (\keyRow -> Map.findWithDefault NA name (fromTypeLevelRow keyRow)) groupKeys)
-                        ) groupColNames
-                    aggColumn = V.fromList $ Map.elems aggregatedRows
-                in
-                    Map.insert newAggColName aggColumn groupKeyColumns
+        newRows = Map.elems $ Map.mapWithKey processGroup groupedDf
     in
-        DataFrame newDfMap
+        fromRows newRows
 
 -- | Aggregates a GroupedDataFrame by counting non-NA values in a specified column.
-countAgg :: forall (aggCol :: Symbol) (groupCols :: [(Symbol, Type)]) (cols :: [(Symbol, Type)]) (outCols :: [(Symbol, Type)]) (newAggCol :: Symbol) a.
-            ( HasColumn aggCol cols, KnownColumns groupCols
-            , newAggCol ~ AggColName aggCol "count", KnownSymbol newAggCol
-            , outCols ~ Nub (Append groupCols '[ '(newAggCol, Int)]), KnownColumns outCols
-            , CanBeDFValue a, CanAggregate a, TypeOf aggCol cols ~ a
+countAgg :: forall (aggCol :: Symbol) (groupCols :: [(Symbol, Type)]) (cols :: [(Symbol,Type)]) a newAggCol outCols.
+            ( HasColumn aggCol cols
+            , KnownColumns groupCols
+            , a ~ TypeOf aggCol cols
+            , Aggregatable 'Count a
+            , newAggCol ~ AggColName aggCol "count"
+            , outCols ~ Nub (Append groupCols '[ '(newAggCol, AggregationResult 'Count a)])
+            , KnownColumns outCols
+            , KnownSymbol newAggCol
+            , CanBeDFValue (AggregationResult 'Count a)
             )
          => GroupedDataFrame groupCols cols -> DataFrame outCols
 countAgg groupedDf =
     let
-        aggColName = T.pack (symbolVal (Proxy @aggCol))
-        aggFunc col = IntValue $ V.length $ V.filter (/= NA) col
-        aggregatedRows = Map.map (\(DataFrame dfMap) ->
-            case Map.lookup aggColName dfMap of
-                Just col -> aggFunc col
-                Nothing -> NA -- Should not happen due to HasColumn constraint
-            ) groupedDf
+        aggColName = T.pack $ symbolVal (Proxy @aggCol)
+        newAggColName = T.pack $ symbolVal (Proxy @newAggCol)
 
-        groupColNames = columnNames (Proxy @groupCols)
-        newAggColName = T.pack (symbolVal (Proxy @newAggCol))
+        processGroup :: TypeLevelRow groupCols -> DataFrame cols -> Row
+        processGroup (TypeLevelRow groupKey) (DataFrame dfMap) =
+            let
+                aggColVector = case Map.lookup aggColName dfMap of
+                    Just col -> V.catMaybes $ V.map (fromDFValue @a) col
+                    Nothing -> V.empty
 
-        newDfMap = if Map.null aggregatedRows
-            then Map.empty
-            else
-                let
-                    groupKeys = Map.keys aggregatedRows
-                    groupKeyColumns = Map.fromList $ map (\name ->
-                        (name, V.fromList $ map (\keyRow -> Map.findWithDefault NA name (fromTypeLevelRow keyRow)) groupKeys)
-                        ) groupColNames
-                    aggColumn = V.fromList $ Map.elems aggregatedRows
-                in
-                    Map.insert newAggColName aggColumn groupKeyColumns
+                aggResult = aggregateOp (Proxy @'Count) aggColVector
+            in
+                Map.insert newAggColName (toDFValue aggResult) groupKey
+
+        newRows = Map.elems $ Map.mapWithKey processGroup groupedDf
     in
-        DataFrame newDfMap
+        fromRows newRows

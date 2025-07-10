@@ -12,13 +12,13 @@ module Sara.DataFrame.Join (
     joinDF
 ) where
 
-import qualified Data.Text as T
-import Data.Map.Strict (Map)
+
+
 import qualified Data.Map.Strict as Map
-import qualified Data.Vector as V
-import Data.List (nub)
+
+
 import Data.Maybe (fromMaybe)
-import Sara.DataFrame.Types (DFValue(..), Column, Row, DataFrame(..), JoinType(..), toRows, KnownColumns, HasColumns, JoinCols, columnNames, MapSymbols, TypeLevelRow, toTypeLevelRow, fromTypeLevelRow)
+import Sara.DataFrame.Types (DFValue(..), Row, DataFrame(..), JoinType(..), toRows, fromRows, KnownColumns, HasColumns, JoinCols, columnNames, MapSymbols, TypeLevelRow, toTypeLevelRow)
 import GHC.TypeLits
 import Data.Proxy (Proxy(..))
 import Data.Kind (Type)
@@ -34,49 +34,37 @@ joinDF df1 df2 joinType =
     let
         rows1 = toRows df1
         rows2 = toRows df2
-        onColsNames = columnNames (Proxy @onCols)
 
         getJoinKey :: Row -> TypeLevelRow onCols
-        getJoinKey row = toTypeLevelRow @onCols row
+        getJoinKey = toTypeLevelRow @onCols
+
+        map1 = Map.fromListWith (++) $ map (\r -> (getJoinKey r, [r])) rows1
+        map2 = Map.fromListWith (++) $ map (\r -> (getJoinKey r, [r])) rows2
 
         combineRows :: Row -> Row -> Row
-        combineRows r1 r2 = Map.union r1 r2
+        combineRows = Map.union
 
         joinedRows = case joinType of
             InnerJoin ->
-                [ combineRows r1 r2
-                | r1 <- rows1
-                , r2 <- rows2
-                , getJoinKey r1 == getJoinKey r2
-                ]
+                Map.elems $ Map.intersectionWith (\rs1 rs2 -> [combineRows r1 r2 | r1 <- rs1, r2 <- rs2]) map1 map2
             LeftJoin ->
-                [ combineRows r1 (fromMaybe Map.empty (Map.lookup (getJoinKey r1) (Map.fromList (map (\r -> (getJoinKey r, r)) rows2))))
-                | r1 <- rows1
-                ]
+                Map.elems $ Map.mapWithKey (\k rs1 ->
+                    let rs2 = fromMaybe [Map.fromList [(col, NA) | col <- columnNames (Proxy @cols2)]] (Map.lookup k map2)
+                    in [combineRows r1 r2 | r1 <- rs1, r2 <- rs2]
+                ) map1
             RightJoin ->
-                [ combineRows (fromMaybe Map.empty (Map.lookup (getJoinKey r2) (Map.fromList (map (\r -> (getJoinKey r, r)) rows1)))) r2
-                | r2 <- rows2
-                ]
+                Map.elems $ Map.mapWithKey (\k rs2 ->
+                    let rs1 = fromMaybe [Map.fromList [(col, NA) | col <- columnNames (Proxy @cols1)]] (Map.lookup k map2)
+                    in [combineRows r1 r2 | r1 <- rs1, r2 <- rs2]
+                ) map2
             OuterJoin ->
-                let
-                    allKeys = nub $ map getJoinKey rows1 ++ map getJoinKey rows2
-                    map1 = Map.fromList (map (\r -> (getJoinKey r, r)) rows1)
-                    map2 = Map.fromList (map (\r -> (getJoinKey r, r)) rows2)
-                in
-                    [ combineRows (fromMaybe (Map.map (\_ -> NA) (head rows1)) (Map.lookup k map1))
-                                  (fromMaybe (Map.map (\_ -> NA) (head rows2)) (Map.lookup k map2))
-                    | k <- allKeys
-                    ]
+                let allKeys = Map.keys $ Map.union map1 map2
+                    blank1 = Map.fromList [(col, NA) | col <- columnNames (Proxy @cols1)]
+                    blank2 = Map.fromList [(col, NA) | col <- columnNames (Proxy @cols2)]
+                in concatMap (\k ->
+                    let rs1 = fromMaybe [blank1] (Map.lookup k map1)
+                        rs2 = fromMaybe [blank2] (Map.lookup k map2)
+                    in [[combineRows r1 r2 | r1 <- rs1, r2 <- rs2]]
+                ) allKeys
 
-        newDfMap = if null joinedRows
-                   then Map.empty
-                   else
-                       let
-                           colNames = columnNames (Proxy @colsOut)
-                           cols = [ V.fromList [ Map.findWithDefault NA colName r | r <- joinedRows ]
-                                  | colName <- colNames
-                                  ]
-                       in
-                           Map.fromList (zip colNames cols)
-    in
-        DataFrame newDfMap
+    in fromRows @colsOut $ concat joinedRows

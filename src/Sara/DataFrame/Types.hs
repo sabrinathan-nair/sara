@@ -38,9 +38,8 @@ module Sara.DataFrame.Types (
     JoinCols,
     TypeOf,
     MapSymbols,
-    CanAggregate(..),
     UpdateColumn,
-    TypeLevelRow,
+    TypeLevelRow(..),
     toTypeLevelRow,
     fromTypeLevelRow
 ) where
@@ -298,15 +297,7 @@ type family MapSymbols (xs :: [(Symbol, Type)]) :: [Symbol] where
     MapSymbols '[] = '[]
     MapSymbols ('(s, t) ': xs) = s ': MapSymbols xs
 
--- | A type class for values that can be aggregated (converted to Double).
-class CanAggregate a where
-    toAggDouble :: a -> Double
 
-instance CanAggregate Int where
-    toAggDouble = fromIntegral
-
-instance CanAggregate Double where
-    toAggDouble = id
 
 -- | A type family to update the type of a column in a schema.
 type family UpdateColumn (colName :: Symbol) (newType :: Type) (cols :: [(Symbol, Type)]) :: [(Symbol, Type)] where

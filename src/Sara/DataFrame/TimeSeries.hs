@@ -11,7 +11,7 @@
 
 module Sara.DataFrame.TimeSeries where
 
-import Sara.DataFrame.Types (DataFrame(..), Row, DFValue(..), KnownColumns(..), toRows, fromRows, HasColumn, TypeOf, CanAggregate(..), CanBeDFValue(..))
+import Sara.DataFrame.Types (DataFrame(..), Row, DFValue(..), KnownColumns(..), toRows, fromRows, HasColumn, TypeOf, CanBeDFValue(..))
 import qualified Data.Vector as V
 import qualified Data.Map.Strict as Map
 import qualified Data.Text as T
