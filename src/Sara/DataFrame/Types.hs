@@ -51,7 +51,7 @@ import qualified Data.Map.Strict as Map
 import Data.Vector (Vector)
 import qualified Data.Vector as V
 import Data.Aeson
-import Data.Aeson.Types (Parser, Value(..))
+
 import Data.Scientific (toRealFloat)
 import Data.Time.Format (formatTime, parseTimeM, defaultTimeLocale)
 import Text.Read (readMaybe)
@@ -301,6 +301,6 @@ type family MapSymbols (xs :: [(Symbol, Type)]) :: [Symbol] where
 
 -- | A type family to update the type of a column in a schema.
 type family UpdateColumn (colName :: Symbol) (newType :: Type) (cols :: [(Symbol, Type)]) :: [(Symbol, Type)] where
-  UpdateColumn colName newType '[] = '[]
+  UpdateColumn colName newType '[] = TypeError ('Text "Column '" ':<>: 'Text colName ':<>: 'Text "' not found for update.")
   UpdateColumn colName newType ('(colName, oldType) ': rest) = '(colName, newType) ': rest
   UpdateColumn colName newType (col ': rest) = col ': UpdateColumn colName newType rest

@@ -41,11 +41,7 @@
 ### Phase 4: Final Polish and Usability
 
 *   **Objective:** Improve the developer experience by adding custom error messages and comprehensive tests for the new type-safe system.
-*   **Estimated Effort:** **Medium**
-*   **Tasks & Files:**
-    1.  **Implement Custom Type Errors:**
-        *   **Files:** `Types.hs` (primarily).
-        *   **Action:** Use `GHC.TypeLits.TypeError` to provide user-friendly compiler errors.
-    2.  **Create "Should Not Compile" Tests:**
-        *   **File:** `test/TestSuite.hs`.
-        *   **Action:** Add a new section to the test suite for code that is *expected* to fail compilation.
+*   **Status:** **Completed**
+*   **Actions Taken:**
+    *   **Implemented Custom Type Errors:** Added `GHC.TypeLits.TypeError` to `src/Sara/DataFrame/Types.hs` for more informative compiler errors, specifically for `UpdateColumn`.
+    *   **Created "Should Not Compile" Tests:** Established a `test/ShouldNotCompile` directory with a dedicated test file (`UpdateNonExistentColumn.hs`) and a shell script (`run-should-not-compile-tests.sh`) to verify that certain code constructs fail compilation as expected.
