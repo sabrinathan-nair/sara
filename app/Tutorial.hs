@@ -6,6 +6,9 @@
 {-# LANGUAGE PolyKinds #-}
 {-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DeriveGeneric #-}
 
 module Main where
 
@@ -19,9 +22,8 @@ import Sara.DataFrame.Static (inferCsvSchema)
 createUTCTime :: Integer -> Int -> Int -> UTCTime
 createUTCTime y m d = UTCTime (fromGregorian y m d) 0
 
-$(inferCsvSchema "EmployeesSchema" "employees.csv")
-$(inferCsvSchema "DepartmentsSchema" "departments.csv")
-$(inferCsvSchema "SQLEmployeesSchema" "employees.csv")
+$(inferCsvSchema "Employees" "employees.csv")
+$(inferCsvSchema "Departments" "departments.csv")
 
 main :: IO ()
 main = return ()

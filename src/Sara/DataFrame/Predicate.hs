@@ -44,26 +44,32 @@ data Predicate (cols :: [(Symbol, Type)]) where
     LessThanOrEqualTo :: (Ord a, CanBeDFValue a) => Expr cols a -> Expr cols a -> Predicate cols
 
 -- | A helper function to evaluate a predicate on a given row.
-evaluate :: Predicate cols -> Row -> Bool
-evaluate (And p1 p2) row = evaluate p1 row && evaluate p2 row
-evaluate (Or p1 p2) row = evaluate p1 row || evaluate p2 row
-evaluate (GreaterThan e1 e2) row = fromMaybe False $ do
+evaluate :: Predicate cols -> Row -> Maybe Bool
+evaluate (And p1 p2) row = do
+    res1 <- evaluate p1 row
+    res2 <- evaluate p2 row
+    return (res1 && res2)
+evaluate (Or p1 p2) row = do
+    res1 <- evaluate p1 row
+    res2 <- evaluate p2 row
+    return (res1 || res2)
+evaluate (GreaterThan e1 e2) row = do
     v1 <- evaluateExpr e1 row
     v2 <- evaluateExpr e2 row
     return (v1 > v2)
-evaluate (LessThan e1 e2) row = fromMaybe False $ do
+evaluate (LessThan e1 e2) row = do
     v1 <- evaluateExpr e1 row
     v2 <- evaluateExpr e2 row
     return (v1 < v2)
-evaluate (EqualTo e1 e2) row = fromMaybe False $ do
+evaluate (EqualTo e1 e2) row = do
     v1 <- evaluateExpr e1 row
     v2 <- evaluateExpr e2 row
     return (v1 == v2)
-evaluate (GreaterThanOrEqualTo e1 e2) row = fromMaybe False $ do
+evaluate (GreaterThanOrEqualTo e1 e2) row = do
     v1 <- evaluateExpr e1 row
     v2 <- evaluateExpr e2 row
     return (v1 >= v2)
-evaluate (LessThanOrEqualTo e1 e2) row = fromMaybe False $ do
+evaluate (LessThanOrEqualTo e1 e2) row = do
     v1 <- evaluateExpr e1 row
     v2 <- evaluateExpr e2 row
     return (v1 <= v2)

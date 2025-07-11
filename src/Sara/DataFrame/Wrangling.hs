@@ -45,18 +45,22 @@ instance (KnownSymbol x, AllKnownSymbol xs) => AllKnownSymbol (x ': xs) where
 filterRows :: forall cols. KnownColumns cols => Predicate cols -> DataFrame cols -> DataFrame cols
 filterRows p (DataFrame dfMap) =
     let
-        rows = toRows (DataFrame dfMap)
-        filteredRows = filter (evaluate p) rows
-        newDfMap = if null filteredRows
+        colNames = columnNames (Proxy @cols)
+        numRows = if Map.null dfMap then 0 else V.length (snd . head . Map.toList $ dfMap)
+
+        -- Function to construct a row from a given index
+        getRow :: Int -> Row
+        getRow idx = Map.fromList [ (colName, (dfMap Map.! colName) V.! idx) | colName <- colNames ]
+
+        -- Identify indices of rows that satisfy the predicate
+        keptIndices = V.fromList [ idx | idx <- [0 .. numRows - 1], evaluate p (getRow idx) == Just True ]
+
+        newDfMap = if V.null keptIndices
                    then Map.empty
                    else
-                       let
-                           colNames = columnNames (Proxy @cols)
-                           cols = [ V.fromList [ Map.findWithDefault NA colName r | r <- filteredRows ]
-                                  | colName <- colNames
-                                  ]
-                       in
-                           Map.fromList (zip colNames cols)
+                       Map.fromList [ (colName, V.map (\idx -> (dfMap Map.! colName) V.! idx) keptIndices)
+                                    | colName <- colNames
+                                    ]
     in
         DataFrame newDfMap
 
@@ -157,8 +161,6 @@ dropNA df =
     let
         rows = toRows df
         filteredRows = filter (not . any isNA . Map.elems) rows
-        isNA NA = True
-        isNA _ = False
         newDfMap = if null filteredRows
                    then Map.empty
                    else
@@ -190,11 +192,7 @@ filterByBoolColumn _ df =
     let
         boolColName = T.pack (symbolVal (Proxy @boolCol))
         rows = toRows df
-        filteredRows = filter (\row ->
-            case Map.lookup boolColName row of
-                Just (BoolValue True) -> True
-                _ -> False
-            ) rows
+        filteredRows = filter (\row -> fromDFValue @Bool (Map.findWithDefault NA boolColName row) == Just True) rows
         newDfMap = if null filteredRows
                    then Map.empty
                    else

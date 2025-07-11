@@ -9,7 +9,7 @@ module Sara.DataFrame.Static (
 ) where
 
 import Language.Haskell.TH
-import Data.Csv (FromNamedRecord, decodeByName, decode, HasHeader(NoHeader))
+import Data.Csv (FromNamedRecord, decodeByName, HasHeader(NoHeader))
 import qualified Data.ByteString.Lazy as BL
 import qualified Data.Vector as V
 import Data.Char (toLower)
@@ -18,12 +18,10 @@ import qualified Data.ByteString.Char8 as BC
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
 import qualified Data.Csv as C
-import Data.Kind (Type)
-import GHC.TypeLits (Symbol, KnownSymbol)
-import Data.Proxy (Proxy(..))
 import Data.Time (Day, UTCTime)
 import Data.Time.Format (parseTimeM, defaultTimeLocale)
 import Text.Read (readMaybe)
+import Sara.DataFrame.Instances ()
 
 
 -- | A Template Haskell function that generates a record type from a CSV file.
@@ -51,6 +49,25 @@ normalizeFieldName t = case T.uncons t of
     Just (x, xs) -> T.cons (toLower x) xs
     Nothing -> T.empty
 
+-- New helper function
+inferColumnTypeFromSamples :: [T.Text] -> Q Language.Haskell.TH.Type
+inferColumnTypeFromSamples samples = do
+    let nonNaSamples = filter (\s -> T.toLower s /= T.pack "na" && not (T.null s)) samples
+    let hasNa = length nonNaSamples < length samples -- If any sample was NA or empty
+
+    let baseTypeQ = if null nonNaSamples
+        then [t| T.Text |] -- Default to Text if all are NA/empty
+        else inferMostSpecificType nonNaSamples
+
+    if hasNa
+        then fmap (AppT (ConT ''Maybe)) baseTypeQ
+        else baseTypeQ
+
+-- Helper to infer the most specific type from a list of non-NA samples
+inferMostSpecificType :: [T.Text] -> Q Language.Haskell.TH.Type
+inferMostSpecificType [] = [t| T.Text |] -- Should not happen if called from inferColumnTypeFromSamples
+inferMostSpecificType (s:_) = inferDFType s
+
 -- | Infers a DFValue type from a string value.
 inferDFType :: T.Text -> Q Language.Haskell.TH.Type
 inferDFType s
@@ -73,13 +90,22 @@ inferCsvSchema typeName filePath = do
                 then fail "CSV file must have at least a header and one data row for schema inference."
                 else do
                     let headers = V.toList $ V.map TE.decodeUtf8 $ records V.! 0
-                    let firstDataRow = V.toList $ V.map TE.decodeUtf8 $ records V.! 1
-                    -- Infer types for each column
-                    inferredTypes <- mapM inferDFType firstDataRow
-                    let schemaListType = foldr (\(h, t) acc -> PromotedConsT `AppT` (PromotedTupleT 2 `AppT` LitT (StrTyLit (T.unpack h)) `AppT` t) `AppT` acc) PromotedNilT (zip headers inferredTypes)
+                    let dataRows = V.tail records
+                    let columnSamples = V.toList $ V.generate (V.length (V.head records)) $ \colIdx ->
+                            V.toList $ V.map (\row -> TE.decodeUtf8 (row V.! colIdx)) dataRows
+                    
+                    inferredTypes <- sequence $ map inferColumnTypeFromSamples columnSamples
+                    let prefixedHeaders = map (T.pack typeName <>) headers
+                    let schemaListType = foldr (\(h, t) acc -> PromotedConsT `AppT` (PromotedTupleT 2 `AppT` LitT (StrTyLit (T.unpack h)) `AppT` t) `AppT` acc) PromotedNilT (zip prefixedHeaders inferredTypes)
                     let typeSyn = TySynD (mkName typeName) [] schemaListType
 
-                    return [typeSyn]
+                    -- Generate a concrete record type for CSV parsing
+                    let recordName = mkName (typeName ++ "Record")
+                    recordDec <- dataD (cxt []) recordName [] Nothing 
+                                    [recC recordName (zipWith (\h t -> varBangType (mkName (T.unpack (normalizeFieldName h))) (bangType (bang noSourceUnpackedness noSourceStrictness) (pure t))) prefixedHeaders inferredTypes)]
+                                    [derivClause (Just StockStrategy) [conT ''Show, conT ''Generic], derivClause (Just AnyclassStrategy) [conT ''FromNamedRecord]]
+
+                    return [typeSyn, recordDec]
 
 readCsv :: (FromNamedRecord a) => FilePath -> IO (Either String (V.Vector a))
 readCsv filePath = do

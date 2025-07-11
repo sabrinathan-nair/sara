@@ -28,6 +28,7 @@ import GHC.TypeLits
 import Data.Proxy (Proxy(..))
 import Data.Maybe (fromMaybe)
 import Data.Kind (Type)
+import Data.Typeable (Typeable, typeRep)
 
 type family Fst (t :: (k, v)) :: k where
     Fst '(a, b) = a
@@ -103,7 +104,9 @@ applyColumn :: forall col oldType newType cols newCols.
 applyColumn _ f (DataFrame dfMap) =
     let
         colName = T.pack (symbolVal (Proxy :: Proxy col))
-        transform v = fromMaybe NA (toDFValue . f <$> fromDFValue v)
+        transform v = case fromDFValue v of
+                        Just x -> toDFValue (f x)
+                        Nothing -> NA -- If type mismatch, replace with NA
     in case Map.lookup colName dfMap of
         Just c ->
             let updatedCol = V.map transform c

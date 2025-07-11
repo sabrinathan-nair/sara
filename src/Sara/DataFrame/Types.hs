@@ -41,7 +41,8 @@ module Sara.DataFrame.Types (
     UpdateColumn,
     TypeLevelRow(..),
     toTypeLevelRow,
-    fromTypeLevelRow
+        fromTypeLevelRow,
+    isNA
 ) where
 
 import qualified Data.Text as T
@@ -61,6 +62,10 @@ import GHC.TypeLits (ErrorMessage(Text, (:<>:)), Symbol, KnownSymbol, TypeError,
 import Data.Kind (Type, Constraint)
 import Data.Proxy (Proxy(..))
 import Data.Typeable (TypeRep, Typeable, typeRep)
+
+isNA :: DFValue -> Bool
+isNA NA = True
+isNA _ = False
 
 -- | A type to represent a single value in a DataFrame.
 -- It can hold different types of data such as integers, doubles, text, dates, booleans, or missing values (NA).

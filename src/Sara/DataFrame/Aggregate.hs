@@ -75,7 +75,7 @@ data AggOp = Sum | Mean | Count
 
 -- | A type family to determine the result type of an aggregation.
 type family AggregationResult (op :: AggOp) (a :: Type) :: Type where
-    AggregationResult 'Sum Int = Int
+    AggregationResult 'Sum Int = Double
     AggregationResult 'Sum Double = Double
     AggregationResult 'Mean Int = Double
     AggregationResult 'Mean Double = Double
@@ -86,7 +86,7 @@ class (CanBeDFValue a, CanBeDFValue (AggregationResult op a)) => Aggregatable (o
     aggregateOp :: Proxy op -> V.Vector a -> AggregationResult op a
 
 instance Aggregatable 'Sum Int where
-    aggregateOp _ = V.sum
+    aggregateOp _ v = fromIntegral (V.sum v)
 
 instance Aggregatable 'Sum Double where
     aggregateOp _ = V.sum

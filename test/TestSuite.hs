@@ -11,7 +11,6 @@ import Test.Hspec
 import qualified Data.Text as T
 import qualified Data.Map.Strict as Map
 import qualified Data.Vector as V
-import Sara.DataFrame.IO (readCSV)
 import Sara.DataFrame.Transform
 import Sara.DataFrame.Types
 import Sara.DataFrame.Wrangling
@@ -34,7 +33,6 @@ main = hspec $ do
     describe "Type-Safe filterRows" $ do
         it "filters rows based on a simple predicate" $ do
             df <- createTestDataFrame
-            let predicate = (col (Proxy @"Age") :: Expr '[ '("Name", T.Text), '("Age", Int), '("Salary", Double)] Int) >. lit (30 :: Int)
             let filteredDf = filterRows (col (Proxy @"Age") >.> lit (30 :: Int)) df
             let (DataFrame filteredMap) = filteredDf
             V.length (filteredMap Map.! "Name") `shouldBe` 1
