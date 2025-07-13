@@ -31,6 +31,7 @@ import GHC.TypeLits (Symbol, KnownSymbol, symbolVal)
 import Data.Kind (Type)
 import Sara.DataFrame.Types
 import qualified Data.Map.Strict as Map
+import Data.Maybe (fromJust)
 
 -- | A type-safe expression GADT for DataFrame operations.
 -- 'cols' is the schema of the DataFrame, and 'a' is the return type of the expression.
@@ -39,7 +40,7 @@ data Expr (cols :: [(Symbol, Type)]) a where
     Lit :: CanBeDFValue a => a -> Expr cols a
 
     -- Column reference
-    Col :: (HasColumn c cols, CanBeDFValue a) => Proxy c -> Expr cols a
+    Col :: (HasColumn c cols, CanBeDFValue a, TypeOf c cols ~ a) => Proxy c -> Expr cols a
 
     -- Numeric operations
     Add :: (Num a, CanBeDFValue a) => Expr cols a -> Expr cols a -> Expr cols a
@@ -59,64 +60,27 @@ data Expr (cols :: [(Symbol, Type)]) a where
     Or :: Expr cols Bool -> Expr cols Bool -> Expr cols Bool
 
 -- | Evaluates a type-safe expression on a given row.
--- Returns Nothing if any column lookup or type conversion fails.
-evaluateExpr :: Expr cols a -> Row -> Maybe a
-evaluateExpr (Lit val) _ = Just val
-evaluateExpr (Col p) row = do
-    let colName = T.pack (symbolVal p)
-    dfValue <- Map.lookup colName row
-    fromDFValue dfValue
-evaluateExpr (Add e1 e2) row = do
-    v1 <- evaluateExpr e1 row
-    v2 <- evaluateExpr e2 row
-    return (v1 + v2)
-evaluateExpr (Subtract e1 e2) row = do
-    v1 <- evaluateExpr e1 row
-    v2 <- evaluateExpr e2 row
-    return (v1 - v2)
-evaluateExpr (Multiply e1 e2) row = do
-    v1 <- evaluateExpr e1 row
-    v2 <- evaluateExpr e2 row
-    return (v1 * v2)
-evaluateExpr (Divide e1 e2) row = do
-    v1 <- evaluateExpr e1 row
-    v2 <- evaluateExpr e2 row
-    return (v1 / v2)
-evaluateExpr (EqualTo e1 e2) row = do
-    v1 <- evaluateExpr e1 row
-    v2 <- evaluateExpr e2 row
-    return (v1 == v2)
-evaluateExpr (GreaterThan e1 e2) row = do
-    v1 <- evaluateExpr e1 row
-    v2 <- evaluateExpr e2 row
-    return (v1 > v2)
-evaluateExpr (LessThan e1 e2) row = do
-    v1 <- evaluateExpr e1 row
-    v2 <- evaluateExpr e2 row
-    return (v1 < v2)
-evaluateExpr (GreaterThanOrEqualTo e1 e2) row = do
-    v1 <- evaluateExpr e1 row
-    v2 <- evaluateExpr e2 row
-    return (v1 >= v2)
-evaluateExpr (LessThanOrEqualTo e1 e2) row = do
-    v1 <- evaluateExpr e1 row
-    v2 <- evaluateExpr e2 row
-    return (v1 <= v2)
-evaluateExpr (And e1 e2) row = do
-    v1 <- evaluateExpr e1 row
-    v2 <- evaluateExpr e2 row
-    return (v1 && v2)
-evaluateExpr (Or e1 e2) row = do
-    v1 <- evaluateExpr e1 row
-    v2 <- evaluateExpr e2 row
-    return (v1 || v2)
+evaluateExpr :: Expr cols a -> Row -> a
+evaluateExpr (Lit val) _ = val
+evaluateExpr (Col p) row = fromJust (fromDFValue (Map.findWithDefault NA (T.pack (symbolVal p)) row))
+evaluateExpr (Add e1 e2) row = evaluateExpr e1 row + evaluateExpr e2 row
+evaluateExpr (Subtract e1 e2) row = evaluateExpr e1 row - evaluateExpr e2 row
+evaluateExpr (Multiply e1 e2) row = evaluateExpr e1 row * evaluateExpr e2 row
+evaluateExpr (Divide e1 e2) row = evaluateExpr e1 row / evaluateExpr e2 row
+evaluateExpr (EqualTo e1 e2) row = evaluateExpr e1 row == evaluateExpr e2 row
+evaluateExpr (GreaterThan e1 e2) row = evaluateExpr e1 row > evaluateExpr e2 row
+evaluateExpr (LessThan e1 e2) row = evaluateExpr e1 row < evaluateExpr e2 row
+evaluateExpr (GreaterThanOrEqualTo e1 e2) row = evaluateExpr e1 row >= evaluateExpr e2 row
+evaluateExpr (LessThanOrEqualTo e1 e2) row = evaluateExpr e1 row <= evaluateExpr e2 row
+evaluateExpr (And e1 e2) row = evaluateExpr e1 row && evaluateExpr e2 row
+evaluateExpr (Or e1 e2) row = evaluateExpr e1 row || evaluateExpr e2 row
 
 -- | Smart constructor for a literal value.
 lit :: CanBeDFValue a => a -> Expr cols a
 lit = Lit
 
 -- | Smart constructor for a column reference.
-col :: (HasColumn c cols, CanBeDFValue a) => Proxy c -> Expr cols a
+col :: (HasColumn c cols, CanBeDFValue a, TypeOf c cols ~ a) => Proxy c -> Expr cols a
 col = Col
 
 -- | Infix operators for expressions.

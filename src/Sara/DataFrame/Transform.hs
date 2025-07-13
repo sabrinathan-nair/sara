@@ -26,12 +26,15 @@ import Sara.DataFrame.Types
 import Sara.DataFrame.Expression (Expr, evaluateExpr)
 import GHC.TypeLits
 import Data.Proxy (Proxy(..))
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromJust)
 import Data.Kind (Type)
 import Data.Typeable (Typeable, typeRep)
 
 type family Fst (t :: (k, v)) :: k where
     Fst '(a, b) = a
+
+type family Snd (t :: (k, v)) :: v where
+    Snd '(a, b) = b
 
 -- | Selects a subset of columns from a DataFrame.
 selectColumns :: forall (selectedCols :: [(Symbol, Type)]) (originalCols :: [(Symbol, Type)]).
@@ -49,16 +52,17 @@ type family AddColumn (newCol :: (Symbol, Type)) (cols :: [(Symbol, Type)]) :: [
     AddColumn newCol cols = Nub (newCol ': cols)
 
 addColumn :: forall (newCol :: (Symbol, Type)) (cols :: [(Symbol, Type)]) (newCols :: [(Symbol, Type)]).
-            (KnownSymbol (Fst newCol), KnownColumns cols, newCols ~ AddColumn newCol cols, KnownColumns newCols)
-            => (Row -> DFValue) -> DataFrame cols -> DataFrame newCols
-addColumn f df@(DataFrame dfMap) =
+            (KnownSymbol (Fst newCol), KnownColumns cols, newCols ~ AddColumn newCol cols, KnownColumns newCols, CanBeDFValue (Snd newCol))
+            => Expr cols (Snd newCol) -> DataFrame cols -> DataFrame newCols
+addColumn expr df@(DataFrame dfMap) =
     let
         colName = T.pack (symbolVal (Proxy :: Proxy (Fst newCol)))
         rows = toRows df
-        newColumnValues = V.fromList $ map f rows
+        newColumnValues = V.fromList $ map (\row -> toDFValue (evaluateExpr expr row)) rows
         updatedDfMap = Map.insert colName newColumnValues dfMap
     in
         DataFrame updatedDfMap
+
 
 -- | Unpivots a DataFrame from wide format to long format.
 type family Melt (id_vars :: [(Symbol, Type)]) (value_vars :: [(Symbol, Type)]) :: [(Symbol, Type)] where
@@ -104,15 +108,9 @@ applyColumn :: forall col oldType newType cols newCols.
 applyColumn _ f (DataFrame dfMap) =
     let
         colName = T.pack (symbolVal (Proxy :: Proxy col))
-        transform v = case fromDFValue v of
-                        Just x -> toDFValue (f x)
-                        Nothing -> NA -- If type mismatch, replace with NA
-    in case Map.lookup colName dfMap of
-        Just c ->
-            let updatedCol = V.map transform c
-            in DataFrame (Map.insert colName updatedCol dfMap)
-        Nothing ->
-            DataFrame dfMap
+        transform v = toDFValue (f (fromJust (fromDFValue v)))
+        updatedCol = V.map transform (dfMap Map.! colName)
+    in DataFrame (Map.insert colName updatedCol dfMap)
 
 -- | Adds a new column or modifies an existing one based on a type-safe expression.
 mutate :: forall newColName newColType cols newCols.
@@ -125,7 +123,7 @@ mutate newColProxy expr df@(DataFrame dfMap) =
     let
         rows = toRows df
         newColName = T.pack (symbolVal newColProxy)
-        newColumnValues = V.fromList $ map (\row -> fromMaybe NA (toDFValue <$> evaluateExpr expr row)) rows
+        newColumnValues = V.fromList $ map (\row -> toDFValue (evaluateExpr expr row)) rows
         updatedDfMap = Map.insert newColName newColumnValues dfMap
     in
         DataFrame updatedDfMap

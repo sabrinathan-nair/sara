@@ -53,7 +53,7 @@ filterRows p (DataFrame dfMap) =
         getRow idx = Map.fromList [ (colName, (dfMap Map.! colName) V.! idx) | colName <- colNames ]
 
         -- Identify indices of rows that satisfy the predicate
-        keptIndices = V.fromList [ idx | idx <- [0 .. numRows - 1], evaluate p (getRow idx) == Just True ]
+        keptIndices = V.fromList [ idx | idx <- [0 .. numRows - 1], evaluate p (getRow idx) ]
 
         newDfMap = if V.null keptIndices
                    then Map.empty
