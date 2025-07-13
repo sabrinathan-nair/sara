@@ -14,6 +14,7 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE AllowAmbiguousTypes #-}
 
 module Sara.DataFrame.Types (
     DFValue(..),
@@ -42,7 +43,13 @@ module Sara.DataFrame.Types (
     TypeLevelRow(..),
     toTypeLevelRow,
         fromTypeLevelRow,
-    isNA
+    isNA,
+    MapTypes,
+        All,
+    ContainsColumn,
+    ResolveJoinValue,
+    ResolveJoinValueType,
+    resolveJoinValueImpl
 ) where
 
 import qualified Data.Text as T
@@ -225,6 +232,12 @@ instance CanBeDFValue Bool where
     fromDFValue (BoolValue b) = Just b
     fromDFValue _ = Nothing
 
+instance CanBeDFValue a => CanBeDFValue (Maybe a) where
+    toDFValue Nothing = NA
+    toDFValue (Just a) = toDFValue a
+    fromDFValue NA = Just Nothing
+    fromDFValue x = Just <$> fromDFValue x
+
 -- | Converts a 'DataFrame' into a list of 'Row's.
 -- Each 'Row' is a 'Map' where keys are column names and values are the corresponding 'DFValue's for that row.
 toRows :: DataFrame cols -> [Row]
@@ -269,7 +282,7 @@ type family Nub (xs :: [k]) :: [k] where
 
 -- | A constraint to check if a column is present in a list of columns, with a custom type error.
 type family CheckHasColumn (s :: Symbol) (ss :: [(Symbol, Type)]) :: Constraint where
-  CheckHasColumn s '[] = TypeError ('Text "Column '" ':<>: 'Text s ':<>: 'Text "' not found in DataFrame.")
+  CheckHasColumn s '[] = TypeError ('Text "Column '" :<>: 'Text s :<>: 'Text "' not found in DataFrame.")
   CheckHasColumn s ('(h, t) ': rest) = CheckHasColumnImpl (CmpSymbol s h) s rest
 
 type family CheckHasColumnImpl (o :: Ordering) (s :: Symbol) (rest :: [(Symbol, Type)]) :: Constraint where
@@ -285,12 +298,58 @@ type family HasColumns (subset :: [Symbol]) (superset :: [(Symbol, Type)]) :: Co
     HasColumns (s ': ss) superset = (HasColumn s superset, HasColumns ss superset)
 
 -- | Type family to compute the columns of a joined DataFrame.
-type family JoinCols (cols1 :: [(Symbol, Type)]) (cols2 :: [(Symbol, Type)]) :: [(Symbol, Type)] where
-    JoinCols cols1 cols2 = Nub (Append cols1 cols2)
+type family If (c :: Bool) (t :: k) (f :: k) :: k where
+    If 'True t f = t
+    If 'False t f = f
+
+-- Helper to get the type of a column, or 'Nothing' if not found
+type family SafeTypeOf (s :: Symbol) (cols :: [(Symbol, Type)]) :: Maybe Type where
+    SafeTypeOf s '[] = 'Nothing
+    SafeTypeOf s ('(s, t) ': xs) = 'Just t
+    SafeTypeOf s (x ': xs) = SafeTypeOf s xs
+
+-- Helper to determine the type of a column in the joined DataFrame
+type family TypeEq (a :: k) (b :: k) :: Bool where
+    TypeEq a a = 'True
+    TypeEq a b = 'False
+
+type family GetJoinedColumnType (s :: Symbol) (cols1 :: [(Symbol, Type)]) (cols2 :: [(Symbol, Type)]) (joinType :: JoinType) :: Type where
+    GetJoinedColumnType s cols1 cols2 'InnerJoin =
+        If (TypeEq (SafeTypeOf s cols1) 'Nothing) (TypeError (Text "Column " :<>: Text s :<>: Text " not found in both DataFrames for InnerJoin"))
+           (If (TypeEq (SafeTypeOf s cols2) 'Nothing) (TypeError (Text "Column " :<>: Text s :<>: Text " not found in both DataFrames for InnerJoin"))
+               (If (TypeEq (UnwrapMaybe (SafeTypeOf s cols1)) (UnwrapMaybe (SafeTypeOf s cols2))) (UnwrapMaybe (SafeTypeOf s cols1))
+                   (TypeError (Text "Type mismatch for column " :<>: Text s))))
+
+    GetJoinedColumnType s cols1 cols2 'LeftJoin =
+        If (TypeEq (SafeTypeOf s cols1) 'Nothing) (If (TypeEq (SafeTypeOf s cols2) 'Nothing) (TypeError (Text "Column " :<>: Text s :<>: Text " not found in either DataFrame for LeftJoin")) (Maybe (UnwrapMaybe (SafeTypeOf s cols2))))
+           (UnwrapMaybe (SafeTypeOf s cols1))
+
+    GetJoinedColumnType s cols1 cols2 'RightJoin =
+        If (TypeEq (SafeTypeOf s cols2) 'Nothing) (If (TypeEq (SafeTypeOf s cols1) 'Nothing) (TypeError (Text "Column " :<>: Text s :<>: Text " not found in either DataFrame for RightJoin")) (Maybe (UnwrapMaybe (SafeTypeOf s cols1))))
+           (UnwrapMaybe (SafeTypeOf s cols2))
+
+    GetJoinedColumnType s cols1 cols2 'OuterJoin =
+        If (TypeEq (SafeTypeOf s cols1) 'Nothing) (If (TypeEq (SafeTypeOf s cols2) 'Nothing) (TypeError (Text "Column " :<>: Text s :<>: Text " not found in either DataFrame for OuterJoin")) (Maybe (UnwrapMaybe (SafeTypeOf s cols2))))
+           (If (TypeEq (SafeTypeOf s cols2) 'Nothing) (Maybe (UnwrapMaybe (SafeTypeOf s cols1)))
+               (If (TypeEq (UnwrapMaybe (SafeTypeOf s cols1)) (UnwrapMaybe (SafeTypeOf s cols2))) (UnwrapMaybe (SafeTypeOf s cols1))
+                   (TypeError (Text "Type mismatch for column " :<>: Text s))))
+
+type family UnwrapMaybe (m :: Maybe k) :: k where
+    UnwrapMaybe ('Just x) = x
+    UnwrapMaybe 'Nothing = TypeError ('Text "Attempted to unwrap Nothing")
+
+
+
+type family MakeJoinedColumnTuple (joinType :: JoinType) (cols1 :: [(Symbol, Type)]) (cols2 :: [(Symbol, Type)]) (symbols :: [Symbol]) :: [(Symbol, Type)] where
+    MakeJoinedColumnTuple joinType cols1 cols2 '[] = '[]
+    MakeJoinedColumnTuple joinType cols1 cols2 (s ': ss) = '(s, GetJoinedColumnType s cols1 cols2 joinType) ': MakeJoinedColumnTuple joinType cols1 cols2 ss
+
+type family JoinCols (cols1 :: [(Symbol, Type)]) (cols2 :: [(Symbol, Type)]) (joinType :: JoinType) :: [(Symbol, Type)] where
+    JoinCols cols1 cols2 joinType = Nub (MakeJoinedColumnTuple joinType cols1 cols2 (Append (MapSymbols cols1) (MapSymbols cols2)))
 
 -- | Type family to get the type of a column given its name and the DataFrame's schema.
 type family TypeOf (col :: Symbol) (cols :: [(Symbol, Type)]) :: Type where
-    TypeOf col '[] = TypeError ('Text "Column '" ':<>: 'Text col ':<>: 'Text "' not found.")
+    TypeOf col '[] = TypeError ('Text "Column '" :<>: 'Text col :<>: 'Text "' not found.")
     TypeOf col ('(name, t) ': rest) = TypeOfImpl (CmpSymbol col name) t (TypeOf col rest)
 
 type family TypeOfImpl (o :: Ordering) (t :: Type) (rest :: Type) :: Type where
@@ -304,8 +363,43 @@ type family MapSymbols (xs :: [(Symbol, Type)]) :: [Symbol] where
 
 
 
+type family MapTypes (xs :: [(Symbol, Type)]) :: [Type] where
+    MapTypes '[] = '[]
+    MapTypes ('(s, t) ': xs) = t ': MapTypes xs
+
+-- | A type family to apply a constraint to a list of types.
+type family All (c :: k -> Constraint) (xs :: [k]) :: Constraint where
+    All c '[] = ()
+    All c (x ': xs) = (c x, All c xs)
+
+type family ContainsColumn (s :: Symbol) (cols :: [(Symbol, Type)]) :: Bool where
+    ContainsColumn s '[] = 'False
+    ContainsColumn s ('(s, t) ': xs) = 'True
+    ContainsColumn s (x ': xs) = ContainsColumn s xs
+
 -- | A type family to update the type of a column in a schema.
 type family UpdateColumn (colName :: Symbol) (newType :: Type) (cols :: [(Symbol, Type)]) :: [(Symbol, Type)] where
-  UpdateColumn colName newType '[] = TypeError ('Text "Column '" ':<>: 'Text colName ':<>: 'Text "' not found for update.")
-  UpdateColumn colName newType ('(colName, oldType) ': rest) = '(colName, newType) ': rest
-  UpdateColumn colName newType (col ': rest) = col ': UpdateColumn colName newType rest
+  UpdateColumn colName newType '[] = TypeError ('Text "Column '" :<>: 'Text colName :<>: 'Text "' not found for update.")
+  UpdateColumn colName newType ('(s, t) ': rest) = If (TypeEq (CmpSymbol s colName) 'EQ)
+                                                    ('(colName, newType) ': rest)
+                                                    ('(s, t) ': UpdateColumn colName newType rest)
+
+type family ResolveJoinValue (a :: Type) (b :: Type) (joinType :: JoinType) :: Type where
+    ResolveJoinValue a b 'InnerJoin = If (TypeEq a b) a (TypeError (Text "Type mismatch for InnerJoin"))
+    ResolveJoinValue a b 'LeftJoin = Maybe a
+    ResolveJoinValue a b 'RightJoin = Maybe b
+    ResolveJoinValue a b 'OuterJoin = Maybe (If (TypeEq a b) a (TypeError (Text "Type mismatch for OuterJoin")))
+
+type family ResolveJoinValueType (a :: Type) (b :: Type) (joinType :: JoinType) :: Type where
+    ResolveJoinValueType a b 'InnerJoin = If (TypeEq a b) a (TypeError (Text "Type mismatch for InnerJoin"))
+    ResolveJoinValueType a b 'LeftJoin = Maybe a
+    ResolveJoinValueType a b 'RightJoin = Maybe b
+    ResolveJoinValueType a b 'OuterJoin = Maybe (If (TypeEq a b) a (TypeError (Text "Type mismatch for OuterJoin")))
+
+resolveJoinValueImpl :: DFValue -> DFValue -> JoinType -> DFValue
+resolveJoinValueImpl val1 val2 InnerJoin =
+    if val1 == val2 then val1 else NA
+resolveJoinValueImpl val1 _ LeftJoin = val1
+resolveJoinValueImpl _ val2 RightJoin = val2
+resolveJoinValueImpl val1 val2 OuterJoin =
+    if val1 == val2 then val1 else NA
