@@ -234,5 +234,9 @@ type family Find (s :: Symbol) (cols :: [(Symbol, Type)]) :: Maybe (Symbol, Type
 type family Fst (t :: (k, v)) :: k where
     Fst '(a, b) = a
 
+type family MapFst (xs :: [(Symbol, Type)]) :: [Symbol] where
+    MapFst '[] = '[]
+    MapFst (x ': xs) = Fst x ': MapFst xs
+
 type family Snd (t :: (k, v)) :: v where
     Snd '(a, b) = b

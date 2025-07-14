@@ -21,6 +21,7 @@ library
                      , Sara.DataFrame.Wrangling
                      , Sara.REPL
                      , Sara.DataFrame.Instances
+                     , Sara.DataFrame.Internal
   hs-source-dirs:      src
   build-depends:       base >=4.14 && <5
                      , text
@@ -49,7 +50,7 @@ library
 executable sara-tutorial
   main-is:          Tutorial.hs
   hs-source-dirs:      app
-  build-depends:       base, sara, text, containers, vector, time, parallel, vector-strategies, deepseq
+  build-depends:       base, sara, text, containers, vector, time, parallel, vector-strategies, deepseq, cassava
   default-language:    Haskell2010
   ghc-options:         -Wall
 

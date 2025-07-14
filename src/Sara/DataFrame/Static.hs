@@ -21,6 +21,7 @@ import qualified Data.Csv as C
 import Data.Time (Day, UTCTime)
 import Data.Time.Format (parseTimeM, defaultTimeLocale)
 import Text.Read (readMaybe)
+import Sara.DataFrame.Internal (HasSchema(..))
 import Sara.DataFrame.Instances ()
 
 
@@ -96,16 +97,22 @@ inferCsvSchema typeName filePath = do
                     
                     inferredTypes <- sequence $ map inferColumnTypeFromSamples columnSamples
                     let prefixedHeaders = map (T.pack typeName <>) headers
+                    let normalizedPrefixedHeaders = map normalizeFieldName prefixedHeaders
                     let schemaListType = foldr (\(h, t) acc -> PromotedConsT `AppT` (PromotedTupleT 2 `AppT` LitT (StrTyLit (T.unpack h)) `AppT` t) `AppT` acc) PromotedNilT (zip prefixedHeaders inferredTypes)
                     let typeSyn = TySynD (mkName typeName) [] schemaListType
 
                     -- Generate a concrete record type for CSV parsing
                     let recordName = mkName (typeName ++ "Record")
                     recordDec <- dataD (cxt []) recordName [] Nothing 
-                                    [recC recordName (zipWith (\h t -> varBangType (mkName (T.unpack (normalizeFieldName h))) (bangType (bang noSourceUnpackedness noSourceStrictness) (pure t))) prefixedHeaders inferredTypes)]
+                                    [recC recordName (zipWith (\h t -> varBangType (mkName (T.unpack h)) (bangType (bang noSourceUnpackedness noSourceStrictness) (pure t))) normalizedPrefixedHeaders inferredTypes)]
                                     [derivClause (Just StockStrategy) [conT ''Show, conT ''Generic], derivClause (Just AnyclassStrategy) [conT ''FromNamedRecord]]
 
-                    return [typeSyn, recordDec]
+                    -- Generate HasSchema instance
+                    hasSchemaInstance <- instanceD (cxt []) [t|HasSchema $(conT recordName)|] [
+                        pure $ TySynInstD (TySynEqn Nothing (AppT (ConT ''Schema) (ConT recordName)) schemaListType)
+                        ]
+
+                    return [typeSyn, recordDec, hasSchemaInstance]
 
 readCsv :: (FromNamedRecord a) => FilePath -> IO (Either String (V.Vector a))
 readCsv filePath = do
