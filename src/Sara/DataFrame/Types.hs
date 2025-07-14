@@ -1,3 +1,4 @@
+{-# LANGUAGE DefaultSignatures #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE DeriveAnyClass #-}
@@ -180,7 +181,7 @@ data SortOrder = Ascending  -- ^ Sort in ascending order.
 
 -- | A type-safe criterion for sorting a DataFrame.
 data SortCriterion (cols :: [(Symbol, Type)]) where
-    SortCriterion :: (KnownSymbol col, HasColumn col cols) => Proxy col -> SortOrder -> SortCriterion cols
+    SortCriterion :: (KnownSymbol col, HasColumn col cols, Ord (TypeOf col cols), CanBeDFValue (TypeOf col cols)) => Proxy col -> SortOrder -> SortCriterion cols
 
 -- | A type synonym for a sortable column.
 type SortableColumn (col :: Symbol) (cols :: [(Symbol, Type)]) = (KnownSymbol col, HasColumn col cols)
@@ -201,6 +202,11 @@ data JoinType = InnerJoin   -- ^ Return only the rows that have matching keys in
 class CanBeDFValue a where
     toDFValue :: a -> DFValue
     fromDFValue :: DFValue -> Maybe a
+    fromDFValueUnsafe :: DFValue -> a
+    default fromDFValueUnsafe :: DFValue -> a
+    fromDFValueUnsafe dfValue = case fromDFValue dfValue of
+        Just x -> x
+        Nothing -> error "fromDFValueUnsafe: Type mismatch or NA value"
 
 instance CanBeDFValue Int where
     toDFValue = IntValue

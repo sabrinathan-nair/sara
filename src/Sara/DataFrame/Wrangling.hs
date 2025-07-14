@@ -27,6 +27,7 @@ import qualified Data.Map.Strict as Map
 import qualified Data.Vector as V
 import Data.List (sortBy)
 import Sara.DataFrame.Types
+import Data.Maybe (fromMaybe)
 import Sara.DataFrame.Predicate (Predicate, evaluate)
 import GHC.TypeLits (Symbol, KnownSymbol, symbolVal, CmpSymbol, TypeError, ErrorMessage(..))
 import Data.Proxy (Proxy(..))
@@ -53,7 +54,7 @@ filterRows p (DataFrame dfMap) =
         getRow idx = Map.fromList [ (colName, (dfMap Map.! colName) V.! idx) | colName <- colNames ]
 
         -- Identify indices of rows that satisfy the predicate
-        keptIndices = V.fromList [ idx | idx <- [0 .. numRows - 1], evaluate p (getRow idx) ]
+        keptIndices = V.fromList [ idx | idx <- [0 .. numRows - 1], fromMaybe False (evaluate p (getRow idx)) ]
 
         newDfMap = if V.null keptIndices
                    then Map.empty
@@ -69,14 +70,18 @@ sortDataFrame :: forall cols. KnownColumns cols => [SortCriterion cols] -> DataF
 sortDataFrame sortCriteria df =
     let
         rows = toRows df
-        compareRows :: Row -> Row -> Ordering
-        compareRows r1 r2 = foldr (\(SortCriterion proxy order) acc ->
+        compareRows :: forall a. (Ord a, CanBeDFValue a) => Proxy a -> DFValue -> DFValue -> Ordering
+        compareRows _ val1 val2 = compare (fromDFValue @a val1) (fromDFValue @a val2)
+
+        compareRows' :: Row -> Row -> Ordering
+        compareRows' r1 r2 = foldr (\(SortCriterion (proxy :: Proxy col) order) acc ->
             let
                 colName = T.pack (symbolVal proxy)
                 val1 = Map.findWithDefault NA colName r1
                 val2 = Map.findWithDefault NA colName r2
+                colTypeProxy = Proxy :: Proxy (TypeOf col cols)
             in
-                case compare val1 val2 of
+                case compareRows colTypeProxy val1 val2 of
                     EQ -> acc
                     res -> case order of
                              Ascending -> res
@@ -88,7 +93,7 @@ sortDataFrame sortCriteria df =
         invertOrdering EQ = EQ
         invertOrdering GT = LT
 
-        sortedRows = sortBy compareRows rows
+        sortedRows = sortBy compareRows' rows
         newDfMap = if null sortedRows
                    then Map.empty
                    else

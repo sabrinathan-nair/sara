@@ -29,7 +29,7 @@ import Sara.DataFrame.Types
 import qualified Data.Vector as V
 import qualified Data.Map.Strict as Map
 import qualified Data.Text as T
-import Data.List (foldl', sort, group, sortBy)
+import Data.List (sort, group, sortBy)
 import Data.Ord (comparing)
 
 -- Helper to convert DFValue to Double for calculations, treating NA as 0 or skipping
@@ -38,11 +38,7 @@ toNumeric (IntValue i) = Just $ fromIntegral i
 toNumeric (DoubleValue d) = Just d
 toNumeric _ = Nothing
 
--- Helper to convert DFValue to Double, treating NA as 0
-toDouble :: DFValue -> Double
-toDouble (IntValue i) = fromIntegral i
-toDouble (DoubleValue d) = d
-toDouble _ = 0.0
+
 
 -- | Calculates the sum of a vector of DFValues.
 sumV :: V.Vector DFValue -> DFValue

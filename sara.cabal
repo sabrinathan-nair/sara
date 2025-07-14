@@ -75,3 +75,4 @@ test-suite sara-test
     , Sara.DataFrame.Predicate
     , Sara.DataFrame.Instances
     , Sara.DataFrame.Static
+    , Sara.DataFrame.Internal

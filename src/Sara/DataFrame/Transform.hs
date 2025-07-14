@@ -23,12 +23,10 @@ import qualified Data.Text as T
 import qualified Data.Map.Strict as Map
 import qualified Data.Vector as V
 import Sara.DataFrame.Types
-import Sara.DataFrame.Expression (Expr, evaluateExpr)
+import Sara.DataFrame.Expression (Expr(..), evaluateExpr)
 import GHC.TypeLits
 import Data.Proxy (Proxy(..))
-import Data.Maybe (fromJust)
 import Data.Kind (Type)
-import Data.Typeable (Typeable, typeRep)
 
 type family Fst (t :: (k, v)) :: k where
     Fst '(a, b) = a
@@ -105,11 +103,15 @@ melt df =
 applyColumn :: forall col oldType newType cols newCols.
               (HasColumn col cols, KnownColumns cols, CanBeDFValue oldType, CanBeDFValue newType, TypeOf col cols ~ oldType, newCols ~ UpdateColumn col newType cols, KnownColumns newCols)
               => Proxy col -> (oldType -> newType) -> DataFrame cols -> DataFrame newCols
-applyColumn _ f (DataFrame dfMap) =
+applyColumn colProxy f (DataFrame dfMap) =
     let
-        colName = T.pack (symbolVal (Proxy :: Proxy col))
-        transform v = toDFValue (f (fromJust (fromDFValue v)))
-        updatedCol = V.map transform (dfMap Map.! colName)
+        colName = T.pack (symbolVal colProxy)
+        transformDFValue :: DFValue -> DFValue
+        transformDFValue dfVal =
+            case fromDFValue @oldType dfVal of
+                Just oldVal -> toDFValue (f oldVal)
+                Nothing -> NA
+        updatedCol = V.map transformDFValue (dfMap Map.! colName)
     in DataFrame (Map.insert colName updatedCol dfMap)
 
 -- | Adds a new column or modifies an existing one based on a type-safe expression.

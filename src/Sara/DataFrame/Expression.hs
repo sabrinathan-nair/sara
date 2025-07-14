@@ -8,7 +8,7 @@
 {-# LANGUAGE KindSignatures #-}
 
 module Sara.DataFrame.Expression (
-    Expr,
+    Expr(..),
     evaluateExpr,
     lit,
     col,
@@ -27,11 +27,10 @@ module Sara.DataFrame.Expression (
 
 import qualified Data.Text as T
 import Data.Proxy (Proxy(..))
-import GHC.TypeLits (Symbol, KnownSymbol, symbolVal)
+import GHC.TypeLits (Symbol, symbolVal)
 import Data.Kind (Type)
 import Sara.DataFrame.Types
 import qualified Data.Map.Strict as Map
-import Data.Maybe (fromJust)
 
 -- | A type-safe expression GADT for DataFrame operations.
 -- 'cols' is the schema of the DataFrame, and 'a' is the return type of the expression.
@@ -58,22 +57,24 @@ data Expr (cols :: [(Symbol, Type)]) a where
     -- Boolean operations
     And :: Expr cols Bool -> Expr cols Bool -> Expr cols Bool
     Or :: Expr cols Bool -> Expr cols Bool -> Expr cols Bool
+    ApplyFn :: (CanBeDFValue a, CanBeDFValue b) => (a -> b) -> Expr cols a -> Expr cols b
 
 -- | Evaluates a type-safe expression on a given row.
-evaluateExpr :: Expr cols a -> Row -> a
-evaluateExpr (Lit val) _ = val
-evaluateExpr (Col p) row = fromJust (fromDFValue (Map.findWithDefault NA (T.pack (symbolVal p)) row))
-evaluateExpr (Add e1 e2) row = evaluateExpr e1 row + evaluateExpr e2 row
-evaluateExpr (Subtract e1 e2) row = evaluateExpr e1 row - evaluateExpr e2 row
-evaluateExpr (Multiply e1 e2) row = evaluateExpr e1 row * evaluateExpr e2 row
-evaluateExpr (Divide e1 e2) row = evaluateExpr e1 row / evaluateExpr e2 row
-evaluateExpr (EqualTo e1 e2) row = evaluateExpr e1 row == evaluateExpr e2 row
-evaluateExpr (GreaterThan e1 e2) row = evaluateExpr e1 row > evaluateExpr e2 row
-evaluateExpr (LessThan e1 e2) row = evaluateExpr e1 row < evaluateExpr e2 row
-evaluateExpr (GreaterThanOrEqualTo e1 e2) row = evaluateExpr e1 row >= evaluateExpr e2 row
-evaluateExpr (LessThanOrEqualTo e1 e2) row = evaluateExpr e1 row <= evaluateExpr e2 row
-evaluateExpr (And e1 e2) row = evaluateExpr e1 row && evaluateExpr e2 row
-evaluateExpr (Or e1 e2) row = evaluateExpr e1 row || evaluateExpr e2 row
+evaluateExpr :: Expr cols a -> Row -> Maybe a
+evaluateExpr (Lit val) _ = Just val
+evaluateExpr (Col p) row = fromDFValue (Map.findWithDefault NA (T.pack (symbolVal p)) row)
+evaluateExpr (Add e1 e2) row = liftA2 (+) (evaluateExpr e1 row) (evaluateExpr e2 row)
+evaluateExpr (Subtract e1 e2) row = liftA2 (-) (evaluateExpr e1 row) (evaluateExpr e2 row)
+evaluateExpr (Multiply e1 e2) row = liftA2 (*) (evaluateExpr e1 row) (evaluateExpr e2 row)
+evaluateExpr (Divide e1 e2) row = liftA2 (/) (evaluateExpr e1 row) (evaluateExpr e2 row)
+evaluateExpr (EqualTo e1 e2) row = liftA2 (==) (evaluateExpr e1 row) (evaluateExpr e2 row)
+evaluateExpr (GreaterThan e1 e2) row = liftA2 (>) (evaluateExpr e1 row) (evaluateExpr e2 row)
+evaluateExpr (LessThan e1 e2) row = liftA2 (<) (evaluateExpr e1 row) (evaluateExpr e2 row)
+evaluateExpr (GreaterThanOrEqualTo e1 e2) row = liftA2 (>=) (evaluateExpr e1 row) (evaluateExpr e2 row)
+evaluateExpr (LessThanOrEqualTo e1 e2) row = liftA2 (<=) (evaluateExpr e1 row) (evaluateExpr e2 row)
+evaluateExpr (And e1 e2) row = liftA2 (&&) (evaluateExpr e1 row) (evaluateExpr e2 row)
+evaluateExpr (Or e1 e2) row = liftA2 (||) (evaluateExpr e1 row) (evaluateExpr e2 row)
+evaluateExpr (ApplyFn f expr) row = f <$> evaluateExpr expr row
 
 -- | Smart constructor for a literal value.
 lit :: CanBeDFValue a => a -> Expr cols a

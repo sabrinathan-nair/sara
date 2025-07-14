@@ -24,10 +24,6 @@ module Sara.DataFrame.Predicate (
 import Data.Kind (Type)
 import Sara.DataFrame.Types
 import GHC.TypeLits
-import Data.Proxy (Proxy(..))
-import qualified Data.Text as T
-import qualified Data.Map.Strict as Map
-import Data.Maybe (fromMaybe)
 
 import Sara.DataFrame.Expression (Expr, evaluateExpr)
 
@@ -44,14 +40,14 @@ data Predicate (cols :: [(Symbol, Type)]) where
     LessThanOrEqualTo :: (Ord a, CanBeDFValue a) => Expr cols a -> Expr cols a -> Predicate cols
 
 -- | A helper function to evaluate a predicate on a given row.
-evaluate :: Predicate cols -> Row -> Bool
-evaluate (And p1 p2) row = evaluate p1 row && evaluate p2 row
-evaluate (Or p1 p2) row = evaluate p1 row || evaluate p2 row
-evaluate (GreaterThan e1 e2) row = evaluateExpr e1 row > evaluateExpr e2 row
-evaluate (LessThan e1 e2) row = evaluateExpr e1 row < evaluateExpr e2 row
-evaluate (EqualTo e1 e2) row = evaluateExpr e1 row == evaluateExpr e2 row
-evaluate (GreaterThanOrEqualTo e1 e2) row = evaluateExpr e1 row >= evaluateExpr e2 row
-evaluate (LessThanOrEqualTo e1 e2) row = evaluateExpr e1 row <= evaluateExpr e2 row
+evaluate :: Predicate cols -> Row -> Maybe Bool
+evaluate (And p1 p2) row = liftA2 (&&) (evaluate p1 row) (evaluate p2 row)
+evaluate (Or p1 p2) row = liftA2 (||) (evaluate p1 row) (evaluate p2 row)
+evaluate (GreaterThan e1 e2) row = liftA2 (>) (evaluateExpr e1 row) (evaluateExpr e2 row)
+evaluate (LessThan e1 e2) row = liftA2 (<) (evaluateExpr e1 row) (evaluateExpr e2 row)
+evaluate (EqualTo e1 e2) row = liftA2 (==) (evaluateExpr e1 row) (evaluateExpr e2 row)
+evaluate (GreaterThanOrEqualTo e1 e2) row = liftA2 (>=) (evaluateExpr e1 row) (evaluateExpr e2 row)
+evaluate (LessThanOrEqualTo e1 e2) row = liftA2 (<=) (evaluateExpr e1 row) (evaluateExpr e2 row)
 
 -- | Infix operator for logical AND.
 (&&&) :: Predicate cols -> Predicate cols -> Predicate cols

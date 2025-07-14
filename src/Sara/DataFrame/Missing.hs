@@ -18,13 +18,12 @@ module Sara.DataFrame.Missing (
     notna
 ) where
 
-import Sara.DataFrame.Types (DFValue(..), DataFrame(..), Column, Row, toRows, fromRows, KnownColumns, CanBeDFValue(..))
+import Sara.DataFrame.Types (DFValue(..), DataFrame(..), Column, toRows, fromRows, KnownColumns, CanBeDFValue(..))
 import Data.Typeable (Typeable)
 import Data.Proxy (Proxy(..))
 import qualified Data.Vector as V
 import qualified Data.Map.Strict as Map
 import qualified Data.Text as T
-import Data.List (foldl')
 
 -- | Fills NA values in a DataFrame with a specified DFValue.
 fillna :: forall a cols. (KnownColumns cols, Typeable a, CanBeDFValue a) => DataFrame cols -> Proxy a -> Maybe T.Text -> a -> DataFrame cols
