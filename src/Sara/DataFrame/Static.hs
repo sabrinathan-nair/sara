@@ -1,11 +1,12 @@
-{-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE DerivingStrategies #-}
-
+-- | This module provides Template Haskell functions for statically inferring schemas
+-- from CSV files. This allows for creating `DataFrame`s with compile-time guarantees
+-- about column names and types.
 module Sara.DataFrame.Static (
+    -- * Template Haskell Functions
     tableTypes,
+    inferCsvSchema,
+    -- * CSV Reading
     readCsv,
-    inferCsvSchema
 ) where
 
 import Language.Haskell.TH
@@ -28,6 +29,17 @@ import Sara.DataFrame.Instances ()
 -- | A Template Haskell function that generates a record type from a CSV file.
 -- The first row of the CSV file is used to determine the field names.
 -- The types of the fields are inferred from the data in the first data row.
+--
+-- For example, given a CSV file `people.csv`:
+--
+-- > name,age
+-- > Alice,25
+-- > Bob,30
+--
+-- `tableTypes "Person" "people.csv"` will generate:
+--
+-- > data Person = Person { name :: T.Text, age :: Int } deriving (Show, Generic)
+-- > instance FromNamedRecord Person
 tableTypes :: String -> FilePath -> Q [Dec]
 tableTypes name filePath = do
     contents <- runIO $ BL.readFile filePath
@@ -45,12 +57,14 @@ tableTypes name filePath = do
             return [record]
 
 -- | Normalizes a field name to be a valid Haskell identifier.
+-- It converts the first character to lowercase.
 normalizeFieldName :: T.Text -> T.Text
 normalizeFieldName t = case T.uncons t of
     Just (x, xs) -> T.cons (toLower x) xs
     Nothing -> T.empty
 
--- New helper function
+-- | Infers the most specific type from a list of sample strings.
+-- If any sample is `NA` or empty, the type will be `Maybe` of the inferred type.
 inferColumnTypeFromSamples :: [T.Text] -> Q Language.Haskell.TH.Type
 inferColumnTypeFromSamples samples = do
     let nonNaSamples = filter (\s -> T.toLower s /= T.pack "na" && not (T.null s)) samples
@@ -64,12 +78,13 @@ inferColumnTypeFromSamples samples = do
         then fmap (AppT (ConT ''Maybe)) baseTypeQ
         else baseTypeQ
 
--- Helper to infer the most specific type from a list of non-NA samples
+-- | Infers the most specific type from a list of non-`NA` sample strings.
 inferMostSpecificType :: [T.Text] -> Q Language.Haskell.TH.Type
 inferMostSpecificType [] = [t| T.Text |] -- Should not happen if called from inferColumnTypeFromSamples
 inferMostSpecificType (s:_) = inferDFType s
 
--- | Infers a DFValue type from a string value.
+-- | Infers a `DFValue` type from a string value.
+-- The inference order is: `Int`, `Double`, `Day`, `UTCTime`, `Bool`, `T.Text`.
 inferDFType :: T.Text -> Q Language.Haskell.TH.Type
 inferDFType s
   | Just (_ :: Int) <- readMaybe (T.unpack s) = [t| Int |]
@@ -81,6 +96,19 @@ inferDFType s
 
 -- | A Template Haskell function that infers a type-level schema from a CSV file
 -- and generates a type synonym for it.
+-- It also generates a concrete record type for CSV parsing and a `HasSchema` instance.
+--
+-- For example, given a CSV file `people.csv`:
+--
+-- > name,age
+-- > Alice,25
+-- > Bob,30
+--
+-- `inferCsvSchema "PeopleSchema" "people.csv"` will generate:
+--
+-- > type PeopleSchema = '[ "name" ::: T.Text, "age" ::: Int ]
+-- > data PeopleSchemaRecord = PeopleSchemaRecord { peopleSchemaname :: T.Text, peopleSchemaage :: Int } ...
+-- > instance HasSchema PeopleSchemaRecord where type Schema PeopleSchemaRecord = PeopleSchema
 inferCsvSchema :: String -> FilePath -> Q [Dec]
 inferCsvSchema typeName filePath = do
     contents <- runIO $ BL.readFile filePath
@@ -114,6 +142,8 @@ inferCsvSchema typeName filePath = do
 
                     return [typeSyn, recordDec, hasSchemaInstance]
 
+-- | Reads a CSV file into a `Vector` of records.
+-- It normalizes the header fields to be valid Haskell identifiers before decoding.
 readCsv :: (FromNamedRecord a) => FilePath -> IO (Either String (V.Vector a))
 readCsv filePath = do
     contents <- BL.readFile filePath

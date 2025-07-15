@@ -9,11 +9,17 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE FlexibleInstances #-}
 
+-- | This module provides functions for reading from and writing to common
+-- data formats like CSV and JSON. It ensures that the data conforms to the
+-- type-level schema of the `DataFrame`.
 module Sara.DataFrame.IO (
+    -- * CSV Functions
     readCsv,
     writeCSV,
+    -- * JSON Functions
     readJSON,
     writeJSON,
+    -- * Validation
     validateDFValue
 ) where
 
@@ -36,23 +42,7 @@ import Data.Typeable (TypeRep, typeRep)
 import Sara.DataFrame.Types (DFValue(..), DataFrame(..), KnownColumns(..), toRows, isNA)
 import Sara.DataFrame.Static (readCsv)
 
-
-
--- FromField instances for DFValue
-
-
-
-
-
-
-
-
-
-
-
-
-
--- | Converts a DFValue to a ByteString for writing to CSV.
+-- | Converts a `DFValue` to a `ByteString` for writing to a CSV file.
 valueToByteString :: DFValue -> BC.ByteString
 valueToByteString (IntValue i) = BC.pack (show i)
 valueToByteString (DoubleValue d) = BC.pack (show d)
@@ -62,6 +52,8 @@ valueToByteString (TimestampValue t) = BC.pack (formatTime defaultTimeLocale "%Y
 valueToByteString (BoolValue b) = BC.pack (map toUpper (show b))
 valueToByteString NA = BC.pack "NA"
 
+-- | Validates a `DFValue` against an expected `TypeRep`.
+-- If the value does not match the type and is not `NA`, it throws an error.
 validateDFValue :: TypeRep -> DFValue -> DFValue
 validateDFValue expectedType val = 
     if typeRep (Proxy @Int) == expectedType && isIntValue val then val
@@ -97,7 +89,8 @@ isBoolValue :: DFValue -> Bool
 isBoolValue (BoolValue _) = True
 isBoolValue _ = False
 
--- | Writes a DataFrame to a CSV file at the given file path.
+-- | Writes a `DataFrame` to a CSV file.
+-- The header is derived from the `DataFrame`'s column names.
 writeCSV :: KnownColumns cols => FilePath -> DataFrame cols -> IO ()
 writeCSV filePath (DataFrame dfMap) = do
     let header = V.fromList $ Map.keys dfMap
@@ -114,7 +107,10 @@ writeCSV filePath (DataFrame dfMap) = do
 
     BL.writeFile filePath $ C.encodeByName headerBS (V.toList rows)
 
--- | Reads a JSON file into a DataFrame.
+-- | Reads a JSON file into a `DataFrame`.
+-- The JSON file should be an array of objects, where each object represents a row.
+-- The keys of the objects should match the column names of the `DataFrame`.
+-- The function validates that the column names and types in the JSON file match the `DataFrame`'s schema.
 readJSON :: forall cols. KnownColumns cols => Proxy cols -> FilePath -> IO (DataFrame cols)
 readJSON p filePath = do
     let expectedColNames = columnNames p
@@ -146,7 +142,8 @@ readJSON p filePath = do
 
 
 
--- | Writes a DataFrame to a JSON file.
+-- | Writes a `DataFrame` to a JSON file.
+-- The output is an array of objects, where each object represents a row.
 writeJSON :: KnownColumns cols => FilePath -> DataFrame cols -> IO ()
 writeJSON filePath df = do
     let rows = toRows df

@@ -8,8 +8,10 @@
 {-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE TypeApplications #-}
 
+-- | This module provides a collection of statistical functions that can be applied to `DataFrame` columns.
+-- These functions operate on `V.Vector DFValue` and return a single `DFValue` as the result.
 module Sara.DataFrame.Statistics (
-    -- General statistical functions
+    -- * General Statistical Functions
     sumV,
     meanV,
     stdV,
@@ -21,7 +23,7 @@ module Sara.DataFrame.Statistics (
     varianceV,
     skewV,
     kurtosisV,
-    -- Rolling window functions
+    -- * Rolling Window Functions
     rollingApply
 ) where
 
@@ -32,15 +34,15 @@ import qualified Data.Text as T
 import Data.List (sort, group, sortBy)
 import Data.Ord (comparing)
 
--- Helper to convert DFValue to Double for calculations, treating NA as 0 or skipping
+-- | Converts a `DFValue` to a `Double` for calculations.
+-- Returns `Nothing` if the value is not numeric.
 toNumeric :: DFValue -> Maybe Double
 toNumeric (IntValue i) = Just $ fromIntegral i
 toNumeric (DoubleValue d) = Just d
 toNumeric _ = Nothing
 
-
-
--- | Calculates the sum of a vector of DFValues.
+-- | Calculates the sum of a vector of `DFValue`s.
+-- Non-numeric values are ignored.
 sumV :: V.Vector DFValue -> DFValue
 sumV vec = 
     let numericVals = V.mapMaybe toNumeric vec
@@ -48,7 +50,8 @@ sumV vec =
        then NA
        else DoubleValue $ V.sum numericVals
 
--- | Calculates the mean of a vector of DFValues.
+-- | Calculates the mean of a vector of `DFValue`s.
+-- Non-numeric values are ignored.
 meanV :: V.Vector DFValue -> DFValue
 meanV vec = 
     let numericVals = V.mapMaybe toNumeric vec
@@ -57,7 +60,8 @@ meanV vec =
        then NA
        else DoubleValue $ V.sum numericVals / fromIntegral len
 
--- | Calculates the standard deviation of a vector of DFValues.
+-- | Calculates the standard deviation of a vector of `DFValue`s.
+-- Non-numeric values are ignored.
 stdV :: V.Vector DFValue -> DFValue
 stdV vec = 
     let numericVals = V.mapMaybe toNumeric vec
@@ -69,7 +73,8 @@ stdV vec =
                sumSqDiff = V.sum $ V.map (\x -> (x - m) * (x - m)) numericVals
            in DoubleValue $ sqrt (sumSqDiff / fromIntegral (len - 1))
 
--- | Calculates the minimum of a vector of DFValues.
+-- | Calculates the minimum of a vector of `DFValue`s.
+-- Non-numeric values are ignored.
 minV :: V.Vector DFValue -> DFValue
 minV vec = 
     let numericVals = V.mapMaybe toNumeric vec
@@ -77,7 +82,8 @@ minV vec =
        then NA
        else DoubleValue $ V.minimum numericVals
 
--- | Calculates the maximum of a vector of DFValues.
+-- | Calculates the maximum of a vector of `DFValue`s.
+-- Non-numeric values are ignored.
 maxV :: V.Vector DFValue -> DFValue
 maxV vec = 
     let numericVals = V.mapMaybe toNumeric vec
@@ -85,11 +91,12 @@ maxV vec =
        then NA
        else DoubleValue $ V.maximum numericVals
 
--- | Counts the non-NA values in a vector of DFValues.
+-- | Counts the non-`NA` values in a vector of `DFValue`s.
 countV :: V.Vector DFValue -> DFValue
 countV vec = IntValue $ V.length $ V.filter (/= NA) vec
 
--- | Calculates the median of a vector of DFValues.
+-- | Calculates the median of a vector of `DFValue`s.
+-- Non-numeric values are ignored.
 medianV :: V.Vector DFValue -> DFValue
 medianV vec =
     let numericVals = V.mapMaybe toNumeric vec
@@ -101,7 +108,8 @@ medianV vec =
             then DoubleValue $ sortedVals !! (len `div` 2)
             else DoubleValue $ (sortedVals !! (len `div` 2 - 1) + sortedVals !! (len `div` 2)) / 2.0
 
--- | Calculates the mode of a vector of DFValues.
+-- | Calculates the mode of a vector of `DFValue`s.
+-- The mode is the value that appears most frequently.
 modeV :: V.Vector DFValue -> DFValue
 modeV vec =
     let nonNAValues = V.filter (/= NA) vec
@@ -112,7 +120,8 @@ modeV vec =
                sortedGroups = sortBy (comparing (length)) grouped
            in head (last sortedGroups)
 
--- | Calculates the variance of a vector of DFValues.
+-- | Calculates the variance of a vector of `DFValue`s.
+-- Non-numeric values are ignored.
 varianceV :: V.Vector DFValue -> DFValue
 varianceV vec =
     let numericVals = V.mapMaybe toNumeric vec
@@ -124,7 +133,8 @@ varianceV vec =
                sumSqDiff = V.sum $ V.map (\x -> (x - m) * (x - m)) numericVals
            in DoubleValue $ sumSqDiff / fromIntegral (len - 1)
 
--- | Calculates the skewness of a vector of DFValues.
+-- | Calculates the skewness of a vector of `DFValue`s.
+-- Skewness is a measure of the asymmetry of the probability distribution of a real-valued random variable about its mean.
 skewV :: V.Vector DFValue -> DFValue
 skewV vec =
     let numericVals = V.mapMaybe toNumeric vec
@@ -137,7 +147,8 @@ skewV vec =
                sumCubedDiff = V.sum $ V.map (\x -> (x - m) ** 3) numericVals
            in DoubleValue $ (fromIntegral len / ((fromIntegral len - 1) * (fromIntegral len - 2))) * (sumCubedDiff / (s ** 3))
 
--- | Calculates the kurtosis of a vector of DFValues.
+-- | Calculates the kurtosis of a vector of `DFValue`s.
+-- Kurtosis is a measure of the "tailedness" of the probability distribution of a real-valued random variable.
 kurtosisV :: V.Vector DFValue -> DFValue
 kurtosisV vec =
     let numericVals = V.mapMaybe toNumeric vec
@@ -151,6 +162,7 @@ kurtosisV vec =
            in DoubleValue $ (fromIntegral len * (fromIntegral len + 1) / ((fromIntegral len - 1) * (fromIntegral len - 2) * (fromIntegral len - 3))) * (sumFourthDiff / (s ** 4)) - (3 * (fromIntegral len - 1) * (fromIntegral len - 1) / ((fromIntegral len - 2) * (fromIntegral len - 3)))
 
 -- | Applies a function over a rolling window of a column.
+-- The new column is named by appending "_rolling" to the original column name.
 rollingApply :: KnownColumns cols => DataFrame cols -> Int -> String -> (V.Vector DFValue -> DFValue) -> DataFrame cols
 rollingApply (DataFrame dfMap) window colName aggFunc =
     let col = dfMap Map.! (T.pack colName)

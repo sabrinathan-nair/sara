@@ -7,11 +7,18 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE KindSignatures #-}
 
+-- | This module defines a type-safe GADT for building and evaluating expressions
+-- on `DataFrame` rows. It provides a way to construct complex, type-checked
+-- computations that can be applied to data at runtime.
 module Sara.DataFrame.Expression (
+    -- * The Expression GADT
     Expr(..),
+    -- * Evaluation
     evaluateExpr,
+    -- * Smart Constructors
     lit,
     col,
+    -- * Operators
     (+.+),
     (-.-),
     (*.*),
@@ -31,35 +38,52 @@ import GHC.TypeLits (Symbol, symbolVal)
 import Data.Kind (Type)
 import Sara.DataFrame.Types
 import qualified Data.Map.Strict as Map
+import Control.Applicative (liftA2)
 
--- | A type-safe expression GADT for DataFrame operations.
--- 'cols' is the schema of the DataFrame, and 'a' is the return type of the expression.
+-- | A type-safe expression GADT for `DataFrame` operations.
+-- The @cols@ parameter is the schema of the `DataFrame`, and @a@ is the return type of the expression.
 data Expr (cols :: [(Symbol, Type)]) a where
-    -- Literals
+    -- | Represents a literal value in an expression.
     Lit :: CanBeDFValue a => a -> Expr cols a
 
-    -- Column reference
+    -- | Represents a column reference in an expression.
     Col :: (HasColumn c cols, CanBeDFValue a, TypeOf c cols ~ a) => Proxy c -> Expr cols a
 
-    -- Numeric operations
+    -- | Adds two numeric expressions.
     Add :: (Num a, CanBeDFValue a) => Expr cols a -> Expr cols a -> Expr cols a
+    -- | Subtracts two numeric expressions.
     Subtract :: (Num a, CanBeDFValue a) => Expr cols a -> Expr cols a -> Expr cols a
+    -- | Multiplies two numeric expressions.
     Multiply :: (Num a, CanBeDFValue a) => Expr cols a -> Expr cols a -> Expr cols a
+    -- | Divides two numeric expressions.
     Divide :: (Fractional a, CanBeDFValue a) => Expr cols a -> Expr cols a -> Expr cols a
 
-    -- Comparison operations
+    -- | Checks if two expressions are equal.
     EqualTo :: (Eq a, CanBeDFValue a) => Expr cols a -> Expr cols a -> Expr cols Bool
+    -- | Checks if the first expression is greater than the second.
     GreaterThan :: (Ord a, CanBeDFValue a) => Expr cols a -> Expr cols a -> Expr cols Bool
+    -- | Checks if the first expression is less than the second.
     LessThan :: (Ord a, CanBeDFValue a) => Expr cols a -> Expr cols a -> Expr cols Bool
+    -- | Checks if the first expression is greater than or equal to the second.
     GreaterThanOrEqualTo :: (Ord a, CanBeDFValue a) => Expr cols a -> Expr cols a -> Expr cols Bool
+    -- | Checks if the first expression is less than or equal to the second.
     LessThanOrEqualTo :: (Ord a, CanBeDFValue a) => Expr cols a -> Expr cols a -> Expr cols Bool
 
-    -- Boolean operations
+    -- | Performs a logical AND on two boolean expressions.
     And :: Expr cols Bool -> Expr cols Bool -> Expr cols Bool
+    -- | Performs a logical OR on two boolean expressions.
     Or :: Expr cols Bool -> Expr cols Bool -> Expr cols Bool
+    -- | Applies a function to the result of an expression.
     ApplyFn :: (CanBeDFValue a, CanBeDFValue b) => (a -> b) -> Expr cols a -> Expr cols b
 
--- | Evaluates a type-safe expression on a given row.
+-- | Evaluates a type-safe expression on a given `Row`.
+-- Returns `Nothing` if any part of the expression evaluation fails (e.g., a column is missing, a value is `NA`).
+--
+-- >>> :set -XDataKinds
+-- >>> let row = Map.fromList [("age", IntValue 30), ("salary", DoubleValue 50000.0)]
+-- >>> let expr = col @"age" >. lit 25
+-- >>> evaluateExpr expr row
+-- Just True
 evaluateExpr :: Expr cols a -> Row -> Maybe a
 evaluateExpr (Lit val) _ = Just val
 evaluateExpr (Col p) row = fromDFValue (Map.findWithDefault NA (T.pack (symbolVal p)) row)
@@ -76,44 +100,54 @@ evaluateExpr (And e1 e2) row = liftA2 (&&) (evaluateExpr e1 row) (evaluateExpr e
 evaluateExpr (Or e1 e2) row = liftA2 (||) (evaluateExpr e1 row) (evaluateExpr e2 row)
 evaluateExpr (ApplyFn f expr) row = f <$> evaluateExpr expr row
 
--- | Smart constructor for a literal value.
+-- | Smart constructor for a literal value expression.
 lit :: CanBeDFValue a => a -> Expr cols a
 lit = Lit
 
--- | Smart constructor for a column reference.
+-- | Smart constructor for a column reference expression.
 col :: (HasColumn c cols, CanBeDFValue a, TypeOf c cols ~ a) => Proxy c -> Expr cols a
 col = Col
 
--- | Infix operators for expressions.
+-- | Infix operator for adding two numeric expressions.
 (+.+) :: (Num a, CanBeDFValue a) => Expr cols a -> Expr cols a -> Expr cols a
 (+.+) = Add
 
+-- | Infix operator for subtracting two numeric expressions.
 (-.-) :: (Num a, CanBeDFValue a) => Expr cols a -> Expr cols a -> Expr cols a
 (-.-) = Subtract
 
+-- | Infix operator for multiplying two numeric expressions.
 (*.*) :: (Num a, CanBeDFValue a) => Expr cols a -> Expr cols a -> Expr cols a
 (*.*) = Multiply
 
+-- | Infix operator for dividing two numeric expressions.
 (/.!) :: (Fractional a, CanBeDFValue a) => Expr cols a -> Expr cols a -> Expr cols a
 (/.!) = Divide
 
+-- | Infix operator for checking equality between two expressions.
 (===.) :: (Eq a, CanBeDFValue a) => Expr cols a -> Expr cols a -> Expr cols Bool
 (===.) = EqualTo
 
+-- | Infix operator for checking if the first expression is greater than the second.
 (>.) :: (Ord a, CanBeDFValue a) => Expr cols a -> Expr cols a -> Expr cols Bool
 (>.) = GreaterThan
 
+-- | Infix operator for checking if the first expression is less than the second.
 (<.) :: (Ord a, CanBeDFValue a) => Expr cols a -> Expr cols a -> Expr cols Bool
 (<.) = LessThan
 
-(>=.) :: (Ord a, CanBeDFValue a) => Expr cols a -> Expr cols a -> Expr cols Bool
+-- | Infix operator for checking if the first expression is greater than or equal to the second.
+(>=.) :: (Ord a, CanBeDFAValue a) => Expr cols a -> Expr cols a -> Expr cols Bool
 (>=.) = GreaterThanOrEqualTo
 
+-- | Infix operator for checking if the first expression is less than or equal to the second.
 (<=.) :: (Ord a, CanBeDFValue a) => Expr cols a -> Expr cols a -> Expr cols Bool
 (<=.) = LessThanOrEqualTo
 
+-- | Infix operator for logical AND.
 (&&.) :: Expr cols Bool -> Expr cols Bool -> Expr cols Bool
 (&&.) = And
 
+-- | Infix operator for logical OR.
 (||.) :: Expr cols Bool -> Expr cols Bool -> Expr cols Bool
 (||.) = Or

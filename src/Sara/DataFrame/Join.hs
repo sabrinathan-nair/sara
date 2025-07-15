@@ -9,26 +9,31 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE UndecidableInstances #-}
 
+-- | This module provides functions for joining `DataFrame`s.
 module Sara.DataFrame.Join (
     joinDF
 ) where
 
-
-
 import qualified Data.Text as T
 import qualified Data.Map.Strict as Map
-
-
 import Data.Maybe (fromMaybe)
-import Sara.DataFrame.Types (DFValue(..), Row, DataFrame(..), JoinType(..), toRows, fromRows, KnownColumns, HasColumns, JoinCols, columnNames, MapSymbols, TypeLevelRow, toTypeLevelRow, CanBeDFValue, TypeOf, fromDFValue, toDFValue, MapTypes, All, HasColumn, columnTypes, ContainsColumn, ResolveJoinValue, ResolveJoinValueType, resolveJoinValueImpl)
+import Sara.DataFrame.Types
 import Control.Applicative ((<|>))
 import GHC.TypeLits
 import Data.Proxy (Proxy(..))
 import Data.Kind (Type)
 
-
-
--- | Joins two DataFrames based on common columns and a specified join type.
+-- | Joins two `DataFrame`s based on a list of common columns and a `JoinType`.
+-- The schema of the resulting `DataFrame` is inferred from the input schemas and the join type.
+--
+-- The `onCols` parameter specifies the columns to join on. These columns must exist in both `DataFrame`s.
+--
+-- The `joinType` parameter determines how to handle non-matching rows:
+--
+-- *   `InnerJoin`: Only rows with matching keys in both `DataFrame`s are kept.
+-- *   `LeftJoin`: All rows from the left `DataFrame` are kept. If there is no match in the right `DataFrame`, the corresponding columns will be `NA`.
+-- *   `RightJoin`: All rows from the right `DataFrame` are kept. If there is no match in the left `DataFrame`, the corresponding columns will be `NA`.
+-- *   `OuterJoin`: All rows from both `DataFrame`s are kept. Where there is no match, the corresponding columns will be `NA`.
 joinDF :: forall (onCols :: [(Symbol, Type)]) (cols1 :: [(Symbol, Type)]) (cols2 :: [(Symbol, Type)]) (joinType :: JoinType) (colsOut :: [(Symbol, Type)]).
           ( HasColumns (MapSymbols onCols) cols1, HasColumns (MapSymbols onCols) cols2
           , KnownColumns onCols, KnownColumns cols1, KnownColumns cols2

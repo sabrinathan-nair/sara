@@ -2,6 +2,114 @@
 
 This module defines the fundamental data structures and type classes that underpin Sara's type-safe DataFrame operations.
 
+---
+
+### 10. Module Summaries
+
+#### `Sara.DataFrame.Aggregate`
+
+This module provides functions for grouping and aggregating data in a DataFrame.
+It allows for type-safe operations like `groupBy`, `sumAgg`, `meanAgg`, and `countAgg`.
+
+#### `Sara.DataFrame.Concat`
+
+This module provides functions for concatenating DataFrames.
+
+#### `Sara.DataFrame.Expression`
+
+This module defines a type-safe GADT for building and evaluating expressions
+on `DataFrame` rows. It provides a way to construct complex, type-checked
+computations that can be applied to data at runtime.
+
+#### `Sara.DataFrame.Instances`
+
+This module provides `FromField` instances for various types used in `DFValue`.
+These instances are used by the `cassava` library to parse CSV data.
+
+#### `Sara.DataFrame.Internal`
+
+This module provides internal utilities for converting between Haskell records
+and `DataFrame`s. It uses GHC.Generics to automatically derive the necessary
+conversions.
+
+#### `Sara.DataFrame.IO`
+
+This module provides functions for reading from and writing to common
+data formats like CSV and JSON. It ensures that the data conforms to the
+type-level schema of the `DataFrame`.
+
+#### `Sara.DataFrame.Join`
+
+This module provides functions for joining `DataFrame`s.
+
+#### `Sara.DataFrame.Missing`
+
+This module provides functions for handling missing data in a `DataFrame`.
+Missing data is represented by the `NA` constructor of the `DFValue` type.
+
+#### `Sara.DataFrame.Predicate`
+
+This module defines a type-safe GADT for building predicates to filter `DataFrame` rows.
+It leverages the `Expr` GADT to create complex, type-checked conditions.
+
+#### `Sara.DataFrame.SQL`
+
+This module provides functions for reading data from a SQL database into a `DataFrame`.
+It currently supports SQLite.
+
+#### `Sara.DataFrame.Static`
+
+This module provides Template Haskell functions for statically inferring schemas
+from CSV files. This allows for creating `DataFrame`s with compile-time guarantees
+about column names and types.
+
+#### `Sara.DataFrame.Statistics`
+
+This module provides a collection of statistical functions that can be applied to `DataFrame` columns.
+These functions operate on `V.Vector DFValue` and return a single `DFValue` as the result.
+
+#### `Sara.DataFrame.Strings`
+
+This module provides functions for string manipulation on `DataFrame` columns.
+These functions operate on columns of type `TextValue` and handle non-text values gracefully.
+
+#### `Sara.DataFrame.TimeSeries`
+
+This module provides functions for working with time series data in a `DataFrame`.
+It is currently a placeholder and does not contain any functions.
+
+#### `Sara.DataFrame.Transform`
+
+This module provides functions for transforming `DataFrame`s in a type-safe manner.
+These transformations include selecting, adding, and modifying columns, as well as
+reshaping the `DataFrame` itself.
+
+#### `Sara.DataFrame.Wrangling`
+
+This module provides a collection of functions for data wrangling and manipulation
+of `DataFrame`s. These include filtering, sorting, dropping, and renaming columns and rows.
+
+#### `Sara.REPL`
+
+This module provides a placeholder for a Read-Eval-Print Loop (REPL)
+for interacting with `DataFrame`s.
+
+#### `app/Main.hs`
+
+This is the main module for the Sara application.
+It demonstrates how to use the `tableTypes` Template Haskell function
+to generate a record type from a CSV file and then read the CSV file
+into a `Vector` of those records.
+
+#### `app/Tutorial.hs`
+
+This module provides a tutorial on how to use the Sara library.
+It demonstrates how to infer schemas from CSV files, load data into
+`DataFrame`s, and perform various operations like grouping, aggregation,
+and mutation.
+
+---
+
 #### `DFValue`
 
 ```haskell

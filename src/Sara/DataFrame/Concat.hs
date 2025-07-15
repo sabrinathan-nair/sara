@@ -4,6 +4,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE AllowAmbiguousTypes #-}
 
+-- | This module provides functions for concatenating DataFrames.
 module Sara.DataFrame.Concat (
     concatDF
 ) where
@@ -14,16 +15,25 @@ import qualified Data.Map.Strict as Map
 import qualified Data.Vector as V
 import Sara.DataFrame.Types (DataFrame(..), Column, Row, DFValue(..), ConcatAxis(..), toRows, KnownColumns)
 
--- | Concatenates a list of DataFrames along a specified axis.
+-- | Concatenates a list of `DataFrame`s along a specified `ConcatAxis`.
 --
--- For row-wise concatenation (ConcatRows):
---   - DataFrames must have the same columns.
---   - Rows are appended.
+-- __ConcatRows__:
 --
--- For column-wise concatenation (ConcatColumns):
---   - DataFrames must have the same number of rows.
---   - Columns are appended.
---   - If column names overlap, later DataFrames' columns will overwrite earlier ones.
+-- *   All `DataFrame`s must have the same columns (schema).
+-- *   The resulting `DataFrame` will contain all rows from the input `DataFrame`s.
+--
+-- __ConcatColumns__:
+--
+-- *   All `DataFrame`s must have the same number of rows.
+-- *   The resulting `DataFrame` will contain all columns from the input `DataFrame`s.
+-- *   If there are overlapping column names, the columns from `DataFrame`s later in the list will overwrite earlier ones.
+--
+-- >>> :set -XDataKinds
+-- >>> let df1 = fromRows @'["name" ::: T.Text, "age" ::: Int] [Map.fromList [("name", TextValue "Alice"), ("age", IntValue 25)]]
+-- >>> let df2 = fromRows @'["name" ::: T.Text, "age" ::: Int] [Map.fromList [("name", TextValue "Bob"), ("age", IntValue 30)]]
+-- >>> let df3 = concatDF ConcatRows [df1, df2]
+-- >>> toRows df3
+-- [fromList [("age",IntValue 25),("name",TextValue "Alice")],fromList [("age",IntValue 30),("name",TextValue "Bob")]]
 concatDF :: KnownColumns cols => ConcatAxis -> [DataFrame cols] -> DataFrame cols
 concatDF _ [] = DataFrame Map.empty
 concatDF ConcatRows dfs =

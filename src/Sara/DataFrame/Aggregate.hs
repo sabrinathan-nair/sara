@@ -12,14 +12,19 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleInstances #-}
 
+-- | This module provides functions for grouping and aggregating data in a DataFrame.
+-- It allows for type-safe operations like `groupBy`, `sumAgg`, `meanAgg`, and `countAgg`.
 module Sara.DataFrame.Aggregate (
+    -- * Types
     GroupedDataFrame,
+    AggOp(..),
+    AggregationResult,
+    -- * Functions
     groupBy,
     sumAgg,
     meanAgg,
     countAgg,
-    AggOp(..),
-    AggregationResult,
+    -- * Typeclasses
     Aggregatable
 ) where
 
@@ -34,16 +39,23 @@ import Data.Proxy (Proxy(..))
 
 import Data.Kind (Type)
 
--- | A DataFrame grouped by certain columns.
--- The outer Map's keys are the unique combinations of values from the grouping columns (represented as a TypeLevelRow),
--- and the values are DataFrames containing the rows belonging to that group.
+-- | A `GroupedDataFrame` is the result of a `groupBy` operation.
+-- It's a map where keys are `TypeLevelRow`s representing the unique values of grouping columns,
+-- and values are `DataFrame`s containing the corresponding rows.
 type GroupedDataFrame (groupCols :: [(Symbol, Type)]) (originalCols :: [(Symbol, Type)]) = Map (TypeLevelRow groupCols) (DataFrame originalCols)
 
+-- | A type family to convert a list of `Symbol`s to a schema (a list of `(Symbol, Type)`).
 type family SymbolsToSchema (syms :: [Symbol]) (originalSchema :: [(Symbol, Type)]) :: [(Symbol, Type)] where
     SymbolsToSchema '[] _ = '[]
     SymbolsToSchema (s ': ss) originalSchema = '(s, TypeOf s originalSchema) ': SymbolsToSchema ss originalSchema
 
--- | Groups a DataFrame by the specified column names.
+-- | Groups a `DataFrame` by a list of columns.
+--
+-- >>> :set -XDataKinds
+-- >>> let df = fromRows @'["name" ::: T.Text, "age" ::: Int] [Map.fromList [("name", TextValue "Alice"), ("age", IntValue 25)], Map.fromList [("name", TextValue "Bob"), ("age", IntValue 30)], Map.fromList [("name", TextValue "Alice"), ("age", IntValue 35)]]
+-- >>> let grouped = groupBy @'["name" ::: T.Text] df
+-- >>> Map.size grouped
+-- 2
 groupBy :: forall (groupCols :: [(Symbol, Type)]) (cols :: [(Symbol, Type)]).
           (HasColumns (MapSymbols groupCols) cols, KnownColumns groupCols)
           => DataFrame cols -> GroupedDataFrame groupCols cols
@@ -66,14 +78,16 @@ groupBy df =
     in
         groupedMap
 
--- | Type family to create a new column name for an aggregation.
+-- | A type family to generate a new column name for an aggregation.
+-- For example, `AggColName "age" "sum"` becomes `"age_sum"`.
 type family AggColName (col :: Symbol) (op :: Symbol) :: Symbol where
     AggColName col op = AppendSymbol (AppendSymbol col "_") op
 
--- | A data type to represent an aggregation operation.
+-- | Represents the type of aggregation to perform.
 data AggOp = Sum | Mean | Count
 
--- | A type family to determine the result type of an aggregation.
+-- | A type family that determines the result type of an aggregation operation.
+-- For example, the `Sum` of an `Int` column is a `Double`.
 type family AggregationResult (op :: AggOp) (a :: Type) :: Type where
     AggregationResult 'Sum Int = Double
     AggregationResult 'Sum Double = Double
@@ -81,8 +95,10 @@ type family AggregationResult (op :: AggOp) (a :: Type) :: Type where
     AggregationResult 'Mean Double = Double
     AggregationResult 'Count a = Int
 
--- | A type class for aggregatable types.
+-- | A typeclass for types that can be aggregated.
+-- It connects an `AggOp` with the underlying data type and the aggregation logic.
 class (CanBeDFValue a, CanBeDFValue (AggregationResult op a)) => Aggregatable (op :: AggOp) (a :: Type) where
+    -- | The core aggregation function.
     aggregateOp :: Proxy op -> V.Vector a -> AggregationResult op a
 
 instance Aggregatable 'Sum Int where
@@ -100,7 +116,9 @@ instance Aggregatable 'Mean Double where
 instance CanBeDFValue a => Aggregatable 'Count a where
     aggregateOp _ = V.length
 
--- | Aggregates a GroupedDataFrame by summing a specified column.
+-- | Aggregates a `GroupedDataFrame` by summing the values in a specified column.
+-- The resulting `DataFrame` contains the grouping columns and a new column with the aggregated values.
+-- The new column is named by appending "_sum" to the original column name.
 sumAgg :: forall (aggCol :: Symbol) (groupCols :: [(Symbol, Type)]) (cols :: [(Symbol,Type)]) a newAggCol outCols.
           ( HasColumn aggCol cols
           , KnownColumns groupCols
@@ -133,7 +151,9 @@ sumAgg groupedDf =
     in
         fromRows newRows
 
--- | Aggregates a GroupedDataFrame by calculating the mean of a specified column.
+-- | Aggregates a `GroupedDataFrame` by calculating the mean of the values in a specified column.
+-- The resulting `DataFrame` contains the grouping columns and a new column with the aggregated values.
+-- The new column is named by appending "_mean" to the original column name.
 meanAgg :: forall (aggCol :: Symbol) (groupCols :: [(Symbol, Type)]) (cols :: [(Symbol,Type)]) a newAggCol outCols.
            ( HasColumn aggCol cols
            , KnownColumns groupCols
@@ -166,7 +186,9 @@ meanAgg groupedDf =
     in
         fromRows newRows
 
--- | Aggregates a GroupedDataFrame by counting non-NA values in a specified column.
+-- | Aggregates a `GroupedDataFrame` by counting the non-NA values in a specified column.
+-- The resulting `DataFrame` contains the grouping columns and a new column with the aggregated values.
+-- The new column is named by appending "_count" to the original column name.
 countAgg :: forall (aggCol :: Symbol) (groupCols :: [(Symbol, Type)]) (cols :: [(Symbol,Type)]) a newAggCol outCols.
             ( HasColumn aggCol cols
             , KnownColumns groupCols

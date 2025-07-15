@@ -9,6 +9,9 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE TypeOperators #-}
 
+-- | This module provides internal utilities for converting between Haskell records
+-- and `DataFrame`s. It uses GHC.Generics to automatically derive the necessary
+-- conversions.
 module Sara.DataFrame.Internal where
 
 import Data.Csv (FromNamedRecord)
@@ -20,17 +23,26 @@ import GHC.TypeLits (Symbol)
 import Data.Kind (Type)
 import GHC.Generics
 
+-- | A typeclass for records that can be converted to a `DataFrame`.
+-- It uses `DefaultSignatures` to provide a default implementation for any
+-- type that has a `Generic` instance.
 class KnownColumns (Schema a) => ToDataFrameRecord a where
+  -- | Converts a `Vector` of records into a `DataFrame`.
   toDataFrame :: V.Vector a -> DataFrame (Schema a)
   default toDataFrame :: (Generic a, GToFields (Rep a)) => V.Vector a -> DataFrame (Schema a)
   toDataFrame vec = DataFrame $ Map.fromList $ zip (columnNames (Proxy :: Proxy (Schema a))) (map V.fromList (transpose (map (gtoFields . from) (V.toList vec))))
 
 instance (Generic a, GToFields (Rep a), FromNamedRecord a, KnownColumns (Schema a)) => ToDataFrameRecord a
 
+-- | A typeclass that associates a record type with its `DataFrame` schema.
 class HasSchema a where
+  -- | The schema of the record, represented as a type-level list of `(Symbol, Type)`.
   type Schema a :: [(Symbol, Type)]
 
+-- | A generic typeclass for converting a generic representation of a record
+-- into a list of `DFValue`s.
 class GToFields f where
+  -- | Converts a generic representation of a record into a list of `DFValue`s.
   gtoFields :: f a -> [DFValue]
 
 instance GToFields U1 where
@@ -45,6 +57,8 @@ instance (GToFields a) => GToFields (M1 i c a) where
 instance (CanBeDFValue a) => GToFields (K1 i a) where
   gtoFields (K1 a) = [toDFValue a]
 
+-- | Transposes a list of lists.
+-- Assumes that all inner lists have the same length.
 transpose :: [[a]] -> [[a]]
 transpose ([]:_) = []
 transpose x = (map head x) : transpose (map tail x)

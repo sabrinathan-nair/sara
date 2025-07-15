@@ -6,6 +6,8 @@
 {-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE TypeApplications #-}
 
+-- | This module provides functions for reading data from a SQL database into a `DataFrame`.
+-- It currently supports SQLite.
 module Sara.DataFrame.SQL (
     readSQL
 ) where
@@ -21,7 +23,7 @@ import Data.Maybe (fromMaybe)
 import Sara.DataFrame.Types
 import Sara.DataFrame.IO (validateDFValue)
 
--- Helper to convert SQLData to DFValue
+-- | Converts a `SQLData` value to a `DFValue`, validating against an expected `TypeRep`.
 sqlDataToDFValue :: TypeRep -> SQLData -> DFValue
 sqlDataToDFValue expectedType sqlData =
     case sqlData of
@@ -43,6 +45,10 @@ sqlDataToDFValue expectedType sqlData =
         SQLBlob _ -> error "Unsupported SQL type: BLOB"
         SQLNull -> NA
 
+-- | Reads data from a SQLite database into a `DataFrame`.
+-- The `cols` type parameter specifies the schema of the resulting `DataFrame`.
+-- The function validates that the number of columns in the query result matches the schema.
+-- It also validates that the types of the values in the query result match the schema.
 readSQL :: forall cols. KnownColumns cols => Proxy cols -> FilePath -> Query -> IO (DataFrame cols)
 readSQL p dbPath sqlQuery = do
     conn <- open dbPath
