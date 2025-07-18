@@ -1,438 +1,222 @@
-### 9. Core Data Structures and Type Classes (`Sara.DataFrame.Types`)
+# Sara's Secret Handbook: How Sara Works!
 
-This module defines the fundamental data structures and type classes that underpin Sara's type-safe DataFrame operations.
+Welcome to Sara's secret handbook! Here, we'll learn about all the special parts that make Sara a super smart helper for your data. Think of your data like a big box of toys, and Sara helps you keep them organized and play with them nicely.
 
----
+## 1. The Main Building Blocks (Sara.DataFrame.Types)
 
-### 10. Module Summaries
+This part of Sara's brain knows all about the basic shapes and sizes of your toys. It helps Sara understand what each toy is and how they fit together.
 
-#### `Sara.DataFrame.Aggregate`
+## 2. Sara's Helper Friends (Module Summaries)
 
-This module provides functions for grouping and aggregating data in a DataFrame.
-It allows for type-safe operations like `groupBy`, `sumAgg`, `meanAgg`, and `countAgg`.
+Sara has many helper friends, and each one is good at a special job. Let's meet them!
 
-#### `Sara.DataFrame.Concat`
+### `Sara.DataFrame.Aggregate`: The Counting and Grouping Friend
 
-This module provides functions for concatenating DataFrames.
+This friend helps you count your toys and put them into groups. Like, "How many red cars?" or "How many blue blocks?"
 
-#### `Sara.DataFrame.Expression`
+### `Sara.DataFrame.Concat`: The Sticking-Together Friend
 
-This module defines a type-safe GADT for building and evaluating expressions
-on `DataFrame` rows. It provides a way to construct complex, type-checked
-computations that can be applied to data at runtime.
+This friend helps you stick different toy boxes (DataFrames) together, either side-by-side or one on top of the other.
 
-#### `Sara.DataFrame.Instances`
+### `Sara.DataFrame.Expression`: The Smart Calculator Friend
 
-This module provides `FromField` instances for various types used in `DFValue`.
-These instances are used by the `cassava` library to parse CSV data.
+This friend helps Sara do math and make smart decisions about your toys. Like, "Is this car bigger than that truck?" or "What happens if I add two blocks together?"
 
-#### `Sara.DataFrame.Internal`
+### `Sara.DataFrame.Instances`: The Rule-Maker Friend
 
-This module provides internal utilities for converting between Haskell records
-and `DataFrame`s. It uses GHC.Generics to automatically derive the necessary
-conversions.
+This friend helps Sara understand the special rules for different kinds of toys, especially when reading them from lists.
 
-#### `Sara.DataFrame.IO`
+### `Sara.DataFrame.Internal`: The Secret Brain Friend
 
-This module provides functions for reading from and writing to common
-data formats like CSV and JSON. It ensures that the data conforms to the
-type-level schema of the `DataFrame`.
+This friend works deep inside Sara's brain, helping it understand how your toys are stored and how to move them around.
 
-#### `Sara.DataFrame.Join`
+### `Sara.DataFrame.IO`: The List-Reading and Writing Friend
 
-This module provides functions for joining `DataFrame`s.
+This friend helps Sara read your toy lists from special papers (like CSV and JSON files) and write them back down when you're done playing.
 
-#### `Sara.DataFrame.Missing`
+### `Sara.DataFrame.Join`: The Matchmaker Friend
 
-This module provides functions for handling missing data in a `DataFrame`.
-Missing data is represented by the `NA` constructor of the `DFValue` type.
+This friend helps Sara find matching toys in different boxes and put them together. Like, finding all the red cars that also have big wheels.
 
-#### `Sara.DataFrame.Predicate`
+### `Sara.DataFrame.Missing`: The Missing Toy Friend
 
-This module defines a type-safe GADT for building predicates to filter `DataFrame` rows.
-It leverages the `Expr` GADT to create complex, type-checked conditions.
+This friend helps Sara deal with toys that are missing from your box. It knows how to mark them as 'NA' (Not Available) and sometimes even fill them in.
 
-#### `Sara.DataFrame.SQL`
+### `Sara.DataFrame.Predicate`: The Rule-Checker Friend
 
-This module provides functions for reading data from a SQL database into a `DataFrame`.
-It currently supports SQLite.
+This friend helps Sara check if your toys follow certain rules. Like, "Is this toy red?" or "Is this toy bigger than that one?"
 
-#### `Sara.DataFrame.Static`
+### `Sara.DataFrame.SQL`: The Treasure Map Friend
 
-This module provides Template Haskell functions for statically inferring schemas
-from CSV files. This allows for creating `DataFrame`s with compile-time guarantees
-about column names and types.
+This friend helps Sara find toys hidden in big treasure chests (SQL databases).
 
-#### `Sara.DataFrame.Statistics`
+### `Sara.DataFrame.Static`: The Fortune Teller Friend
 
-This module provides a collection of statistical functions that can be applied to `DataFrame` columns.
-These functions operate on `V.Vector DFValue` and return a single `DFValue` as the result.
+This friend helps Sara guess what kind of toys are on your list *before* you even start playing, so it can make sure everything is just right.
 
-#### `Sara.DataFrame.Strings`
+### `Sara.DataFrame.Statistics`: The Number Cruncher Friend
 
-This module provides functions for string manipulation on `DataFrame` columns.
-These functions operate on columns of type `TextValue` and handle non-text values gracefully.
+This friend loves to count and measure things about your toys, like how many, how big, or how small.
 
-#### `Sara.DataFrame.TimeSeries`
+### `Sara.DataFrame.Strings`: The Wordy Friend
 
-This module provides functions for working with time series data in a `DataFrame`.
-It is currently a placeholder and does not contain any functions.
+This friend helps Sara play with the names and words on your toys, like making them all capital letters or finding a special word.
 
-#### `Sara.DataFrame.Transform`
+### `Sara.DataFrame.TimeSeries`: The Time Traveler Friend
 
-This module provides functions for transforming `DataFrame`s in a type-safe manner.
-These transformations include selecting, adding, and modifying columns, as well as
-reshaping the `DataFrame` itself.
+This friend helps Sara understand toys that change over time, like how many cars you have each day.
 
-#### `Sara.DataFrame.Wrangling`
+### `Sara.DataFrame.Transform`: The Toy Changer Friend
 
-This module provides a collection of functions for data wrangling and manipulation
-of `DataFrame`s. These include filtering, sorting, dropping, and renaming columns and rows.
+This friend helps Sara change your toys in smart ways, like making a toy bigger or giving it a new color.
 
-#### `Sara.REPL`
+### `Sara.DataFrame.Wrangling`: The Toy Organizer Friend
 
-This module provides a placeholder for a Read-Eval-Print Loop (REPL)
-for interacting with `DataFrame`s.
+This friend helps Sara sort, clean, and organize your toys, making sure everything is in its right place.
 
-#### `app/Main.hs`
+### `Sara.REPL`: The Chatty Friend
 
-This is the main module for the Sara application.
-It demonstrates how to use the `tableTypes` Template Haskell function
-to generate a record type from a CSV file and then read the CSV file
-into a `Vector` of those records.
+This friend lets you talk to Sara and tell it what to do with your toys, one step at a time.
 
-#### `app/Tutorial.hs`
+### `app/Main.hs`: The Boss Friend
 
-This module provides a tutorial on how to use the Sara library.
-It demonstrates how to infer schemas from CSV files, load data into
-`DataFrame`s, and perform various operations like grouping, aggregation,
-and mutation.
+This is the main friend who tells Sara what big jobs to do when you start playing.
+
+### `app/Tutorial.hs`: The Learning Friend
+
+This friend shows you how to play with Sara and all its cool tricks, step by step.
 
 ---
 
-#### `DFValue`
+## 3. Sara's Toy Pieces (DFValue)
 
-```haskell
-data DFValue = IntValue Int
-           | DoubleValue Double
-           | TextValue T.Text
-           | DateValue Day
-           | TimestampValue UTCTime
-           | BoolValue Bool
-           | NA -- ^ Represents a missing value.
-           deriving (Show, Eq, Ord, Generic, NFData)
-```
+Imagine each toy has a little tag that tells you what it is. That's what `DFValue` is! It's a special tag that Sara puts on every piece of your data (like a number, a word, a date, or even if something is missing).
 
-A type to represent a single value within a DataFrame cell. It's an algebraic data type that can hold various primitive Haskell types, as well as a special `NA` constructor for missing values.
+## 4. A Stack of Toys (Column)
 
-**Constructors:**
-*   `IntValue Int`: An integer value.
-*   `DoubleValue Double`: A double-precision floating-point value.
-*   `TextValue T.Text`: A text string.
-*   `DateValue Day`: A date value.
-*   `TimestampValue UTCTime`: A date and time value.
-*   `BoolValue Bool`: A boolean value.
-*   `NA`: Represents a missing or null value.
+Imagine you have a stack of the same kind of toys, like a stack of red cars. That's what a `Column` is! It's a neat stack of `DFValue`s (your toy tags) that are all the same kind.
 
-**Considerations:**
-*   `DFValue` is the runtime representation of data in a DataFrame. Type safety is achieved by ensuring that operations on `DFValue`s are consistent with the type-level schema.
+## 5. The Big Toy Box (DataFrame)
 
-#### `Column`
+This is the main toy box where all your toys are kept! It's like a big table with different columns for different kinds of toys (like 'color', 'size', 'shape'). Sara knows exactly what kind of toys are in each column, so it never gets confused.
 
-```haskell
-type Column = Vector DFValue
-```
+## 6. A Single Row of Toys (Row)
 
-A type alias for a column in a DataFrame, represented as a `Vector` of `DFValue`s. `Vector` provides efficient storage and operations for homogeneous collections.
+Imagine one line of toys in your big toy box. That's a `Row`! It's like a list of all the toy tags for one line of toys.
 
-#### `DataFrame`
+## 7. Making Rows and Columns (toRows and fromRows)
 
-```haskell
-newtype DataFrame (cols :: [(Symbol, Type)]) = DataFrame (Map T.Text Column)
-```
+-   **`toRows`:** This is like taking all the toys out of the big toy box and lining them up in rows.
+-   **`fromRows`:** This is like putting all your toy rows back into the big toy box.
 
-The core DataFrame data structure. It's a `newtype` wrapper around a `Map` from column names (`T.Text`) to `Column`s. The `cols` type parameter is a type-level list that encodes the DataFrame's schema (column names and their types) at compile time.
+## 8. How to Line Up Your Toys (SortOrder)
 
-**Parameters:**
-*   `cols`: A type-level list of `(Symbol, Type)` tuples representing the DataFrame's schema.
+When you line up your toys, you can do it in two ways:
 
-**Considerations:**
-*   The `newtype` wrapper provides strong type safety by preventing direct manipulation of the underlying `Map`, ensuring that all operations go through type-checked functions.
+-   **`Ascending`:** Smallest to biggest, like counting 1, 2, 3...
+-   **`Descending`:** Biggest to smallest, like counting 3, 2, 1...
 
-#### `Row`
+## 9. How to Stack Toy Boxes (ConcatAxis)
 
-```haskell
-type Row = Map T.Text DFValue
-```
+When you have many toy boxes, you can stack them:
 
-A type alias for a row in a DataFrame, represented as a `Map` from column names (`T.Text`) to `DFValue`s.
+-   **`ConcatRows`:** Put one box on top of another.
+-   **`ConcatColumns`:** Put boxes next to each other.
 
-#### `toRows`
+## 10. How to Join Toy Boxes (JoinType)
 
-```haskell
-toRows :: DataFrame cols -> [Row]
-```
+When you have two toy boxes and want to find toys that match, Sara can join them in different ways:
 
-Converts a `DataFrame` into a list of `Row`s.
+-   **`InnerJoin`:** Only keep toys that are in *both* boxes.
+-   **`LeftJoin`:** Keep all toys from the *first* box, and only matching ones from the second.
+-   **`RightJoin`:** Keep all toys from the *second* box, and only matching ones from the first.
+-   **`OuterJoin`:** Keep *all* toys from *both* boxes, even if they don't have a match.
 
-**Parameters:**
-*   `DataFrame cols`: The input DataFrame.
+## 11. How to Sort Your Toys (SortCriterion)
 
-**Returns:**
-*   `[Row]`: A list of `Row`s, where each `Row` is a `Map` from column names to `DFValue`s.
+This is a special rule that tells Sara how to sort your toys. You tell it which toy (column) to sort by and if you want it from smallest to biggest (`Ascending`) or biggest to smallest (`Descending`).
 
-#### `fromRows`
+## 12. A Toy That Can Be Sorted (SortableColumn)
 
-```haskell
-fromRows :: KnownColumns cols => [Row] -> DataFrame cols
-```
+This is just a fancy way of saying a toy (column) that Sara knows how to sort.
 
-Creates a `DataFrame` from a list of `Row`s. The `KnownColumns` constraint ensures that the schema of the resulting DataFrame is known at compile time.
+## 13. Knowing All Your Toys (KnownColumns)
 
-**Parameters:**
-*   `[Row]`: A list of `Row`s.
+This is how Sara knows all the names and types of toys in your big toy box. It helps Sara make sure everything is correct.
 
-**Returns:**
-*   `DataFrame cols`: A new DataFrame constructed from the input rows.
+## 14. Can This Be a Toy Piece? (CanBeDFValue)
 
-#### `SortOrder`
+This is a special rule that tells Sara if something can be a `DFValue` (a toy tag). It makes sure only the right kinds of things can be put into your toy box.
 
-```haskell
-data SortOrder = Ascending | Descending
-    deriving (Show, Eq)
-```
+## 15. Adding Toy Lists Together (Append)
 
-Specifies the order in which a column should be sorted.
+This is like taking two lists of toys and sticking them together to make one long list.
 
-**Constructors:**
-*   `Ascending`: Sort in ascending order.
-*   `Descending`: Sort in descending order.
+## 16. Taking Toys Out of a List (Remove)
 
-#### `ConcatAxis`
+This is like taking a specific toy out of your list of toys.
 
-```haskell
-data ConcatAxis = ConcatRows | ConcatColumns
-    deriving (Show, Eq)
-```
+## 17. Getting Rid of Duplicate Toys (Nub)
 
-Specifies the axis along which DataFrames should be concatenated.
+If you have the same toy listed many times, this is like making sure it's only listed once.
 
-**Constructors:**
-*   `ConcatRows`: Concatenate DataFrames row-wise.
-*   `ConcatColumns`: Concatenate DataFrames column-wise.
+## 18. Does This Toy Exist? (HasColumn)
 
-#### `JoinType`
+This is how Sara checks if a toy (column) is really in your big toy box. If it's not there, Sara will tell you right away!
 
-```haskell
-data JoinType = InnerJoin | LeftJoin | RightJoin | OuterJoin
-    deriving (Show, Eq)
-```
+## 19. Do All These Toys Exist? (HasColumns)
 
-Specifies the type of join to perform when merging DataFrames.
+This is like checking if a whole list of toys are all in your big toy box.
 
-**Constructors:**
-*   `InnerJoin`: Returns only the rows that have matching keys in both DataFrames.
-*   `LeftJoin`: Returns all rows from the left DataFrame, and the matched rows from the right DataFrame.
-*   `RightJoin`: Returns all rows from the right DataFrame, and the matched rows from the left DataFrame.
-*   `OuterJoin`: Returns all rows when there is a match in one of the DataFrames.
+## 20. What Will the New Toy Box Look Like? (JoinCols)
 
-#### `SortCriterion`
+When you join two toy boxes, this helps Sara figure out what the new, combined toy box will look like.
 
-```haskell
-data SortCriterion (cols :: [(Symbol, Type)]) where
-    SortCriterion :: (KnownSymbol col, HasColumn col cols, Ord (TypeOf col cols), CanBeDFValue (TypeOf col cols)) => Proxy col -> SortOrder -> SortCriterion cols
-```
+## 21. What Kind of Toy Is This? (TypeOf)
 
-A type-safe criterion for sorting a DataFrame. It specifies a column to sort by and the sort order.
+This is how Sara knows exactly what kind of toy (like a car, a block, or a doll) is in a specific column.
 
-**Parameters:**
-*   `col`: A type-level `Symbol` representing the column name.
-*   `cols`: The schema of the DataFrame being sorted.
-*   `Ord (TypeOf col cols)`: A constraint ensuring that the type of the column has an `Ord` instance, meaning it can be ordered.
-*   `CanBeDFValue (TypeOf col cols)`: A constraint ensuring that the type of the column can be converted to/from `DFValue`.
-*   `Proxy col`: A `Proxy` carrying the type-level column name.
-*   `SortOrder`: The desired sort order (`Ascending` or `Descending`).
+## 22. Just the Toy Names (MapSymbols)
 
-#### `SortableColumn`
+This is like getting a list of just the names of your toys, without knowing what kind they are.
 
-```haskell
-type SortableColumn (col :: Symbol) (cols :: [(Symbol, Type)]) = (KnownSymbol col, HasColumn col cols)
-```
+## 23. Changing a Toy's Type (UpdateColumn)
 
-A type synonym for a column that can be sorted. It ensures the column exists and its name is known at compile time.
+If you change a toy from a 'red car' to a 'blue car', this helps Sara update its type in the toy box.
 
-#### `KnownColumns`
+## 24. A Row with Smart Labels (TypeLevelRow)
 
-```haskell
-class KnownColumns (cols :: [(Symbol, Type)]) where
-    columnNames :: Proxy cols -> [T.Text]
-    columnTypes :: Proxy cols -> [TypeRep]
-```
+This is a special kind of row where each toy piece has a super smart label that Sara understands very well.
 
-A type class to extract runtime information (column names and types) from a type-level list of `(Symbol, Type)` tuples. This bridges the gap between compile-time schema and runtime operations.
+## 25. Making Smart Labels from Regular Ones (toTypeLevelRow)
 
-#### `CanBeDFValue`
+This is how Sara takes a regular toy row and gives each toy piece a super smart label.
 
-```haskell
-class CanBeDFValue a where
-    toDFValue :: a -> DFValue
-    fromDFValue :: DFValue -> Maybe a
-    fromDFValueUnsafe :: DFValue -> a
-    default fromDFValueUnsafe :: DFValue -> a
-    fromDFValueUnsafe dfValue = case fromDFValue dfValue of
-        Just x -> x
-        Nothing -> error "fromDFValueUnsafe: Type mismatch or NA value"
-```
+## 26. Making Regular Labels from Smart Ones (fromTypeLevelRow)
 
-A type class for values that can be safely converted to and from `DFValue`. This ensures that only supported types can be stored in a DataFrame.
+This is how Sara takes a toy row with super smart labels and turns them back into regular ones.
 
-**Methods:**
-*   `toDFValue :: a -> DFValue`: Converts a value of type `a` to a `DFValue`.
-*   `fromDFValue :: DFValue -> Maybe a`: Safely converts a `DFValue` to a `Maybe a`. Returns `Nothing` if the `DFValue` is `NA` or a type mismatch occurs.
-*   `fromDFValueUnsafe :: DFValue -> a`: Unsafely converts a `DFValue` to type `a`. **Use with caution**, as it will throw a runtime error if the conversion fails.
+## 27. Is This Toy Missing? (isNA)
 
-#### `Append`
+This is how Sara checks if a toy piece is missing from your box.
 
-```haskell
-type family Append (xs :: [k]) (ys :: [k]) :: [k]
-```
+## 28. Just the Toy Types (MapTypes)
 
-A type family that appends two type-level lists. Used for combining schemas.
+This is like getting a list of just the types of your toys (like 'car', 'block', 'doll'), without knowing their names.
 
-#### `Remove`
+## 29. All These Toys Have This Rule (All)
 
-```haskell
-type family Remove (x :: k) (ys :: [k]) :: [k]
-```
+This is a special rule that says "all these toys must follow this rule."
 
-A type family that removes an element from a type-level list. Used for schema manipulation.
+## 30. Is This Toy in the Box? (ContainsColumn)
 
-#### `Nub`
+This is another way Sara checks if a toy (column) is in your big toy box.
 
-```haskell
-type family Nub (xs :: [k]) :: [k]
-```
+## 31. What Kind of Toy Will It Be After Joining? (ResolveJoinValue)
 
-A type family that removes duplicates from a type-level list. Used for schema manipulation.
+When you join two toy boxes, this helps Sara figure out what kind of toy a piece will become in the new, combined box.
 
-#### `HasColumn`
+## 32. What Kind of Toy Will the New Column Be After Joining? (ResolveJoinValueType)
 
-```haskell
-type HasColumn (col :: Symbol) (cols :: [(Symbol, Type)]) = (KnownSymbol col, CheckHasColumn col cols)
-```
-
-A constraint synonym that checks if a column exists in a DataFrame's schema at compile time. If the column is not found, it produces a custom `TypeError` message.
-
-#### `HasColumns`
-
-```haskell
-type HasColumns (subset :: [Symbol]) (superset :: [(Symbol, Type)]) :: Constraint
-```
-
-A constraint that ensures a list of columns (`subset`) exists within another list of columns (`superset`) at compile time.
-
-#### `JoinCols`
-
-```haskell
-type family JoinCols (cols1 :: [(Symbol, Type)]) (cols2 :: [(Symbol, Type)]) (joinType :: JoinType) :: [(Symbol, Type)]
-```
-
-A type family that computes the schema of a DataFrame resulting from a join operation. It infers the new column names and types based on the input schemas and the `JoinType`.
-
-#### `TypeOf`
-
-```haskell
-type family TypeOf (col :: Symbol) (cols :: [(Symbol, Type)]) :: Type
-```
-
-A type family that gets the type of a column given its name and the DataFrame's schema. If the column is not found, it produces a custom `TypeError` message.
-
-#### `MapSymbols`
-
-```haskell
-type family MapSymbols (xs :: [(Symbol, Type)]) :: [Symbol]
-```
-
-A helper type family to extract just the `Symbol`s (column names) from a list of `(Symbol, Type)` tuples.
-
-#### `UpdateColumn`
-
-```haskell
-type family UpdateColumn (colName :: Symbol) (newType :: Type) (cols :: [(Symbol, Type)]) :: [(Symbol, Type)]
-```
-
-A type family that updates the type of a column in a schema. If the column is not found, it produces a custom `TypeError` message.
-
-#### `TypeLevelRow`
-
-```haskell
-newtype TypeLevelRow (cols :: [(Symbol, Type)]) = TypeLevelRow (Map T.Text DFValue)
-    deriving (Show, Eq, Ord)
-```
-
-A type to represent a single row with its schema tracked at the type level. Used internally for grouping operations.
-
-#### `toTypeLevelRow`
-
-```haskell
-toTypeLevelRow :: forall cols. KnownColumns cols => Row -> TypeLevelRow cols
-```
-
-Converts a runtime `Row` (Map `Text` `DFValue`) to a type-level `TypeLevelRow`, ensuring schema conformity.
-
-#### `fromTypeLevelRow`
-
-```haskell
-fromTypeLevelRow :: TypeLevelRow cols -> Row
-```
-
-Converts a type-level `TypeLevelRow` back to a runtime `Row`.
-
-#### `isNA`
-
-```haskell
-isNA :: DFValue -> Bool
-```
-
-Checks if a `DFValue` is `NA`.
-
-#### `MapTypes`
-
-```haskell
-type family MapTypes (xs :: [(Symbol, Type)]) :: [Type]
-```
-
-A type family that extracts just the `Type`s from a list of `(Symbol, Type)` tuples.
-
-#### `All`
-
-```haskell
-type family All (c :: k -> Constraint) (xs :: [k]) :: Constraint
-```
-
-A type family that applies a constraint `c` to all elements `x` in a type-level list `xs`.
-
-#### `ContainsColumn`
-
-```haskell
-type family ContainsColumn (s :: Symbol) (cols :: [(Symbol, Type)]) :: Bool
-```
-
-A type family that checks if a `Symbol` (column name) is present in a DataFrame's schema at the type level.
-
-#### `ResolveJoinValue`
-
-```haskell
-type family ResolveJoinValue (a :: Type) (b :: Type) (joinType :: JoinType) :: Type
-```
-
-A type family that determines the resulting type of a single value when joining two columns based on the `JoinType`.
-
-#### `ResolveJoinValueType`
-
-```haskell
-type family ResolveJoinValueType (a :: Type) (b :: Type) (joinType :: JoinType) :: Type
-```
-
-Similar to `ResolveJoinValue`, but specifically for resolving the type of a column in the joined DataFrame.
+Similar to the last one, but this helps Sara figure out the type of a whole new column after joining toy boxes.
 
