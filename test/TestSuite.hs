@@ -68,6 +68,54 @@ main = hspec $ do
                           _ -> error "Expected IntValue for AgePlusFive"
             val `shouldBe` 35
 
+    describe "Type-Safe joinDF" $ do
+        let createJoinTestDataFrame1 :: IO (DataFrame '[ '("ID", Int), '("Name", T.Text), '("Age", Int)])
+            createJoinTestDataFrame1 = do
+                let rows = [
+                        Map.fromList [("ID", IntValue 1), ("Name", TextValue "Alice"), ("Age", IntValue 30)],
+                        Map.fromList [("ID", IntValue 2), ("Name", TextValue "Bob"), ("Age", IntValue 25)]
+                        ]
+                return $ fromRows @'[ '("ID", Int), '("Name", T.Text), '("Age", Int)] rows
+
+        let createJoinTestDataFrame2 :: IO (DataFrame '[ '("ID", Int), '("City", T.Text), '("Salary", Double)])
+            createJoinTestDataFrame2 = do
+                let rows = [
+                        Map.fromList [("ID", IntValue 1), ("City", TextValue "New York"), ("Salary", DoubleValue 50000.0)],
+                        Map.fromList [("ID", IntValue 3), ("City", TextValue "London"), ("Salary", DoubleValue 70000.0)]
+                        ]
+                return $ fromRows @'[ '("ID", Int), '("City", T.Text), '("Salary", Double)] rows
+
+        it "performs inner join correctly" $ do
+            df1 <- createJoinTestDataFrame1
+            df2 <- createJoinTestDataFrame2
+            let joinedDf = joinDF @'[ '("ID", Int)] df1 df2 InnerJoin
+            let (DataFrame joinedMap) = joinedDf
+            V.length (joinedMap Map.! "ID") `shouldBe` 1
+            let name = case (joinedMap Map.! "Name") V.!? 0 of
+                          Just (TextValue t) -> t
+                          _ -> error "Expected TextValue for Name"
+            name `shouldBe` "Alice"
+            let city = case (joinedMap Map.! "City") V.!? 0 of
+                          Just (TextValue t) -> t
+                          _ -> error "Expected TextValue for City"
+            city `shouldBe` "New York"
+
+    describe "Type-Safe dropColumns" $ do
+        it "drops specified columns from a DataFrame" $ do
+            df <- createTestDataFrame
+            let droppedDf = dropColumns @'["Age"] df
+            let (DataFrame droppedMap) = droppedDf
+            Map.keys droppedMap `shouldNotContain` [T.pack "Age"]
+            Map.keys droppedMap `shouldContain` [T.pack "Name", T.pack "Salary"]
+
+    describe "Type-Safe selectColumns" $ do
+        it "selects specified columns from a DataFrame" $ do
+            df <- createTestDataFrame
+            let selectedDf = selectColumns @'["Name", "Salary"] df
+            let (DataFrame selectedMap) = selectedDf
+            Map.keys selectedMap `shouldContain` [T.pack "Name", T.pack "Salary"]
+            Map.keys selectedMap `shouldNotContain` [T.pack "Age"]
+
     describe "Type-Safe Aggregation" $ do
         let createAggTestDataFrame :: IO (DataFrame '[ '("Category", T.Text), '("Value", Int)])
             createAggTestDataFrame = do

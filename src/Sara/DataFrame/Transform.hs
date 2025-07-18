@@ -33,6 +33,8 @@ import GHC.TypeLits
 import Data.Proxy (Proxy(..))
 import Data.Kind (Type)
 
+import Sara.DataFrame.Apply
+
 -- | A type family to extract the first element of a tuple.
 type family Fst (t :: (k, v)) :: k where
     Fst '(a, b) = a
@@ -69,11 +71,11 @@ type family AddColumn (newCol :: (Symbol, Type)) (cols :: [(Symbol, Type)]) :: [
 addColumn :: forall (newCol :: (Symbol, Type)) (cols :: [(Symbol, Type)]) (newCols :: [(Symbol, Type)]).
             (KnownSymbol (Fst newCol), KnownColumns cols, newCols ~ AddColumn newCol cols, KnownColumns newCols, CanBeDFValue (Snd newCol))
             => Expr cols (Snd newCol) -> DataFrame cols -> DataFrame newCols
-addColumn expr df@(DataFrame dfMap) =
+addColumn expr (DataFrame dfMap) =
     let
         colName = T.pack (symbolVal (Proxy :: Proxy (Fst newCol)))
-        rows = toRows df
-        newColumnValues = V.fromList $ map (\row -> toDFValue (evaluateExpr expr row)) rows
+        numRows = if Map.null dfMap then 0 else V.length (snd . head . Map.toList $ dfMap)
+        newColumnValues = V.fromList [ toDFValue (evaluateExpr expr dfMap idx) | idx <- [0 .. numRows - 1] ]
         updatedDfMap = Map.insert colName newColumnValues dfMap
     in
         DataFrame updatedDfMap
@@ -119,22 +121,16 @@ melt df =
     in
         DataFrame newDfMap
 
+
+
 -- | Applies a function to a specified column in a `DataFrame` in a type-safe way.
 -- The function takes the old column type and returns the new column type.
 -- The schema of the `DataFrame` is updated accordingly.
 applyColumn :: forall col oldType newType cols newCols.
               (HasColumn col cols, KnownColumns cols, CanBeDFValue oldType, CanBeDFValue newType, TypeOf col cols ~ oldType, newCols ~ UpdateColumn col newType cols, KnownColumns newCols)
               => Proxy col -> (oldType -> newType) -> DataFrame cols -> DataFrame newCols
-applyColumn colProxy f (DataFrame dfMap) =
-    let
-        colName = T.pack (symbolVal colProxy)
-        transformDFValue :: DFValue -> DFValue
-        transformDFValue dfVal =
-            case fromDFValue @oldType dfVal of
-                Just oldVal -> toDFValue (f oldVal)
-                Nothing -> NA
-        updatedCol = V.map transformDFValue (dfMap Map.! colName)
-    in DataFrame (Map.insert colName updatedCol dfMap)
+applyColumn colProxy f = apply (Apply colProxy f)
+
 
 -- | Adds a new column or modifies an existing one based on a type-safe expression.
 -- This is a synonym for `addColumn`.
@@ -144,11 +140,11 @@ mutate :: forall newColName newColType cols newCols.
          -> Expr cols newColType
          -> DataFrame cols
          -> DataFrame newCols
-mutate newColProxy expr df@(DataFrame dfMap) =
+mutate newColProxy expr (DataFrame dfMap) =
     let
-        rows = toRows df
         newColName = T.pack (symbolVal newColProxy)
-        newColumnValues = V.fromList $ map (\row -> toDFValue (evaluateExpr expr row)) rows
+        numRows = if Map.null dfMap then 0 else V.length (snd . head . Map.toList $ dfMap)
+        newColumnValues = V.fromList [ toDFValue (evaluateExpr expr dfMap idx) | idx <- [0 .. numRows - 1] ]
         updatedDfMap = Map.insert newColName newColumnValues dfMap
     in
         DataFrame updatedDfMap

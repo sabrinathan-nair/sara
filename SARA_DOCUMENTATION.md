@@ -436,10 +436,3 @@ type family ResolveJoinValueType (a :: Type) (b :: Type) (joinType :: JoinType) 
 
 Similar to `ResolveJoinValue`, but specifically for resolving the type of a column in the joined DataFrame.
 
-#### `resolveJoinValueImpl`
-
-```haskell
-resolveJoinValueImpl :: DFValue -> DFValue -> JoinType -> DFValue
-```
-
-The runtime implementation of `ResolveJoinValueType`, handling the actual `DFValue`s during a join operation.

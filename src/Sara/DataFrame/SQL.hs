@@ -21,7 +21,7 @@ import Data.Typeable (TypeRep, typeRep)
 import Data.Maybe (fromMaybe)
 
 import Sara.DataFrame.Types
-import Sara.DataFrame.IO (validateDFValue)
+
 
 -- | Converts a `SQLData` value to a `DFValue`, validating against an expected `TypeRep`.
 sqlDataToDFValue :: TypeRep -> SQLData -> DFValue
@@ -76,7 +76,7 @@ readSQL p dbPath sqlQuery = do
                                     let expectedType = fromMaybe (error $ "Type not found for column: " ++ T.unpack colName) $ Map.lookup colName expectedColTypeMap
                                         colIndex = fromMaybe (error $ "Internal error: Column " ++ T.unpack colName ++ " not found in expected names list.") $ V.elemIndex colName (V.fromList expectedColNames)
                                     in case rowData V.!? colIndex of
-                                        Just sqlData -> V.snoc colVec (validateDFValue expectedType (sqlDataToDFValue expectedType sqlData))
+                                        Just sqlData -> V.snoc colVec (sqlDataToDFValue expectedType sqlData)
                                         Nothing -> error $ "Internal error: Column index out of bounds for " ++ T.unpack colName
                                 ) accMap
                             ) initialColumnsMap (V.fromList rows)

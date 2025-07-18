@@ -49,8 +49,7 @@ module Sara.DataFrame.Types (
         All,
     ContainsColumn,
     ResolveJoinValue,
-    ResolveJoinValueType,
-    resolveJoinValueImpl
+    ResolveJoinValueType
 ) where
 
 import qualified Data.Text as T
@@ -70,6 +69,7 @@ import GHC.TypeLits (ErrorMessage(Text, (:<>:), ShowType), Symbol, KnownSymbol, 
 import Data.Kind (Type, Constraint)
 import Data.Proxy (Proxy(..))
 import Data.Typeable (TypeRep, Typeable, typeRep)
+
 
 isNA :: DFValue -> Bool
 isNA NA = True
@@ -199,14 +199,9 @@ data JoinType = InnerJoin   -- ^ Return only the rows that have matching keys in
     deriving (Show, Eq)
 
 -- | A type class for values that can be converted to and from DFValue.
-class CanBeDFValue a where
+class (Typeable a) => CanBeDFValue a where
     toDFValue :: a -> DFValue
     fromDFValue :: DFValue -> Maybe a
-    fromDFValueUnsafe :: DFValue -> a
-    default fromDFValueUnsafe :: DFValue -> a
-    fromDFValueUnsafe dfValue = case fromDFValue dfValue of
-        Just x -> x
-        Nothing -> error "fromDFValueUnsafe: Type mismatch or NA value"
 
 instance CanBeDFValue Int where
     toDFValue = IntValue
@@ -328,7 +323,6 @@ type family TypeEq (a :: k) (b :: k) :: Bool where
     TypeEq a b = 'False
 
 type family GetJoinedColumnType (s :: Symbol) (cols1 :: [(Symbol, Type)]) (cols2 :: [(Symbol, Type)]) (joinType :: JoinType) :: Type where
-    -- | Determines the type of a column in the joined DataFrame based on JoinType.
     GetJoinedColumnType s cols1 cols2 'InnerJoin =
         If (TypeEq (SafeTypeOf s cols1) 'Nothing) (TypeError (Text "Column '" :<>: ShowType s :<>: Text "' not found in left DataFrame for InnerJoin."))
            (If (TypeEq (SafeTypeOf s cols2) 'Nothing) (TypeError (Text "Column '" :<>: ShowType s :<>: Text "' not found in right DataFrame for InnerJoin."))
@@ -339,23 +333,23 @@ type family GetJoinedColumnType (s :: Symbol) (cols1 :: [(Symbol, Type)]) (cols2
 
     GetJoinedColumnType s cols1 cols2 'RightJoin = RightJoinType s (SafeTypeOf s cols1) (SafeTypeOf s cols2)
 
-    GetJoinedColumnType s cols1 cols2 'OuterJoin =
-        If (TypeEq (SafeTypeOf s cols1) 'Nothing) (TypeError (Text "Column '" :<>: ShowType s :<>: Text "' not found in left DataFrame for OuterJoin."))
-           (If (TypeEq (SafeTypeOf s cols2) 'Nothing) (TypeError (Text "Column '" :<>: ShowType s :<>: Text "' not found in right DataFrame for OuterJoin."))
-               (If (TypeEq (UnwrapMaybe (SafeTypeOf s cols1)) (UnwrapMaybe (SafeTypeOf s cols2))) (UnwrapMaybe (SafeTypeOf s cols1))
-                   (TypeError (Text "Type mismatch for column '" :<>: ShowType s :<>: Text "' in OuterJoin. Left type: " :<>: ShowType (UnwrapMaybe (SafeTypeOf s cols1)) :<>: Text ", Right type: " :<>: ShowType (UnwrapMaybe (SafeTypeOf s cols2))))))
+    GetJoinedColumnType s cols1 cols2 'OuterJoin = OuterJoinType s (SafeTypeOf s cols1) (SafeTypeOf s cols2)
 
 type family LeftJoinType (s :: Symbol) (t1 :: Maybe Type) (t2 :: Maybe Type) :: Type where
-    -- | Helper for LeftJoin type resolution.
     LeftJoinType s ('Just t1) _ = t1
     LeftJoinType s 'Nothing ('Just t2) = Maybe t2
     LeftJoinType s 'Nothing 'Nothing = TypeError (Text "Column '" :<>: ShowType s :<>: Text "' not found in either DataFrame for LeftJoin.")
 
 type family RightJoinType (s :: Symbol) (t1 :: Maybe Type) (t2 :: Maybe Type) :: Type where
-    -- | Helper for RightJoin type resolution.
     RightJoinType s _ ('Just t2) = t2
     RightJoinType s ('Just t1) 'Nothing = Maybe t1
     RightJoinType s 'Nothing 'Nothing = TypeError (Text "Column '" :<>: ShowType s :<>: Text "' not found in either DataFrame for RightJoin.")
+
+type family OuterJoinType (s :: Symbol) (t1 :: Maybe Type) (t2 :: Maybe Type) :: Type where
+    OuterJoinType s ('Just t1) ('Just t2) = If (TypeEq t1 t2) t1 (TypeError (Text "Type mismatch for column '" :<>: ShowType s :<>: Text "' in OuterJoin. Left type: " :<>: ShowType t1 :<>: Text ", Right type: " :<>: ShowType t2))
+    OuterJoinType s ('Just t1) 'Nothing = Maybe t1
+    OuterJoinType s 'Nothing ('Just t2) = Maybe t2
+    OuterJoinType s 'Nothing 'Nothing = TypeError (Text "Column '" :<>: ShowType s :<>: Text "' not found in either DataFrame for OuterJoin.")
 
 type family UnwrapMaybe (m :: Maybe k) :: k where
     -- | Unwraps a 'Just' value from a 'Maybe' type. Throws a TypeError if 'Nothing'.
@@ -422,10 +416,5 @@ type family ResolveJoinValueType (a :: Type) (b :: Type) (joinType :: JoinType) 
     ResolveJoinValueType a b 'RightJoin = Maybe b
     ResolveJoinValueType a b 'OuterJoin = Maybe (If (TypeEq a b) a (TypeError (Text "Type mismatch for OuterJoin")))
 
-resolveJoinValueImpl :: DFValue -> DFValue -> JoinType -> DFValue
-resolveJoinValueImpl val1 val2 InnerJoin =
-    if val1 == val2 then val1 else NA
-resolveJoinValueImpl val1 _ LeftJoin = val1
-resolveJoinValueImpl _ val2 RightJoin = val2
-resolveJoinValueImpl val1 val2 OuterJoin =
-    if val1 == val2 then val1 else NA
+
+

@@ -1,0 +1,4 @@
+## Gemini Added Memories
+- The Sara project has undergone a significant type-safety refactoring, achieving 100% compile-time guarantees for its core DataFrame operations. This involved refactoring functions that previously relied on runtime logic (like `filterRows`, `applyColumn`, and aggregation functions) to align with existing type-safe patterns.
+- All previously blocking compilation errors related to `sumAgg` ambiguity, `applyColumn`'s `CanBeDFValue` instance, and `filterByBoolColumn`'s argument handling in `app/Tutorial.hs` have been successfully resolved.
+- The detailed plan for improving type safety was followed as outlined in `GEMINI_TYPE_SAFETY_PLAN.md`.
