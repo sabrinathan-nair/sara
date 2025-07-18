@@ -36,7 +36,7 @@ import qualified Data.Vector as V
 import Data.List (sortBy)
 import Sara.DataFrame.Types
 import Data.Maybe (fromMaybe)
-import Sara.DataFrame.Predicate (Predicate, evaluate)
+import Sara.DataFrame.Predicate (FilterPredicate, evaluate)
 import GHC.TypeLits (Symbol, KnownSymbol, symbolVal, CmpSymbol, TypeError, ErrorMessage(..))
 import Data.Proxy (Proxy(..))
 import Data.Kind (Type)
@@ -52,19 +52,15 @@ instance AllKnownSymbol '[] where
 instance (KnownSymbol x, AllKnownSymbol xs) => AllKnownSymbol (x ': xs) where
     symbolsToTexts _ = T.pack (symbolVal (Proxy @x)) : symbolsToTexts (Proxy @xs)
 
--- | Filters rows from a `DataFrame` based on a type-safe `Predicate`.
-filterRows :: forall cols. KnownColumns cols => Predicate cols -> DataFrame cols -> DataFrame cols
+-- | Filters rows from a `DataFrame` based on a type-safe `FilterPredicate`.
+filterRows :: forall cols. KnownColumns cols => FilterPredicate cols -> DataFrame cols -> DataFrame cols
 filterRows p (DataFrame dfMap) = 
     let
         colNames = columnNames (Proxy @cols)
         numRows = if Map.null dfMap then 0 else V.length (snd . head . Map.toList $ dfMap)
 
-        -- Function to construct a row from a given index
-        getRow :: Int -> Row
-        getRow idx = Map.fromList [ (colName, (dfMap Map.! colName) V.! idx) | colName <- colNames ]
-
         -- Identify indices of rows that satisfy the predicate, treating Nothing as False
-        keptIndices = V.fromList [ idx | idx <- [0 .. numRows - 1], fromMaybe False (evaluate p (getRow idx)) ]
+        keptIndices = V.fromList [ idx | idx <- [0 .. numRows - 1], fromMaybe False (evaluate p dfMap idx) ]
 
         newDfMap = if V.null keptIndices
                    then Map.empty

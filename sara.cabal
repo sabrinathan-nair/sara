@@ -22,6 +22,7 @@ library
                      , Sara.REPL
                      , Sara.DataFrame.Instances
                      , Sara.DataFrame.Internal
+                     , Sara.DataFrame.Apply
   hs-source-dirs:      src
   build-depends:       base >=4.14 && <5
                      , text
@@ -42,6 +43,7 @@ library
                      , directory
                      , scientific
                      , sqlite-simple
+                     , constraints
   default-language:    Haskell2010
   ghc-options:         -Wall
 
@@ -76,3 +78,4 @@ test-suite sara-test
     , Sara.DataFrame.Instances
     , Sara.DataFrame.Static
     , Sara.DataFrame.Internal
+    , Sara.DataFrame.Apply

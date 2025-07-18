@@ -11,14 +11,13 @@
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE GADTs #-}
 
 -- | This module provides functions for grouping and aggregating data in a DataFrame.
 -- It allows for type-safe operations like `groupBy`, `sumAgg`, `meanAgg`, and `countAgg`.
 module Sara.DataFrame.Aggregate (
     -- * Types
     GroupedDataFrame,
-    AggOp(..),
-    AggregationResult,
     -- * Functions
     groupBy,
     sumAgg,
@@ -86,49 +85,47 @@ type family AggColName (col :: Symbol) (op :: Symbol) :: Symbol where
 -- | Represents the type of aggregation to perform.
 data AggOp = Sum | Mean | Count
 
--- | A type family that determines the result type of an aggregation operation.
--- For example, the `Sum` of an `Int` column is a `Double`.
-type family AggregationResult (op :: AggOp) (a :: Type) :: Type where
-    AggregationResult 'Sum Int = Double
-    AggregationResult 'Sum Double = Double
-    AggregationResult 'Mean Int = Double
-    AggregationResult 'Mean Double = Double
-    AggregationResult 'Count a = Int
 
 -- | A typeclass for types that can be aggregated.
 -- It connects an `AggOp` with the underlying data type and the aggregation logic.
-class (CanBeDFValue a, CanBeDFValue (AggregationResult op a)) => Aggregatable (op :: AggOp) (a :: Type) where
+class (CanBeDFValue a, CanBeDFValue b) => Aggregatable (op :: AggOp) a b where
     -- | The core aggregation function.
-    aggregateOp :: Proxy op -> V.Vector a -> AggregationResult op a
+    aggregateOp :: Proxy op -> V.Vector a -> b
 
-instance Aggregatable 'Sum Int where
+-- Sum instances
+instance Aggregatable 'Sum Int Double where
     aggregateOp _ v = fromIntegral (V.sum v)
 
-instance Aggregatable 'Sum Double where
+instance Aggregatable 'Sum Double Double where
     aggregateOp _ = V.sum
 
-instance Aggregatable 'Mean Int where
-    aggregateOp _ v = fromIntegral (V.sum v) / fromIntegral (V.length v)
+-- Mean instances
+instance Aggregatable 'Mean Int Double where
+    aggregateOp _ v | V.null v = 0.0
+                    | otherwise = fromIntegral (V.sum v) / fromIntegral (V.length v)
 
-instance Aggregatable 'Mean Double where
-    aggregateOp _ v = V.sum v / fromIntegral (V.length v)
+instance Aggregatable 'Mean Double Double where
+    aggregateOp _ v | V.null v = 0.0
+                    | otherwise = V.sum v / fromIntegral (V.length v)
 
-instance CanBeDFValue a => Aggregatable 'Count a where
+-- Count instance
+instance CanBeDFValue a => Aggregatable 'Count a Int where
     aggregateOp _ = V.length
 
 -- | Aggregates a `GroupedDataFrame` by summing the values in a specified column.
 -- The resulting `DataFrame` contains the grouping columns and a new column with the aggregated values.
 -- The new column is named by appending "_sum" to the original column name.
-sumAgg :: forall (aggCol :: Symbol) (groupCols :: [(Symbol, Type)]) (cols :: [(Symbol,Type)]) a newAggCol outCols.
+sumAgg :: forall (aggCol :: Symbol) (groupCols :: [(Symbol, Type)]) (cols :: [(Symbol,Type)]) a b newAggCol outCols.
           ( HasColumn aggCol cols
           , KnownColumns groupCols
           , a ~ TypeOf aggCol cols
-          , Aggregatable 'Sum a
+          , b ~ Double
+          , Aggregatable 'Sum a b
           , newAggCol ~ AggColName aggCol "sum"
-          , outCols ~ Nub (Append groupCols '[ '(newAggCol, AggregationResult 'Sum a)])
+          , outCols ~ Nub (Append groupCols '[ '(newAggCol, b)])
           , KnownColumns outCols
           , KnownSymbol newAggCol
-          , CanBeDFValue (AggregationResult 'Sum a)
+          , CanBeDFValue b
           )
        => GroupedDataFrame groupCols cols -> DataFrame outCols
 sumAgg groupedDf =
@@ -140,9 +137,10 @@ sumAgg groupedDf =
         processGroup (TypeLevelRow groupKey) (DataFrame dfMap) =
             let
                 aggColVector = case Map.lookup aggColName dfMap of
-                    Just col -> V.catMaybes $ V.map (fromDFValue @a) col
+                    Just col -> V.mapMaybe (fromDFValue @a) col
                     Nothing -> V.empty
 
+                aggResult :: b
                 aggResult = aggregateOp (Proxy @'Sum) aggColVector
             in
                 Map.insert newAggColName (toDFValue aggResult) groupKey
@@ -154,16 +152,17 @@ sumAgg groupedDf =
 -- | Aggregates a `GroupedDataFrame` by calculating the mean of the values in a specified column.
 -- The resulting `DataFrame` contains the grouping columns and a new column with the aggregated values.
 -- The new column is named by appending "_mean" to the original column name.
-meanAgg :: forall (aggCol :: Symbol) (groupCols :: [(Symbol, Type)]) (cols :: [(Symbol,Type)]) a newAggCol outCols.
+meanAgg :: forall (aggCol :: Symbol) (groupCols :: [(Symbol, Type)]) (cols :: [(Symbol,Type)]) a b newAggCol outCols.
            ( HasColumn aggCol cols
            , KnownColumns groupCols
            , a ~ TypeOf aggCol cols
-           , Aggregatable 'Mean a
+           , b ~ Double
+           , Aggregatable 'Mean a b
            , newAggCol ~ AggColName aggCol "mean"
-           , outCols ~ Nub (Append groupCols '[ '(newAggCol, AggregationResult 'Mean a)])
+           , outCols ~ Nub (Append groupCols '[ '(newAggCol, b)])
            , KnownColumns outCols
            , KnownSymbol newAggCol
-           , CanBeDFValue (AggregationResult 'Mean a)
+           , CanBeDFValue b
            )
         => GroupedDataFrame groupCols cols -> DataFrame outCols
 meanAgg groupedDf =
@@ -175,9 +174,10 @@ meanAgg groupedDf =
         processGroup (TypeLevelRow groupKey) (DataFrame dfMap) =
             let
                 aggColVector = case Map.lookup aggColName dfMap of
-                    Just col -> V.catMaybes $ V.map (fromDFValue @a) col
+                    Just col -> V.mapMaybe (fromDFValue @a) col
                     Nothing -> V.empty
 
+                aggResult :: b
                 aggResult = aggregateOp (Proxy @'Mean) aggColVector
             in
                 Map.insert newAggColName (toDFValue aggResult) groupKey
@@ -189,16 +189,17 @@ meanAgg groupedDf =
 -- | Aggregates a `GroupedDataFrame` by counting the non-NA values in a specified column.
 -- The resulting `DataFrame` contains the grouping columns and a new column with the aggregated values.
 -- The new column is named by appending "_count" to the original column name.
-countAgg :: forall (aggCol :: Symbol) (groupCols :: [(Symbol, Type)]) (cols :: [(Symbol,Type)]) a newAggCol outCols.
+countAgg :: forall (aggCol :: Symbol) (groupCols :: [(Symbol, Type)]) (cols :: [(Symbol,Type)]) a b newAggCol outCols.
             ( HasColumn aggCol cols
             , KnownColumns groupCols
             , a ~ TypeOf aggCol cols
-            , Aggregatable 'Count a
+            , b ~ Int
+            , Aggregatable 'Count a b
             , newAggCol ~ AggColName aggCol "count"
-            , outCols ~ Nub (Append groupCols '[ '(newAggCol, AggregationResult 'Count a)])
+            , outCols ~ Nub (Append groupCols '[ '(newAggCol, b)])
             , KnownColumns outCols
             , KnownSymbol newAggCol
-            , CanBeDFValue (AggregationResult 'Count a)
+            , CanBeDFValue b
             )
          => GroupedDataFrame groupCols cols -> DataFrame outCols
 countAgg groupedDf =
@@ -210,9 +211,10 @@ countAgg groupedDf =
         processGroup (TypeLevelRow groupKey) (DataFrame dfMap) =
             let
                 aggColVector = case Map.lookup aggColName dfMap of
-                    Just col -> V.catMaybes $ V.map (fromDFValue @a) col
+                    Just col -> V.mapMaybe (fromDFValue @a) col
                     Nothing -> V.empty
 
+                aggResult :: b
                 aggResult = aggregateOp (Proxy @'Count) aggColVector
             in
                 Map.insert newAggColName (toDFValue aggResult) groupKey

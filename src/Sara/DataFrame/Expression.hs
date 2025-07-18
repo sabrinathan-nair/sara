@@ -38,10 +38,13 @@ import GHC.TypeLits (Symbol, symbolVal)
 import Data.Kind (Type)
 import Sara.DataFrame.Types
 import qualified Data.Map.Strict as Map
-import Control.Applicative (liftA2)
+import qualified Data.Vector as V
+
 
 -- | A type-safe expression GADT for `DataFrame` operations.
 -- The @cols@ parameter is the schema of the `DataFrame`, and @a@ is the return type of the expression.
+-- The @dfMap@ parameter is the internal representation of the `DataFrame`.
+-- The @idx@ parameter is the row index.
 data Expr (cols :: [(Symbol, Type)]) a where
     -- | Represents a literal value in an expression.
     Lit :: CanBeDFValue a => a -> Expr cols a
@@ -76,29 +79,23 @@ data Expr (cols :: [(Symbol, Type)]) a where
     -- | Applies a function to the result of an expression.
     ApplyFn :: (CanBeDFValue a, CanBeDFValue b) => (a -> b) -> Expr cols a -> Expr cols b
 
--- | Evaluates a type-safe expression on a given `Row`.
+-- | Evaluates a type-safe expression on a given `DataFrame`'s internal map and row index.
 -- Returns `Nothing` if any part of the expression evaluation fails (e.g., a column is missing, a value is `NA`).
---
--- >>> :set -XDataKinds
--- >>> let row = Map.fromList [("age", IntValue 30), ("salary", DoubleValue 50000.0)]
--- >>> let expr = col @"age" >. lit 25
--- >>> evaluateExpr expr row
--- Just True
-evaluateExpr :: Expr cols a -> Row -> Maybe a
-evaluateExpr (Lit val) _ = Just val
-evaluateExpr (Col p) row = fromDFValue (Map.findWithDefault NA (T.pack (symbolVal p)) row)
-evaluateExpr (Add e1 e2) row = liftA2 (+) (evaluateExpr e1 row) (evaluateExpr e2 row)
-evaluateExpr (Subtract e1 e2) row = liftA2 (-) (evaluateExpr e1 row) (evaluateExpr e2 row)
-evaluateExpr (Multiply e1 e2) row = liftA2 (*) (evaluateExpr e1 row) (evaluateExpr e2 row)
-evaluateExpr (Divide e1 e2) row = liftA2 (/) (evaluateExpr e1 row) (evaluateExpr e2 row)
-evaluateExpr (EqualTo e1 e2) row = liftA2 (==) (evaluateExpr e1 row) (evaluateExpr e2 row)
-evaluateExpr (GreaterThan e1 e2) row = liftA2 (>) (evaluateExpr e1 row) (evaluateExpr e2 row)
-evaluateExpr (LessThan e1 e2) row = liftA2 (<) (evaluateExpr e1 row) (evaluateExpr e2 row)
-evaluateExpr (GreaterThanOrEqualTo e1 e2) row = liftA2 (>=) (evaluateExpr e1 row) (evaluateExpr e2 row)
-evaluateExpr (LessThanOrEqualTo e1 e2) row = liftA2 (<=) (evaluateExpr e1 row) (evaluateExpr e2 row)
-evaluateExpr (And e1 e2) row = liftA2 (&&) (evaluateExpr e1 row) (evaluateExpr e2 row)
-evaluateExpr (Or e1 e2) row = liftA2 (||) (evaluateExpr e1 row) (evaluateExpr e2 row)
-evaluateExpr (ApplyFn f expr) row = f <$> evaluateExpr expr row
+evaluateExpr :: Expr cols a -> Map.Map T.Text Column -> Int -> Maybe a
+evaluateExpr (Lit val) _ _ = Just val
+evaluateExpr (Col p) dfMap idx = fromDFValue ((dfMap Map.! (T.pack (symbolVal p))) V.! idx)
+evaluateExpr (Add e1 e2) dfMap idx = liftA2 (+) (evaluateExpr e1 dfMap idx) (evaluateExpr e2 dfMap idx)
+evaluateExpr (Subtract e1 e2) dfMap idx = liftA2 (-) (evaluateExpr e1 dfMap idx) (evaluateExpr e2 dfMap idx)
+evaluateExpr (Multiply e1 e2) dfMap idx = liftA2 (*) (evaluateExpr e1 dfMap idx) (evaluateExpr e2 dfMap idx)
+evaluateExpr (Divide e1 e2) dfMap idx = liftA2 (/) (evaluateExpr e1 dfMap idx) (evaluateExpr e2 dfMap idx)
+evaluateExpr (EqualTo e1 e2) dfMap idx = liftA2 (==) (evaluateExpr e1 dfMap idx) (evaluateExpr e2 dfMap idx)
+evaluateExpr (GreaterThan e1 e2) dfMap idx = liftA2 (>) (evaluateExpr e1 dfMap idx) (evaluateExpr e2 dfMap idx)
+evaluateExpr (LessThan e1 e2) dfMap idx = liftA2 (<) (evaluateExpr e1 dfMap idx) (evaluateExpr e2 dfMap idx)
+evaluateExpr (GreaterThanOrEqualTo e1 e2) dfMap idx = liftA2 (>=) (evaluateExpr e1 dfMap idx) (evaluateExpr e2 dfMap idx)
+evaluateExpr (LessThanOrEqualTo e1 e2) dfMap idx = liftA2 (<=) (evaluateExpr e1 dfMap idx) (evaluateExpr e2 dfMap idx)
+evaluateExpr (And e1 e2) dfMap idx = liftA2 (&&) (evaluateExpr e1 dfMap idx) (evaluateExpr e2 dfMap idx)
+evaluateExpr (Or e1 e2) dfMap idx = liftA2 (||) (evaluateExpr e1 dfMap idx) (evaluateExpr e2 dfMap idx)
+evaluateExpr (ApplyFn f expr) dfMap idx = f <$> evaluateExpr expr dfMap idx
 
 -- | Smart constructor for a literal value expression.
 lit :: CanBeDFValue a => a -> Expr cols a
@@ -137,7 +134,7 @@ col = Col
 (<.) = LessThan
 
 -- | Infix operator for checking if the first expression is greater than or equal to the second.
-(>=.) :: (Ord a, CanBeDFAValue a) => Expr cols a -> Expr cols a -> Expr cols Bool
+(>=.) :: (Ord a, CanBeDFValue a) => Expr cols a -> Expr cols a -> Expr cols Bool
 (>=.) = GreaterThanOrEqualTo
 
 -- | Infix operator for checking if the first expression is less than or equal to the second.

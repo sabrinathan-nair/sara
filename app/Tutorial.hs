@@ -18,8 +18,14 @@ import Sara.DataFrame.Transform
 import Sara.DataFrame.Aggregate
 import Sara.DataFrame.Expression (col, lit, (>.), (*.*))
 import Data.Proxy
-import Sara.DataFrame.Internal (toDataFrame)
+import Sara.DataFrame.Internal (toDataFrame, HasSchema, Schema)
 import qualified Data.Vector as V
+import Data.Time.Calendar (Day)
+import qualified Data.Text as T
+import Data.Text (Text)
+import Data.Csv (FromNamedRecord)
+import GHC.Generics (Generic)
+
 
 -- | Infer the schema for the `employees.csv` file and create a type synonym `Employees`.
 -- It also creates a record type `EmployeesRecord` for parsing the CSV.

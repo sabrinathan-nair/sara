@@ -18,9 +18,7 @@ module Sara.DataFrame.IO (
     writeCSV,
     -- * JSON Functions
     readJSON,
-    writeJSON,
-    -- * Validation
-    validateDFValue
+    writeJSON
 ) where
 
 import qualified Data.ByteString.Lazy as BL
@@ -30,7 +28,7 @@ import qualified Data.Text.Encoding as TE
 import qualified Data.Vector as V
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
-import Data.Time (Day, UTCTime)
+
 import Data.Maybe (fromMaybe)
 import Data.Time.Format (formatTime, defaultTimeLocale)
 import qualified Data.ByteString.Char8 as BC
@@ -38,8 +36,8 @@ import qualified Data.HashMap.Strict as HM
 import Data.Char (toUpper)
 import Data.Aeson as A
 import Data.Proxy (Proxy(..))
-import Data.Typeable (TypeRep, typeRep)
-import Sara.DataFrame.Types (DFValue(..), DataFrame(..), KnownColumns(..), toRows, isNA)
+
+import Sara.DataFrame.Types (DFValue(..), DataFrame(..), KnownColumns(..), toRows)
 import Sara.DataFrame.Static (readCsv)
 
 -- | Converts a `DFValue` to a `ByteString` for writing to a CSV file.
@@ -52,42 +50,7 @@ valueToByteString (TimestampValue t) = BC.pack (formatTime defaultTimeLocale "%Y
 valueToByteString (BoolValue b) = BC.pack (map toUpper (show b))
 valueToByteString NA = BC.pack "NA"
 
--- | Validates a `DFValue` against an expected `TypeRep`.
--- If the value does not match the type and is not `NA`, it throws an error.
-validateDFValue :: TypeRep -> DFValue -> DFValue
-validateDFValue expectedType val = 
-    if typeRep (Proxy @Int) == expectedType && isIntValue val then val
-    else if typeRep (Proxy @Double) == expectedType && isDoubleValue val then val
-    else if typeRep (Proxy @T.Text) == expectedType && isTextValue val then val
-    else if typeRep (Proxy @Day) == expectedType && isDateValue val then val
-    else if typeRep (Proxy @UTCTime) == expectedType && isTimestampValue val then val
-    else if typeRep (Proxy @Bool) == expectedType && isBoolValue val then val
-    else if isNA val then NA
-    else error $ "Type mismatch: Expected " ++ show expectedType ++ ", but got " ++ show val
 
-isIntValue :: DFValue -> Bool
-isIntValue (IntValue _) = True
-isIntValue _ = False
-
-isDoubleValue :: DFValue -> Bool
-isDoubleValue (DoubleValue _) = True
-isDoubleValue _ = False
-
-isTextValue :: DFValue -> Bool
-isTextValue (TextValue _) = True
-isTextValue _ = False
-
-isDateValue :: DFValue -> Bool
-isDateValue (DateValue _) = True
-isDateValue _ = False
-
-isTimestampValue :: DFValue -> Bool
-isTimestampValue (TimestampValue _) = True
-isTimestampValue _ = False
-
-isBoolValue :: DFValue -> Bool
-isBoolValue (BoolValue _) = True
-isBoolValue _ = False
 
 -- | Writes a `DataFrame` to a CSV file.
 -- The header is derived from the `DataFrame`'s column names.
@@ -114,8 +77,6 @@ writeCSV filePath (DataFrame dfMap) = do
 readJSON :: forall cols. KnownColumns cols => Proxy cols -> FilePath -> IO (DataFrame cols)
 readJSON p filePath = do
     let expectedColNames = columnNames p
-        expectedColTypes = columnTypes p
-        expectedColTypeMap = Map.fromList $ zip expectedColNames expectedColTypes
 
     jsonData <- BL.readFile filePath
     case A.eitherDecode jsonData :: Either String [Map T.Text DFValue] of
@@ -132,9 +93,8 @@ readJSON p filePath = do
                             let initialColumnsMap = Map.fromList $ V.toList $ V.map (\colName -> (colName, V.empty)) (V.fromList actualColumnNames)
                                 finalColumnsMap = V.foldl' (\accMap row ->
                                         Map.mapWithKey (\colName colVec ->
-                                            let expectedType = fromMaybe (error $ "Type not found for column: " ++ T.unpack colName) $ Map.lookup colName expectedColTypeMap
-                                                val = fromMaybe NA (Map.lookup colName row) -- Get DFValue from row
-                                            in V.snoc colVec (validateDFValue expectedType val) -- Validate DFValue against expectedType
+                                            let val = fromMaybe NA (Map.lookup colName row) -- Get DFValue from row
+                                            in V.snoc colVec val
                                         ) accMap
                                     ) initialColumnsMap (V.fromList rows) -- Convert rows to Vector for foldl'
 
