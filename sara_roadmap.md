@@ -14,15 +14,33 @@ This is Sara's special plan for growing up and becoming an even better helper fo
 
 **How We'll Do It:**
 
-1.  **Benchmark Current Performance:** We've established a benchmarking setup and obtained initial performance metrics. (Completed!)
-2.  **Implement Streaming for Large Datasets:** Explore and integrate streaming techniques to enable Sara to process datasets larger than available memory.
-    *   Research suitable Haskell streaming libraries (e.g., `pipes`, `conduit`, `streaming`).
-    *   Identify key DataFrame operations that would benefit most from a streaming approach (e.g., data loading, filtering, transformations).
-    *   Design and implement streaming data flow, potentially introducing new type-level constructs for stream-based schemas.
-    *   Develop core streaming functionalities and benchmark their performance against in-memory counterparts using large synthetic datasets.
-3.  **Optimize Data Structures:** Investigate and implement more efficient internal data structures and memory management techniques for DataFrames.
-4.  **Improve Algorithms:** Develop and integrate more performant algorithms for existing DataFrame operations.
-5.  **Verify Performance Gains:** Re-run benchmarks to measure the impact of optimizations and confirm performance improvements.
+1.  **Benchmark Current Performance:**
+    *   **1.1. Set up Benchmarking Infrastructure:** Established a robust benchmarking environment using `criterion`. (Completed!)
+    *   **1.2. Initial Performance Measurement:** Obtained baseline performance metrics for core DataFrame operations, starting with `filterRows`. (Completed!)
+
+2.  **Implement Streaming for Large Datasets:**
+    *   **2.1. Research Streaming Libraries:** Evaluate existing Haskell streaming libraries (`pipes`, `conduit`, `streaming`) for suitability and performance characteristics in data processing contexts.
+    *   **2.2. Identify Streaming Candidates:** Pinpoint specific DataFrame operations (e.g., `readCSV`, `filterRows`, `applyColumn`, `groupBy`, `joinDF`) that are bottlenecks for large datasets and can benefit from streaming.
+    *   **2.3. Design Streaming Data Flow:** Architect how DataFrames will be represented and processed in a streaming fashion, including considerations for lazy evaluation and memory efficiency. This may involve introducing new type-level constructs to manage stream-based schemas.
+    *   **2.4. Develop Core Streaming Functionalities:** Implement streaming versions of identified DataFrame operations, ensuring compatibility with existing type-safe patterns.
+    *   **2.5. Benchmark Streaming Performance:** Create and execute benchmarks using large, synthetic datasets to compare the performance of streaming operations against their in-memory counterparts.
+
+3.  **Optimize Data Structures:**
+    *   **3.1. Analyze Current Data Structure Usage:** Profile memory consumption and access patterns of existing `Map Text Column` and `Vector DFValue` structures.
+    *   **3.2. Identify Data Structure Bottlenecks:** Pinpoint areas where current data structures lead to inefficient memory usage or slow access times.
+    *   **3.3. Explore Alternative Data Structures:** Investigate more performant alternatives, such as unboxed vectors, specialized hash maps, or column-oriented storage techniques.
+    *   **3.4. Implement and Benchmark Data Structure Changes:** Refactor DataFrame internals to incorporate optimized data structures and measure their impact on overall performance.
+
+4.  **Improve Algorithms:**
+    *   **4.1. Profile Existing Algorithms:** Use profiling tools to identify performance hotspots within current DataFrame algorithms (e.g., sorting, joining, aggregation).
+    *   **4.2. Research Optimized Algorithms:** Explore and select more efficient algorithms for identified bottlenecks, considering their computational complexity and suitability for functional programming.
+    *   **4.3. Implement Optimized Algorithms:** Replace existing algorithms with their optimized versions, ensuring correctness and type safety.
+    *   **4.4. Consider Parallelization:** Investigate opportunities for parallelizing computationally intensive DataFrame operations to leverage multi-core processors.
+
+5.  **Verify Performance Gains:**
+    *   **5.1. Establish Comprehensive Performance Test Suite:** Expand the benchmark suite to cover a wider range of DataFrame operations and dataset sizes.
+    *   **5.2. Automate Benchmark Execution and Reporting:** Set up continuous integration (CI) to automatically run benchmarks and generate reports, tracking performance trends over time.
+    *   **5.3. Analyze and Interpret Results:** Regularly review benchmark results, identify regressions or significant improvements, and use insights to guide further optimization efforts.
 
 ## Phase 3: Make Sara Super Easy to Talk To!
 
