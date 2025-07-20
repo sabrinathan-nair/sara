@@ -8,13 +8,13 @@ This is Sara's special plan for growing up and becoming an even better helper fo
 
 **What We Did:** We made sure Sara checks everything about your toys (your data) very, very carefully. If you try to do something wrong, Sara tells you right away, like a friendly grown-up saying, "Oops, that's not how we play!" This means fewer "oopsies" when you're playing with your data.
 
-## Phase 2: Make Sara Super Fast!
+## Phase 2: Make Sara Super Fast! (In Progress)
 
 **Goal:** We want Sara to play with your toys even faster! Sometimes, Sara has to think a lot about each toy, and we want to make that thinking quicker.
 
 **How We'll Do It:**
 
-1.  **See How Fast Sara Is Now:** We'll time Sara to see how fast it plays with toys right now.
+1.  **See How Fast Sara Is Now:** We've timed Sara to see how fast it plays with toys right now. (Completed!)
 2.  **Find Better Ways to Store Toys:** We'll look for smarter ways for Sara to keep your toys inside its brain, so it doesn't have to think so hard.
 3.  **Teach Sara New Tricks:** We'll teach Sara new ways to play with toys that are faster.
 4.  **Check if Sara is Faster:** We'll time Sara again to see if it learned to play faster!

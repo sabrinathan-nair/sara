@@ -26,6 +26,8 @@ Sara helps you play with your data (which are like your toys) without making sil
 
 Sara is super good now! It has learned all its magic rules perfectly, so it almost never makes mistakes when playing with your data. It's like a super careful friend who helps you keep your toys in perfect order.
 
+We've also started making Sara even faster by adding special tools to measure how quickly it plays with your data. This helps us find ways to make it even quicker!
+
 Sometimes, if your toy list is ripped or missing, Sara might get a little confused. But for all the playing and sorting inside, Sara is super reliable!
 
 ## How to Get Sara (and Play!)
