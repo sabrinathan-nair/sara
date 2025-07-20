@@ -8,6 +8,8 @@
 {-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE FlexibleInstances #-}
 
 -- | This module provides functions for joining `DataFrame`s.
@@ -39,57 +41,37 @@ instance (KnownSymbol col, CanBeDFValue (TypeOf col cols), CreateOutputRow rest)
             val = fromMaybe NA (val1 <|> val2)
         in Map.insert colName val (createOutputRow (Proxy @rest) r1 r2)
 
--- | Joins two `DataFrame`s based on a list of common columns and a `JoinType`.
--- The schema of the resulting `DataFrame` is inferred from the input schemas and the join type.
---
--- The `onCols` parameter specifies the columns to join on. These columns must exist in both `DataFrame`s.
---
--- The `joinType` parameter determines how to handle non-matching rows:
---
--- *   `InnerJoin`: Only rows with matching keys in both `DataFrame`s are kept.
--- *   `LeftJoin`: All rows from the left `DataFrame` are kept. If there is no match in the right `DataFrame`, the corresponding columns will be `NA`.
--- *   `RightJoin`: All rows from the right `DataFrame` are kept. If there is no match in the left `DataFrame`, the corresponding columns will be `NA`.
--- *   `OuterJoin`: All rows from both `DataFrame`s are kept. Where there is no match, the corresponding columns will be `NA`.
-joinDF :: forall (onCols :: [(Symbol, Type)]) (cols1 :: [(Symbol, Type)]) (cols2 :: [(Symbol, Type)]) (joinType :: JoinType) (colsOut :: [(Symbol, Type)]).
-          ( HasColumns (MapSymbols onCols) cols1, HasColumns (MapSymbols onCols) cols2
-          , KnownColumns onCols, KnownColumns cols1, KnownColumns cols2
-          , colsOut ~ JoinCols cols1 cols2 joinType, KnownColumns colsOut
-          , All CanBeDFValue (MapTypes cols1), All CanBeDFValue (MapTypes cols2), All CanBeDFValue (MapTypes colsOut)
-          , CreateOutputRow colsOut
-          )
-       => DataFrame cols1 -> DataFrame cols2 -> JoinType -> DataFrame colsOut
-joinDF df1 df2 joinType =
-    let
+joinDF :: forall (onCols :: [Symbol]) (cols1 :: [(Symbol, Type)]) (cols2 :: [(Symbol, Type)]) (colsOut :: [(Symbol, Type)])
+       . ( HasColumns onCols cols1, HasColumns onCols cols2
+         , KnownSymbols onCols, KnownColumns (SymbolsToSchema onCols cols1)
+         , KnownColumns cols1, KnownColumns cols2
+         , colsOut ~ JoinCols cols1 cols2, KnownColumns colsOut
+         , All CanBeDFValue (GetColumnTypes cols1)
+         , All CanBeDFValue (GetColumnTypes cols2)
+         , All CanBeDFValue (GetColumnTypes colsOut)
+         , CreateOutputRow colsOut
+         ) => DataFrame cols1 -> DataFrame cols2 -> DataFrame colsOut
+joinDF df1 df2 = 
+    let 
         rows1 = toRows df1
         rows2 = toRows df2
 
-        getJoinKey :: Row -> TypeLevelRow onCols
-        getJoinKey = toTypeLevelRow @onCols
+        getJoinKey :: Row -> TypeLevelRow (SymbolsToSchema onCols cols1)
+        getJoinKey = toTypeLevelRow @(SymbolsToSchema onCols cols1)
 
         map1 = Map.fromListWith (++) $ map (\r -> (getJoinKey r, [r])) rows1
         map2 = Map.fromListWith (++) $ map (\r -> (getJoinKey r, [r])) rows2
 
-        joinedRows = case joinType of
-            InnerJoin ->
-                Map.elems $ Map.intersectionWith (\rs1 rs2 -> [createOutputRow (Proxy @colsOut) r1 r2 | r1 <- rs1, r2 <- rs2]) map1 map2
-            LeftJoin ->
-                Map.elems $ Map.mapWithKey (\k rs1 ->
-                    let rs2 = fromMaybe [Map.fromList [(col, NA) | col <- columnNames (Proxy @cols2)]] (Map.lookup k map2)
-                    in [createOutputRow (Proxy @colsOut) r1 r2 | r1 <- rs1, r2 <- rs2]
-                ) map1
-            RightJoin ->
-                Map.elems $ Map.mapWithKey (\k rs2 ->
-                    let rs1 = fromMaybe [Map.fromList [(col, NA) | col <- columnNames (Proxy @cols1)]] (Map.lookup k map1)
-                    in [createOutputRow (Proxy @colsOut) r1 r2 | r1 <- rs1, r2 <- rs2]
-                ) map2
-            OuterJoin ->
-                let allKeys = Map.keys $ Map.union map1 map2
-                    blank1 = Map.fromList [(col, NA) | col <- columnNames (Proxy @cols1)]
-                    blank2 = Map.fromList [(col, NA) | col <- columnNames (Proxy @cols2)]
-                in concatMap (\k ->
-                    let rs1 = fromMaybe [blank1] (Map.lookup k map1)
-                        rs2 = fromMaybe [blank2] (Map.lookup k map2)
-                    in [[createOutputRow (Proxy @colsOut) r1 r2] | r1 <- rs1, r2 <- rs2]
-                ) allKeys
+        processRow :: [Row] -> [Row]
+        processRow rs1 = 
+            let 
+                key = getJoinKey (head rs1)
+            in 
+                case Map.lookup key map2 of
+                    Just rs2 -> [createOutputRow (Proxy @colsOut) r1 r2 | r1 <- rs1, r2 <- rs2]
+                    Nothing -> []
+        
+        joinedRows = concatMap processRow (Map.elems map1)
+    in 
+        fromRows @colsOut joinedRows
 
-    in fromRows @colsOut $ concat joinedRows

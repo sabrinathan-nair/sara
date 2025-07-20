@@ -9,11 +9,9 @@ module Sara.DataFrame.Concat (
     concatDF
 ) where
 
-import qualified Data.Text as T
-import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
 import qualified Data.Vector as V
-import Sara.DataFrame.Types (DataFrame(..), Column, Row, DFValue(..), ConcatAxis(..), toRows, KnownColumns)
+import Sara.DataFrame.Types (DataFrame(..), ConcatAxis(..), KnownColumns)
 
 -- | Concatenates a list of `DataFrame`s along a specified `ConcatAxis`.
 --

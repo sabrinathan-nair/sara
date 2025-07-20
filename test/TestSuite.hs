@@ -17,6 +17,7 @@ import Sara.DataFrame.Wrangling
 import Sara.DataFrame.Aggregate
 import Sara.DataFrame.Expression
 import Sara.DataFrame.Predicate
+import Sara.DataFrame.Join
 import Data.Proxy (Proxy(..))
 
 main :: IO ()
@@ -88,7 +89,7 @@ main = hspec $ do
         it "performs inner join correctly" $ do
             df1 <- createJoinTestDataFrame1
             df2 <- createJoinTestDataFrame2
-            let joinedDf = joinDF @'[ '("ID", Int)] df1 df2 InnerJoin
+            let joinedDf = Sara.DataFrame.Join.joinDF @'["ID"] df1 df2
             let (DataFrame joinedMap) = joinedDf
             V.length (joinedMap Map.! "ID") `shouldBe` 1
             let name = case (joinedMap Map.! "Name") V.!? 0 of
@@ -111,7 +112,7 @@ main = hspec $ do
     describe "Type-Safe selectColumns" $ do
         it "selects specified columns from a DataFrame" $ do
             df <- createTestDataFrame
-            let selectedDf = selectColumns @'["Name", "Salary"] df
+            let selectedDf = Sara.DataFrame.Wrangling.selectColumns @'["Name", "Salary"] df
             let (DataFrame selectedMap) = selectedDf
             Map.keys selectedMap `shouldContain` [T.pack "Name", T.pack "Salary"]
             Map.keys selectedMap `shouldNotContain` [T.pack "Age"]
@@ -129,8 +130,8 @@ main = hspec $ do
 
         it "performs sum aggregation correctly" $ do
             df <- createAggTestDataFrame
-            let groupedDf = groupBy @'[ '("Category", T.Text)] df
-            let aggregatedDf = sumAgg @"Value" @'[ '("Category", T.Text)] groupedDf
+            let groupedDf = groupBy @'["Category"] df
+            let aggregatedDf = sumAgg @"Value" groupedDf
             let (DataFrame aggMap) = aggregatedDf
             let sumA = case (aggMap Map.! "Value_sum") V.!? 0 of
                           Just (DoubleValue d) -> d
@@ -143,8 +144,8 @@ main = hspec $ do
 
         it "performs mean aggregation correctly" $ do
             df <- createAggTestDataFrame
-            let groupedDf = groupBy @'[ '("Category", T.Text)] df
-            let aggregatedDf = meanAgg @"Value" @'[ '("Category", T.Text)] groupedDf
+            let groupedDf = groupBy @'["Category"] df
+            let aggregatedDf = meanAgg @"Value" groupedDf
             let (DataFrame aggMap) = aggregatedDf
             let meanA = case (aggMap Map.! "Value_mean") V.!? 0 of
                           Just (DoubleValue d) -> d
@@ -157,8 +158,8 @@ main = hspec $ do
 
         it "performs count aggregation correctly" $ do
             df <- createAggTestDataFrame
-            let groupedDf = groupBy @'[ '("Category", T.Text)] df
-            let aggregatedDf = countAgg @"Value" @'[ '("Category", T.Text)] groupedDf
+            let groupedDf = groupBy @'["Category"] df
+            let aggregatedDf = countAgg @"Value" groupedDf
             let (DataFrame aggMap) = aggregatedDf
             let countA = case (aggMap Map.! "Value_count") V.!? 0 of
                           Just (IntValue i) -> i

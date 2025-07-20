@@ -43,10 +43,7 @@ import Data.Kind (Type)
 -- and values are `DataFrame`s containing the corresponding rows.
 type GroupedDataFrame (groupCols :: [(Symbol, Type)]) (originalCols :: [(Symbol, Type)]) = Map (TypeLevelRow groupCols) (DataFrame originalCols)
 
--- | A type family to convert a list of `Symbol`s to a schema (a list of `(Symbol, Type)`).
-type family SymbolsToSchema (syms :: [Symbol]) (originalSchema :: [(Symbol, Type)]) :: [(Symbol, Type)] where
-    SymbolsToSchema '[] _ = '[]
-    SymbolsToSchema (s ': ss) originalSchema = '(s, TypeOf s originalSchema) ': SymbolsToSchema ss originalSchema
+
 
 -- | Groups a `DataFrame` by a list of columns.
 --
@@ -55,14 +52,13 @@ type family SymbolsToSchema (syms :: [Symbol]) (originalSchema :: [(Symbol, Type
 -- >>> let grouped = groupBy @'["name" ::: T.Text] df
 -- >>> Map.size grouped
 -- 2
-groupBy :: forall (groupCols :: [(Symbol, Type)]) (cols :: [(Symbol, Type)]).
-          (HasColumns (MapSymbols groupCols) cols, KnownColumns groupCols)
-          => DataFrame cols -> GroupedDataFrame groupCols cols
-groupBy df =
+groupBy :: forall (groupCols :: [Symbol]) (cols :: [(Symbol, Type)])
+        . (HasColumns groupCols cols, KnownColumns (SymbolsToSchema groupCols cols)) => DataFrame cols -> GroupedDataFrame (SymbolsToSchema groupCols cols) cols
+groupBy df = 
     let
         rows = toRows df
-        getGroupKey :: Row -> TypeLevelRow groupCols
-        getGroupKey row = toTypeLevelRow @groupCols row
+        getGroupKey :: Row -> TypeLevelRow (SymbolsToSchema groupCols cols)
+        getGroupKey row = toTypeLevelRow @(SymbolsToSchema groupCols cols) row
 
         initialGroupedMap = Map.empty
         groupedMap = foldl' (\accMap row ->

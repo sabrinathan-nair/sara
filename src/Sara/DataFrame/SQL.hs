@@ -18,66 +18,68 @@ import qualified Data.Map.Strict as Map
 import Database.SQLite.Simple
 import Data.Proxy (Proxy(..))
 import Data.Typeable (TypeRep, typeRep)
-import Data.Maybe (fromMaybe)
+import Control.Monad (forM)
 
 import Sara.DataFrame.Types
 
 
 -- | Converts a `SQLData` value to a `DFValue`, validating against an expected `TypeRep`.
-sqlDataToDFValue :: TypeRep -> SQLData -> DFValue
+sqlDataToDFValue :: TypeRep -> SQLData -> Either String DFValue
 sqlDataToDFValue expectedType sqlData =
     case sqlData of
         SQLInteger i
-            | expectedType == typeRep (Proxy @Int) -> IntValue (fromIntegral i)
-            | expectedType == typeRep (Proxy @Double) -> DoubleValue (fromIntegral i)
-            | otherwise -> error $ "Type mismatch: Expected " ++ show expectedType ++ ", got SQLInteger " ++ show i
+            | expectedType == typeRep (Proxy @Int) -> Right $ IntValue (fromIntegral i)
+            | expectedType == typeRep (Proxy @Double) -> Right $ DoubleValue (fromIntegral i)
+            | otherwise -> Left $ "Type mismatch: Expected " ++ show expectedType ++ ", got SQLInteger " ++ show i
         SQLFloat d
-            | expectedType == typeRep (Proxy @Double) -> DoubleValue d
-            | otherwise -> error $ "Type mismatch: Expected " ++ show expectedType ++ ", got SQLFloat " ++ show d
+            | expectedType == typeRep (Proxy @Double) -> Right $ DoubleValue d
+            | otherwise -> Left $ "Type mismatch: Expected " ++ show expectedType ++ ", got SQLFloat " ++ show d
         SQLText t
-            | expectedType == typeRep (Proxy @T.Text) -> TextValue t
+            | expectedType == typeRep (Proxy @T.Text) -> Right $ TextValue t
             | expectedType == typeRep (Proxy @Bool) ->
                 case T.toLower t of
-                    "true" -> BoolValue True
-                    "false" -> BoolValue False
-                    _ -> error $ "Type mismatch: Expected Bool, got SQLText " ++ show t
-            | otherwise -> error $ "Type mismatch: Expected " ++ show expectedType ++ ", got SQLText " ++ show t
-        SQLBlob _ -> error "Unsupported SQL type: BLOB"
-        SQLNull -> NA
+                    "true" -> Right $ BoolValue True
+                    "false" -> Right $ BoolValue False
+                    _ -> Left $ "Type mismatch: Expected Bool, got SQLText " ++ show t
+            | otherwise -> Left $ "Type mismatch: Expected " ++ show expectedType ++ ", got SQLText " ++ show t
+        SQLBlob _ -> Left "Unsupported SQL type: BLOB"
+        SQLNull -> Right NA
 
 -- | Reads data from a SQLite database into a `DataFrame`.
 -- The `cols` type parameter specifies the schema of the resulting `DataFrame`.
 -- The function validates that the number of columns in the query result matches the schema.
 -- It also validates that the types of the values in the query result match the schema.
-readSQL :: forall cols. KnownColumns cols => Proxy cols -> FilePath -> Query -> IO (DataFrame cols)
+readSQL :: forall cols. KnownColumns cols => Proxy cols -> FilePath -> Query -> IO (Either String (DataFrame cols))
 readSQL p dbPath sqlQuery = do
     conn <- open dbPath
-    rows <- query_ conn sqlQuery :: IO [[SQLData]] -- Fetch as list of lists of SQLData
+    rows <- query_ conn sqlQuery :: IO [[SQLData]]
     close conn
 
     let expectedColNames = columnNames p
+        colCount = length expectedColNames
         expectedColTypes = columnTypes p
-        expectedColTypeMap = Map.fromList $ zip expectedColNames expectedColTypes
 
     if null rows
-        then return $ DataFrame Map.empty
+        then return $ Right $ DataFrame Map.empty
         else do
-            let numExpectedCols = length expectedColNames
-            let firstRowData = head rows -- Assuming all rows have the same number of columns
-            let numActualCols = length firstRowData
-
-            if numExpectedCols /= numActualCols
-                then error $ "SQL query result column count mismatch. Expected " ++ show numExpectedCols ++ ", got " ++ show numActualCols
+            let firstRow = head rows
+            if length firstRow /= colCount
+                then return $ Left $ "SQL query result column count mismatch. Expected " ++ show colCount ++ ", got " ++ show (length firstRow)
                 else do
-                    let initialColumnsMap = Map.fromList $ V.toList $ V.map (\colName -> (colName, V.empty)) (V.fromList expectedColNames)
-                    let finalColumnsMap = V.foldl' (\accMap rowDataList ->
-                                let rowData = V.fromList rowDataList -- Convert rowDataList to Vector for safe access
-                                in Map.mapWithKey (\colName colVec ->
-                                    let expectedType = fromMaybe (error $ "Type not found for column: " ++ T.unpack colName) $ Map.lookup colName expectedColTypeMap
-                                        colIndex = fromMaybe (error $ "Internal error: Column " ++ T.unpack colName ++ " not found in expected names list.") $ V.elemIndex colName (V.fromList expectedColNames)
-                                    in case rowData V.!? colIndex of
-                                        Just sqlData -> V.snoc colVec (sqlDataToDFValue expectedType sqlData)
-                                        Nothing -> error $ "Internal error: Column index out of bounds for " ++ T.unpack colName
-                                ) accMap
-                            ) initialColumnsMap (V.fromList rows)
-                    return $ DataFrame finalColumnsMap
+                    let processedRowsResult :: Either String [[DFValue]]
+                        processedRowsResult = forM rows $ \row ->
+                            if length row /= colCount
+                                then Left $ "Inconsistent column count in SQL result. Expected " ++ show colCount ++ ", got " ++ show (length row)
+                                else forM (zip expectedColTypes row) $ \(expectedType, sqlData) ->
+                                    sqlDataToDFValue expectedType sqlData
+
+                    case processedRowsResult of
+                        Left err -> return $ Left err
+                        Right processedRows -> do
+                            let columns = transpose processedRows
+                            let finalColumnsMap = Map.fromList $ zip expectedColNames (map V.fromList columns)
+                            return $ Right $ DataFrame finalColumnsMap
+
+transpose :: [[a]] -> [[a]]
+transpose ([]:_) = []
+transpose x = map head x : transpose (map tail x)

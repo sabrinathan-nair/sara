@@ -25,11 +25,10 @@ module Sara.DataFrame.Types (
     toRows,
     fromRows,
     SortOrder(..),
-    ConcatAxis(..),
-    JoinType(..),
     SortCriterion(..),
     SortableColumn,
     KnownColumns(..),
+    KnownSymbols(..),
     CanBeDFValue(..),
     -- * Type-level programming helpers
     type Append,
@@ -37,19 +36,21 @@ module Sara.DataFrame.Types (
     type Nub,
     HasColumn,
     HasColumns,
-    JoinCols,
     TypeOf,
-    MapSymbols,
+    GetColumnTypes,
+    GetColumnNames,
+    SymbolsToSchema,
     UpdateColumn,
     TypeLevelRow(..),
     toTypeLevelRow,
-        fromTypeLevelRow,
+    fromTypeLevelRow,
     isNA,
     MapTypes,
-        All,
+    All,
     ContainsColumn,
-    ResolveJoinValue,
-    ResolveJoinValueType
+    ConcatAxis(..),
+    JoinType(..),
+    type JoinCols
 ) where
 
 import qualified Data.Text as T
@@ -128,6 +129,9 @@ type Row = Map T.Text DFValue
 -- | The DataFrame itself, represented as a newtype wrapper around a 'Map' from column names ('T.Text') to 'Column's.
 -- This structure allows for efficient column-wise operations and access.
 newtype DataFrame (cols :: [(Symbol, Type)]) = DataFrame (Map T.Text Column)
+    deriving (Generic)
+
+instance NFData (DataFrame cols)
 
 -- | A type to represent a single row with its schema at the type level.
 newtype TypeLevelRow (cols :: [(Symbol, Type)]) = TypeLevelRow (Map T.Text DFValue)
@@ -150,6 +154,15 @@ fromTypeLevelRow (TypeLevelRow row) = row
 class KnownColumns (cols :: [(Symbol, Type)]) where
     columnNames :: Proxy cols -> [T.Text]
     columnTypes :: Proxy cols -> [TypeRep]
+
+class KnownSymbols (ss :: [Symbol]) where
+  symbolVals :: Proxy ss -> [String]
+
+instance KnownSymbols '[] where
+  symbolVals _ = []
+
+instance (KnownSymbol s, KnownSymbols ss) => KnownSymbols (s ': ss) where
+  symbolVals _ = symbolVal (Proxy @s) : symbolVals (Proxy @ss)
 
 instance KnownColumns '[] where
     columnNames _ = []
@@ -191,11 +204,8 @@ data ConcatAxis = ConcatRows    -- ^ Concatenate DataFrames row-wise.
                 | ConcatColumns -- ^ Concatenate DataFrames column-wise.
     deriving (Show, Eq)
 
--- | Specifies the type of join to perform when merging DataFrames.
-data JoinType = InnerJoin   -- ^ Return only the rows that have matching keys in both DataFrames.
-              | LeftJoin    -- ^ Return all rows from the left DataFrame, and the matched rows from the right DataFrame.
-              | RightJoin   -- ^ Return all rows from the right DataFrame, and the matched rows from the left DataFrame.
-              | OuterJoin   -- ^ Return all rows when there is a match in one of the DataFrames.
+-- | Specifies the type of join to be performed.
+data JoinType = InnerJoin | LeftJoin | RightJoin | OuterJoin
     deriving (Show, Eq)
 
 -- | A type class for values that can be converted to and from DFValue.
@@ -265,6 +275,12 @@ fromRows rows@(firstRow:_) =
         colMap = Map.fromList $ map (\colName -> (colName, V.fromList $ map (Map.! colName) rows)) columns
     in DataFrame colMap
 
+-- | A type family to get the type of a column from a schema.
+type family TypeOf (s :: Symbol) (cols :: [(Symbol, Type)]) :: Type where
+  TypeOf s ('(s, t) ': xs) = t
+  TypeOf s (_ ': xs) = TypeOf s xs
+  TypeOf s '[] = TypeError (Text "Column '" :<>: ShowType s :<>: Text "' not found in DataFrame schema.")
+
 -- | A type family to append two type-level lists.
 type family Append (xs :: [k]) (ys :: [k]) :: [k] where
     -- | Appends two type-level lists. Used for combining schemas.
@@ -303,118 +319,55 @@ type family HasColumns (subset :: [Symbol]) (superset :: [(Symbol, Type)]) :: Co
     HasColumns '[] _ = ()
     HasColumns (s ': ss) superset = (HasColumn s superset, HasColumns ss superset)
 
--- | Type family to compute the columns of a joined DataFrame.
-type family If (c :: Bool) (t :: k) (f :: k) :: k where
-    -- | Type family for conditional type selection.
-    If 'True t f = t
-    If 'False t f = f
-
--- Helper to get the type of a column, or 'Nothing' if not found
-type family SafeTypeOf (s :: Symbol) (cols :: [(Symbol, Type)]) :: Maybe Type where
-    -- | Helper to get the type of a column, or 'Nothing' if not found
-    SafeTypeOf s '[] = 'Nothing
-    SafeTypeOf s ('(s, t) ': xs) = 'Just t
-    SafeTypeOf s (x ': xs) = SafeTypeOf s xs
-
--- Helper to determine the type of a column in the joined DataFrame
-type family TypeEq (a :: k) (b :: k) :: Bool where
-    -- | Helper to determine type equality at the type level.
-    TypeEq a a = 'True
-    TypeEq a b = 'False
-
-type family GetJoinedColumnType (s :: Symbol) (cols1 :: [(Symbol, Type)]) (cols2 :: [(Symbol, Type)]) (joinType :: JoinType) :: Type where
-    GetJoinedColumnType s cols1 cols2 'InnerJoin =
-        If (TypeEq (SafeTypeOf s cols1) 'Nothing) (TypeError (Text "Column '" :<>: ShowType s :<>: Text "' not found in left DataFrame for InnerJoin."))
-           (If (TypeEq (SafeTypeOf s cols2) 'Nothing) (TypeError (Text "Column '" :<>: ShowType s :<>: Text "' not found in right DataFrame for InnerJoin."))
-               (If (TypeEq (UnwrapMaybe (SafeTypeOf s cols1)) (UnwrapMaybe (SafeTypeOf s cols2))) (UnwrapMaybe (SafeTypeOf s cols1))
-                   (TypeError (Text "Type mismatch for column '" :<>: ShowType s :<>: Text "' in InnerJoin. Left type: " :<>: ShowType (UnwrapMaybe (SafeTypeOf s cols1)) :<>: Text ", Right type: " :<>: ShowType (UnwrapMaybe (SafeTypeOf s cols2))))))
-
-    GetJoinedColumnType s cols1 cols2 'LeftJoin = LeftJoinType s (SafeTypeOf s cols1) (SafeTypeOf s cols2)
-
-    GetJoinedColumnType s cols1 cols2 'RightJoin = RightJoinType s (SafeTypeOf s cols1) (SafeTypeOf s cols2)
-
-    GetJoinedColumnType s cols1 cols2 'OuterJoin = OuterJoinType s (SafeTypeOf s cols1) (SafeTypeOf s cols2)
-
-type family LeftJoinType (s :: Symbol) (t1 :: Maybe Type) (t2 :: Maybe Type) :: Type where
-    LeftJoinType s ('Just t1) _ = t1
-    LeftJoinType s 'Nothing ('Just t2) = Maybe t2
-    LeftJoinType s 'Nothing 'Nothing = TypeError (Text "Column '" :<>: ShowType s :<>: Text "' not found in either DataFrame for LeftJoin.")
-
-type family RightJoinType (s :: Symbol) (t1 :: Maybe Type) (t2 :: Maybe Type) :: Type where
-    RightJoinType s _ ('Just t2) = t2
-    RightJoinType s ('Just t1) 'Nothing = Maybe t1
-    RightJoinType s 'Nothing 'Nothing = TypeError (Text "Column '" :<>: ShowType s :<>: Text "' not found in either DataFrame for RightJoin.")
-
-type family OuterJoinType (s :: Symbol) (t1 :: Maybe Type) (t2 :: Maybe Type) :: Type where
-    OuterJoinType s ('Just t1) ('Just t2) = If (TypeEq t1 t2) t1 (TypeError (Text "Type mismatch for column '" :<>: ShowType s :<>: Text "' in OuterJoin. Left type: " :<>: ShowType t1 :<>: Text ", Right type: " :<>: ShowType t2))
-    OuterJoinType s ('Just t1) 'Nothing = Maybe t1
-    OuterJoinType s 'Nothing ('Just t2) = Maybe t2
-    OuterJoinType s 'Nothing 'Nothing = TypeError (Text "Column '" :<>: ShowType s :<>: Text "' not found in either DataFrame for OuterJoin.")
-
-type family UnwrapMaybe (m :: Maybe k) :: k where
-    -- | Unwraps a 'Just' value from a 'Maybe' type. Throws a TypeError if 'Nothing'.
-    UnwrapMaybe ('Just x) = x
-    UnwrapMaybe 'Nothing = TypeError ('Text "Attempted to unwrap Nothing")
 
 
 
-type family MakeJoinedColumnTuple (joinType :: JoinType) (cols1 :: [(Symbol, Type)]) (cols2 :: [(Symbol, Type)]) (symbols :: [Symbol]) :: [(Symbol, Type)] where
-    -- | Helper to construct the schema of a joined DataFrame.
-    MakeJoinedColumnTuple joinType cols1 cols2 '[] = '[]
-    MakeJoinedColumnTuple joinType cols1 cols2 (s ': ss) = '(s, GetJoinedColumnType s cols1 cols2 joinType) ': MakeJoinedColumnTuple joinType cols1 cols2 ss
-
-type family JoinCols (cols1 :: [(Symbol, Type)]) (cols2 :: [(Symbol, Type)]) (joinType :: JoinType) :: [(Symbol, Type)] where
-    -- | Computes the schema of a DataFrame resulting from a join operation.
-    JoinCols cols1 cols2 joinType = Nub (MakeJoinedColumnTuple joinType cols1 cols2 (Append (MapSymbols cols1) (MapSymbols cols2)))
-
--- | Type family to get the type of a column given its name and the DataFrame's schema.
-type family TypeOf (col :: Symbol) (cols :: [(Symbol, Type)]) :: Type where
-    TypeOf col '[] = TypeError (Text "Column '" :<>: ShowType col :<>: Text "' not found in DataFrame schema.")
-    TypeOf col ('(name, t) ': rest) = TypeOfImpl (CmpSymbol col name) t (TypeOf col rest)
-
-type family TypeOfImpl (o :: Ordering) (t :: Type) (rest :: Type) :: Type where
-  TypeOfImpl 'EQ t rest = t
-  TypeOfImpl _ t rest = rest
-
--- Helper type family to extract just the symbols from a list of (Symbol, Type) tuples
-type family MapSymbols (xs :: [(Symbol, Type)]) :: [Symbol] where
-    MapSymbols '[] = '[]
-    MapSymbols ('(s, t) ': xs) = s ': MapSymbols xs
 
 
 
-type family MapTypes (xs :: [(Symbol, Type)]) :: [Type] where
-    MapTypes '[] = '[]
-    MapTypes ('(s, t) ': xs) = t ': MapTypes xs
+type family GetColumnNames (cols :: [(Symbol, Type)]) :: [Symbol] where
+    GetColumnNames '[] = '[]
+    GetColumnNames ('(s, t) ': xs) = s ': GetColumnNames xs
 
--- | A type family to apply a constraint to a list of types.
+type family GetColumnTypes (cols :: [(Symbol, Type)]) :: [Type] where
+    GetColumnTypes '[] = '[]
+    GetColumnTypes ('(s, t) ': xs) = t ': GetColumnTypes xs
+
+type family SymbolsToSchema (syms :: [Symbol]) (originalSchema :: [(Symbol, Type)]) :: [(Symbol, Type)] where
+    SymbolsToSchema '[] _ = '[]
+    SymbolsToSchema (s ': ss) originalSchema = '(s, TypeOf s originalSchema) ': SymbolsToSchema ss originalSchema
+
+
+
+
+type family UpdateColumn (col :: Symbol) (newType :: Type) (cols :: [(Symbol, Type)]) :: [(Symbol, Type)] where
+    UpdateColumn col newType '[] = '[]
+    UpdateColumn col newType ('(col, oldType) ': xs) = '(col, newType) ': xs
+    UpdateColumn col newType (x ': xs) = x ': UpdateColumn col newType xs
+
+
+type family MapTypes (ts :: [Type]) :: Constraint where
+    MapTypes '[] = ()
+    MapTypes (t ': ts) = (CanBeDFValue t, MapTypes ts)
+
 type family All (c :: k -> Constraint) (xs :: [k]) :: Constraint where
     All c '[] = ()
     All c (x ': xs) = (c x, All c xs)
 
 type family ContainsColumn (s :: Symbol) (cols :: [(Symbol, Type)]) :: Bool where
     ContainsColumn s '[] = 'False
-    ContainsColumn s ('(s, t) ': xs) = 'True
-    ContainsColumn s (x ': xs) = ContainsColumn s xs
+    ContainsColumn s ('(s, _) ': _) = 'True
+    ContainsColumn s (_ ': xs) = ContainsColumn s xs
 
--- | A type family to update the type of a column in a schema.
-type family UpdateColumn (colName :: Symbol) (newType :: Type) (cols :: [(Symbol, Type)]) :: [(Symbol, Type)] where
-  UpdateColumn colName newType '[] = TypeError (Text "Column '" :<>: ShowType colName :<>: Text "' not found for update in DataFrame schema.")
-  UpdateColumn colName newType ('(s, t) ': rest) = If (TypeEq (CmpSymbol s colName) 'EQ)
-                                                    ('(colName, newType) ': rest)
-                                                    ('(s, t) ': UpdateColumn colName newType rest)
+type family JoinCols (cols1 :: [(Symbol, Type)]) (cols2 :: [(Symbol, Type)]) :: [(Symbol, Type)] where
+    JoinCols cols1 cols2 = Nub (Append cols1 cols2)
 
-type family ResolveJoinValue (a :: Type) (b :: Type) (joinType :: JoinType) :: Type where
-    ResolveJoinValue a b 'InnerJoin = If (TypeEq a b) a (TypeError (Text "Type mismatch for InnerJoin"))
-    ResolveJoinValue a b 'LeftJoin = Maybe a
-    ResolveJoinValue a b 'RightJoin = Maybe b
-    ResolveJoinValue a b 'OuterJoin = Maybe (If (TypeEq a b) a (TypeError (Text "Type mismatch for OuterJoin")))
 
-type family ResolveJoinValueType (a :: Type) (b :: Type) (joinType :: JoinType) :: Type where
-    ResolveJoinValueType a b 'InnerJoin = If (TypeEq a b) a (TypeError (Text "Type mismatch for InnerJoin"))
-    ResolveJoinValueType a b 'LeftJoin = Maybe a
-    ResolveJoinValueType a b 'RightJoin = Maybe b
-    ResolveJoinValueType a b 'OuterJoin = Maybe (If (TypeEq a b) a (TypeError (Text "Type mismatch for OuterJoin")))
+
+
+
+
+
 
 
 
