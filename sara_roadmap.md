@@ -14,10 +14,15 @@ This is Sara's special plan for growing up and becoming an even better helper fo
 
 **How We'll Do It:**
 
-1.  **See How Fast Sara Is Now:** We've timed Sara to see how fast it plays with toys right now. (Completed!)
-2.  **Find Better Ways to Store Toys:** We'll look for smarter ways for Sara to keep your toys inside its brain, so it doesn't have to think so hard.
-3.  **Teach Sara New Tricks:** We'll teach Sara new ways to play with toys that are faster.
-4.  **Check if Sara is Faster:** We'll time Sara again to see if it learned to play faster!
+1.  **Benchmark Current Performance:** We've established a benchmarking setup and obtained initial performance metrics. (Completed!)
+2.  **Implement Streaming for Large Datasets:** Explore and integrate streaming techniques to enable Sara to process datasets larger than available memory.
+    *   Research suitable Haskell streaming libraries (e.g., `pipes`, `conduit`, `streaming`).
+    *   Identify key DataFrame operations that would benefit most from a streaming approach (e.g., data loading, filtering, transformations).
+    *   Design and implement streaming data flow, potentially introducing new type-level constructs for stream-based schemas.
+    *   Develop core streaming functionalities and benchmark their performance against in-memory counterparts using large synthetic datasets.
+3.  **Optimize Data Structures:** Investigate and implement more efficient internal data structures and memory management techniques for DataFrames.
+4.  **Improve Algorithms:** Develop and integrate more performant algorithms for existing DataFrame operations.
+5.  **Verify Performance Gains:** Re-run benchmarks to measure the impact of optimizations and confirm performance improvements.
 
 ## Phase 3: Make Sara Super Easy to Talk To!
 
