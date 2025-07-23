@@ -1,10 +1,8 @@
-{-# LANGUAGE DefaultSignatures #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DataKinds #-}
-{-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE PolyKinds #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE ConstraintKinds #-}
@@ -63,10 +61,10 @@ import Data.Time (Day, UTCTime)
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
 import Data.Vector (Vector)
-import Data.Time.Format (parseTimeM, defaultTimeLocale)
+import Data.Time.Format (parseTimeM, defaultTimeLocale, formatTime)
 import Text.Read (readMaybe)
 import Data.Proxy (Proxy(..))
-import GHC.TypeLits (symbolVal, Symbol)
+import GHC.TypeLits (symbolVal, Symbol, ErrorMessage(Text, (:<>:), ShowType), KnownSymbol, TypeError, CmpSymbol)
 
 import Data.Aeson
 import Control.DeepSeq
@@ -77,7 +75,7 @@ import Data.Typeable (TypeRep, Typeable, typeRep)
 import Data.Maybe (fromMaybe)
 import qualified Data.Vector as V
 import Data.Scientific (toRealFloat)
-import Data.Time.Format (formatTime)
+
 
 type family Fst (pair :: (k1, k2)) :: k1 where
     Fst '(x, _) = x

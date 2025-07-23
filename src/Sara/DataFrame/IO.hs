@@ -1,5 +1,3 @@
--- Sara.DataFrame.IO module
-
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE TypeOperators #-}
@@ -9,7 +7,6 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE LambdaCase #-}
 
 -- | This module provides functions for reading from and writing to common
 -- data formats like CSV and JSON. It ensures that the data conforms to the
@@ -26,7 +23,6 @@ module Sara.DataFrame.IO (
 ) where
 
 import qualified Data.ByteString.Lazy as BL
-import qualified Data.ByteString.Lazy.Char8 as BL8
 import qualified Data.Csv as C
 import Data.Csv (FromNamedRecord)
 import qualified Data.Text as T
@@ -55,7 +51,7 @@ import Control.Monad.IO.Class (liftIO)
 -- | Reads a CSV file in a streaming fashion.
 -- It returns a `Stream` of `DataFrame`s, where each `DataFrame` contains a single row.
 readCsvStreaming :: forall record cols. (FromNamedRecord record, HasSchema record, cols ~ Schema record, KnownColumns cols, Generic record, GToFields (Rep record)) => Proxy record -> FilePath -> Stream (Of (DataFrame cols)) IO ()
-readCsvStreaming p filePath = do
+readCsvStreaming _ filePath = do
     let expectedColNames = V.fromList $ columnNames (Proxy @cols)
     contents <- liftIO $ BL.readFile filePath
     case C.decodeByName contents :: Either String (C.Header, V.Vector record) of
@@ -135,7 +131,7 @@ readJSON p filePath = do
 -- NOTE: This is a temporary non-streaming implementation due to issues with streaming JSON libraries.
 -- It reads the entire file into memory before processing.
 readJSONStreaming :: forall cols. KnownColumns cols => Proxy cols -> FilePath -> Stream (Of (DataFrame cols)) IO ()
-readJSONStreaming p filePath = do
+readJSONStreaming _ filePath = do
     jsonData <- liftIO $ BL.readFile filePath
     case A.eitherDecode jsonData :: Either String [Map T.Text DFValue] of
         Left err -> liftIO $ ioError $ userError $ "JSON parsing error: " ++ err

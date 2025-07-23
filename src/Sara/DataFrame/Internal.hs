@@ -14,7 +14,7 @@
 -- conversions.
 module Sara.DataFrame.Internal where
 
-import Data.Csv (FromNamedRecord, ToNamedRecord)
+import Data.Csv (FromNamedRecord)
 import qualified Data.Vector as V
 import Sara.DataFrame.Types
 import qualified Data.Map.Strict as Map
@@ -22,11 +22,10 @@ import Data.Proxy (Proxy(..))
 import GHC.TypeLits (Symbol)
 import Data.Kind (Type)
 import GHC.Generics
-import qualified Data.Text as T
-import qualified Data.Text.Encoding as TE
-import qualified Data.HashMap.Strict as HM
-import Data.Aeson
-import qualified Data.Aeson.Types as A
+import qualified Data.Text as T ()
+import qualified Data.Text.Encoding as TE ()
+import Data.Aeson ()
+import qualified Data.Aeson.Types as A ()
 
 -- | Converts a record to a list of Text values.
 recordToDFValueList :: (Generic a, GToFields (Rep a)) => a -> [DFValue]
@@ -70,4 +69,4 @@ instance (CanBeDFValue a) => GToFields (K1 i a) where
 -- Assumes that all inner lists have the same length.
 transpose :: [[a]] -> [[a]]
 transpose ([]:_) = []
-transpose x = (map head x) : transpose (map tail x)
+transpose x = map head x : transpose (map tail x)

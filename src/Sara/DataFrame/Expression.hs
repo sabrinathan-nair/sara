@@ -4,7 +4,6 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE KindSignatures #-}
 
 -- | This module defines a type-safe GADT for building and evaluating expressions
@@ -39,7 +38,6 @@ import Data.Kind (Type)
 import Sara.DataFrame.Types
 import qualified Data.Map.Strict as Map
 import qualified Data.Vector as V
-import Control.Applicative (liftA2)
 
 
 -- | A type-safe expression GADT for `DataFrame` operations.

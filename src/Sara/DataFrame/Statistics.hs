@@ -1,12 +1,10 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE DataKinds #-}
-{-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE KindSignatures #-}
-{-# LANGUAGE TypeApplications #-}
 
 -- | This module provides a collection of statistical functions that can be applied to `DataFrame` columns.
 -- These functions operate on `V.Vector DFValue` and return a single `DFValue` as the result.
@@ -165,10 +163,10 @@ kurtosisV vec =
 -- The new column is named by appending "_rolling" to the original column name.
 rollingApply :: KnownColumns cols => DataFrame cols -> Int -> String -> (V.Vector DFValue -> DFValue) -> DataFrame cols
 rollingApply (DataFrame dfMap) window colName aggFunc =
-    let col = dfMap Map.! (T.pack colName)
+    let col = dfMap Map.! T.pack colName
         rollingCol = V.fromList $ map (\i ->
             let windowed = V.slice i (min window (V.length col - i)) col
             in aggFunc windowed
             ) [0 .. V.length col - 1]
-        newDfMap = Map.insert ((T.pack colName) `T.append` "_rolling") rollingCol dfMap
+        newDfMap = Map.insert (T.pack colName `T.append` "_rolling") rollingCol dfMap
     in DataFrame newDfMap

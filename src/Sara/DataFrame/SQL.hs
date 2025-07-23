@@ -1,6 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE DataKinds #-}
-{-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE KindSignatures #-}
@@ -70,8 +69,7 @@ readSQL p dbPath sqlQuery = do
                         processedRowsResult = forM rows $ \row ->
                             if length row /= colCount
                                 then Left $ "Inconsistent column count in SQL result. Expected " ++ show colCount ++ ", got " ++ show (length row)
-                                else forM (zip expectedColTypes row) $ \(expectedType, sqlData) ->
-                                    sqlDataToDFValue expectedType sqlData
+                                else forM (zip expectedColTypes row) $ uncurry sqlDataToDFValue
 
                     case processedRowsResult of
                         Left err -> return $ Left err

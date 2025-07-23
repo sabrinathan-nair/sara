@@ -1,0 +1,23 @@
+Configuration is affected by the following files:
+- cabal.project.local
+Build profile: -w ghc-9.6.7 -O1
+In order, the following will be built (use -v for more details):
+ - sara-0.1.0.0 (exe:sara-tutorial) (file app/Tutorial.hs changed)
+Preprocessing executable 'sara-tutorial' for sara-0.1.0.0...
+Building executable 'sara-tutorial' for sara-0.1.0.0...
+[1 of 1] Compiling Main             ( app/Tutorial.hs, dist-newstyle/build/x86_64-linux/ghc-9.6.7/sara-0.1.0.0/x/sara-tutorial/build/sara-tutorial/sara-tutorial-tmp/Main.o ) [Source file changed]
+
+app/Tutorial.hs:47:65: error: [GHC-76037]
+    Not in scope: type constructor or class ‘EmployeesSchema’
+   |
+47 |     hPutStrLn stderr $ "EmployeesSchema type: " ++ show (Proxy @EmployeesSchema)
+   |                                                                 ^^^^^^^^^^^^^^^
+
+app/Tutorial.hs:48:52: error: [GHC-76037]
+    Not in scope: type constructor or class ‘EmployeesSchema’
+   |
+48 |     let employeesStream = readCsvStreaming (Proxy @EmployeesSchema) "employees.csv"
+   |                                                    ^^^^^^^^^^^^^^^
+Error: [Cabal-7125]
+Failed to build exe:sara-tutorial from sara-0.1.0.0.
+

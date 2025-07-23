@@ -1,12 +1,9 @@
-{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE DataKinds #-}
-{-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE KindSignatures #-}
-{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE TypeOperators #-}
 
 -- | This module provides functions for string manipulation on `DataFrame` columns.
 -- These functions operate on columns of type `TextValue` and handle non-text values gracefully.
@@ -63,13 +60,13 @@ strip colProxy (DataFrame dfMap) =
     let colName = T.pack (symbolVal colProxy)
     in DataFrame $ Map.adjust (V.map (applyTextTransform T.strip)) colName dfMap
 
+contains :: forall (col :: Symbol) cols. (KnownSymbol col, HasColumn col cols, KnownColumns cols) => Proxy col -> T.Text -> DataFrame cols -> DataFrame cols
 -- | Checks if strings in the specified column contain a given pattern.
 -- A new column is added to the `DataFrame` with the results.
 -- The new column is named by appending "_contains_" and the pattern to the original column name.
-contains :: forall (col :: Symbol) cols. (KnownSymbol col, HasColumn col cols, KnownColumns cols) => Proxy col -> T.Text -> DataFrame cols -> DataFrame cols
 contains colProxy pattern (DataFrame dfMap) =
     let colName = T.pack (symbolVal colProxy)
-    in DataFrame $ Map.insert (colName `T.append` "_contains_" `T.append` pattern) (V.map (applyTextPredicate (T.isInfixOf pattern)) (dfMap Map.! colName)) dfMap
+    in DataFrame $ Map.insert (colName `T.append` T.pack "_contains_" `T.append` pattern) (V.map (applyTextPredicate (T.isInfixOf pattern)) (dfMap Map.! colName)) dfMap
 
 -- | Replaces occurrences of a substring in the specified column.
 -- The column must be of type `TextValue`.

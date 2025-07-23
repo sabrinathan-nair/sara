@@ -1,12 +1,9 @@
-{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE DataKinds #-}
-{-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE KindSignatures #-}
-{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 -- | This module provides functions for handling missing data in a `DataFrame`.
 -- Missing data is represented by the `NA` constructor of the `DFValue` type.
@@ -48,7 +45,7 @@ ffill :: KnownColumns cols => DataFrame cols -> DataFrame cols
 ffill (DataFrame dfMap) = DataFrame $ Map.map ffillColumn dfMap
   where
     ffillColumn :: Column -> Column
-    ffillColumn col = V.postscanl' (\lastVal currentVal -> if currentVal == NA then lastVal else currentVal) NA col
+    ffillColumn = V.postscanl' (\lastVal currentVal -> if currentVal == NA then lastVal else currentVal) NA
 
 -- | Backward fills `NA` values in a `DataFrame`.
 -- For each column, `NA` values are replaced with the next non-`NA` value.
@@ -76,7 +73,7 @@ dropna df DropRows thresholdM =
             let nonNACount = length $ filter (/= NA) (Map.elems row)
             in case thresholdM of
                 Just t -> nonNACount >= t
-                Nothing -> not (NA `elem` (Map.elems row)) -- Keep if no NA
+                Nothing -> NA `notElem` Map.elems row -- Keep if no NA
             ) rows
     in fromRows filteredRows
 dropna (DataFrame dfMap) DropColumns thresholdM =

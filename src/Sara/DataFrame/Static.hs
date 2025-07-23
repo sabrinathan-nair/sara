@@ -77,7 +77,7 @@ inferColumnTypeFromSamples samples = do
         else inferMostSpecificType nonNaSamples
 
     if hasNa
-        then fmap (AppT (ConT (mkName "Data.Maybe.Maybe"))) (pure baseTypeQ)
+        then pure (AppT (ConT (mkName "Data.Maybe.Maybe")) baseTypeQ)
         else pure baseTypeQ
 
 -- | Infers the most specific type from a list of non-`NA` sample strings.
@@ -126,7 +126,7 @@ inferCsvSchema typeName filePath = do
                     let columnSamples = V.toList $ V.generate (V.length (V.head records)) $ \colIdx ->
                             V.toList $ V.map (\row -> TE.decodeUtf8 (row V.! colIdx)) dataRows
                     
-                    inferredTypes <- sequence $ map inferColumnTypeFromSamples columnSamples
+                    inferredTypes <- mapM inferColumnTypeFromSamples columnSamples
                     let prefixedHeaders = map (T.pack typeName <>) headers
                     let normalizedPrefixedHeaders = map normalizeFieldName prefixedHeaders
                     let schemaListType = foldr (\(h, t) acc -> PromotedConsT `AppT` (PromotedTupleT 2 `AppT` LitT (StrTyLit (T.unpack h)) `AppT` t) `AppT` acc) PromotedNilT (zip prefixedHeaders inferredTypes)
@@ -168,5 +168,5 @@ readCsv filePath = do
                     let normalizedHeaderLine = BL.intercalate (BL.singleton 44) (map BL.fromStrict normalizedByteStringHeaders)
 
                     -- Reconstruct the full CSV content with the normalized header
-                    let newContents = normalizedHeaderLine `BL.append` (BL.singleton 10) `BL.append` dataLines
+                    let newContents = normalizedHeaderLine `BL.append` BL.singleton 10 `BL.append` dataLines
                     return $ snd <$> decodeByName newContents

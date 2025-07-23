@@ -1,12 +1,10 @@
 {-# LANGUAGE PolyKinds #-}
-{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE UndecidableInstances #-}
 
@@ -57,13 +55,14 @@ instance (KnownSymbol x, AllKnownSymbol xs) => AllKnownSymbol (x ': xs) where
 
 -- | Filters rows from a `DataFrame` based on a type-safe `FilterPredicate`.
 filterRows :: forall cols. KnownColumns cols => FilterPredicate cols -> Stream (Of (DataFrame cols)) IO () -> Stream (Of (DataFrame cols)) IO ()
-filterRows p streamOfDFs = S.mapMaybeM (\df -> do
-    let rows = toRows df
-    let filteredRows = [row | row <- rows, fromMaybe False (evaluate p (getDataFrameMap df) (fromJust (V.elemIndex row (V.fromList rows))))]
-    if null filteredRows
-        then return Nothing
-        else return $ Just (fromRows filteredRows)
-    ) streamOfDFs
+filterRows p =
+    S.mapMaybeM (\df -> do
+        let rows = toRows df
+        let filteredRows = [row | row <- rows, fromMaybe False (evaluate p (getDataFrameMap df) (fromJust (V.elemIndex row (V.fromList rows))))]
+        if null filteredRows
+            then return Nothing
+            else return $ Just (fromRows filteredRows)
+        )
 
 -- | Sorts a `DataFrame` based on a list of type-safe `SortCriterion`s.
 -- The sort criteria are applied in order, from left to right.
@@ -202,7 +201,8 @@ fillNA replacementValue (DataFrame dfMap) =
 filterByBoolColumn :: forall (boolCol :: Symbol) (cols :: [(Symbol, Type)]).
                      (HasColumn boolCol cols, KnownColumns cols, TypeOf boolCol cols ~ Bool)
                      => Proxy boolCol -> Stream (Of (DataFrame cols)) IO () -> Stream (Of (DataFrame cols)) IO ()
-filterByBoolColumn p streamOfDFs = filterRows (FilterPredicate (ExprPredicate (Col p))) streamOfDFs
+filterByBoolColumn p =
+    filterRows (FilterPredicate (ExprPredicate (Col p)))
 
 -- | Selects a subset of columns from a `DataFrame`.
 type family SelectCols (selected :: [Symbol]) (cols :: [(Symbol, Type)]) :: [(Symbol, Type)] where

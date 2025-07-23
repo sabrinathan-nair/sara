@@ -1,4 +1,3 @@
-{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -6,7 +5,6 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
@@ -39,7 +37,6 @@ import Data.Proxy (Proxy(..))
 import Data.Kind (Type)
 import Streaming (Stream, Of)
 import qualified Streaming.Prelude as S
-import Control.Monad.IO.Class (liftIO)
 
 -- | A `GroupedDataFrame` is the result of a `groupBy` operation.
 -- It's a map where keys are `TypeLevelRow`s representing the unique values of grouping columns,
@@ -57,11 +54,11 @@ type GroupedDataFrame (groupCols :: [(Symbol, Type)]) (originalCols :: [(Symbol,
 -- 2
 groupBy :: forall (groupCols :: [Symbol]) (cols :: [(Symbol, Type)])
         . (HasColumns groupCols cols, KnownColumns (SymbolsToSchema groupCols cols)) => Stream (Of (DataFrame cols)) IO () -> IO (GroupedDataFrame (SymbolsToSchema groupCols cols) cols)
-groupBy dfStream =
+groupBy =
     S.foldM_ (\accMap df -> do
         let rows = toRows df
         let getGroupKey :: Row -> TypeLevelRow (SymbolsToSchema groupCols cols)
-            getGroupKey row = toTypeLevelRow @(SymbolsToSchema groupCols cols) row
+            getGroupKey = toTypeLevelRow @(SymbolsToSchema groupCols cols)
 
         return $! foldl' (\currentMap row ->
             let
@@ -72,7 +69,7 @@ groupBy dfStream =
                     DataFrame $ Map.unionWith (V.++) existingMap newMap
                 ) groupKey singleRowDf currentMap
             ) accMap rows
-        ) (return Map.empty) return dfStream
+        ) (return Map.empty) return
 
 -- | A type family to generate a new column name for an aggregation.
 -- For example, `AggColName "age" "sum"` becomes `"age_sum"`.

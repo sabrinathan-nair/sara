@@ -2,7 +2,6 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE DataKinds #-}
-{-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE TypeFamilies #-}
@@ -27,7 +26,7 @@ module Sara.DataFrame.Transform (
 import qualified Data.Text as T
 import qualified Data.Map.Strict as Map
 import qualified Data.Vector as V
-import Sara.DataFrame.Types (DFValue(..), DataFrame(..), Row, toRows, SortOrder(..), SortCriterion(..), KnownColumns(..), CanBeDFValue(..), getDataFrameMap, Column, TypeOf, HasColumn, fromDFValueUnsafe, toDFValue, type Append, type Remove, type Nub, type UpdateColumn, type Fst, type Snd)
+import Sara.DataFrame.Types (DFValue(..), DataFrame(..), Row, toRows, KnownColumns(..), CanBeDFValue(..), getDataFrameMap, TypeOf, HasColumn, fromDFValueUnsafe, toDFValue, type Append, type Nub, type UpdateColumn, type Fst, type Snd)
 import Sara.DataFrame.Expression (Expr(..), evaluateExpr)
 import GHC.TypeLits
 import Data.Proxy (Proxy(..))
@@ -124,7 +123,8 @@ melt df =
 applyColumn :: forall col oldType newType cols newCols.
               (HasColumn col cols, KnownColumns cols, CanBeDFValue oldType, CanBeDFValue newType, TypeOf col cols ~ oldType, newCols ~ UpdateColumn col newType cols, KnownColumns newCols)
               => Proxy col -> (oldType -> newType) -> Stream (Of (DataFrame cols)) IO () -> Stream (Of (DataFrame newCols)) IO ()
-applyColumn colProxy f streamOfDFs = S.map (\df -> 
+applyColumn colProxy f =
+    S.map (\df -> 
     let
         colName = T.pack (symbolVal colProxy)
         dfMap = getDataFrameMap df
@@ -133,7 +133,7 @@ applyColumn colProxy f streamOfDFs = S.map (\df ->
         newDfMap = Map.insert colName newColumn dfMap
     in
         DataFrame newDfMap
-    ) streamOfDFs
+    )
 
 
 -- | Adds a new column or modifies an existing one based on a type-safe expression.

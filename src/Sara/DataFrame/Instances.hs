@@ -1,7 +1,6 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE TypeApplications #-}
 
 -- | This module provides `FromField` instances for various types used in `DFValue`.
 -- These instances are used by the `cassava` library to parse CSV data.
@@ -49,4 +48,4 @@ instance C.FromField DFValue where
             (BoolValue <$> C.parseField s) <|> 
             (DateValue <$> C.parseField s) <|> 
             (TimestampValue <$> C.parseField s) <|> 
-            (return (TextValue (TE.decodeUtf8 s)))
+            return (TextValue (TE.decodeUtf8 s))

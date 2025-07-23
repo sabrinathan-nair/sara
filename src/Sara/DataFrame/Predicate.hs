@@ -1,12 +1,9 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE DataKinds #-}
-{-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE KindSignatures #-}
-{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE AllowAmbiguousTypes #-}
 
 -- | This module defines a type-safe GADT for building predicates to filter `DataFrame` rows.
@@ -35,7 +32,6 @@ import Sara.DataFrame.Expression (Expr, evaluateExpr)
 
 import qualified Data.Map.Strict as Map
 import qualified Data.Text as T
-import Control.Applicative (liftA2)
 
 -- | A type-safe predicate for filtering a `DataFrame`.
 -- The @cols@ type parameter ensures that the predicate only refers to columns
@@ -71,7 +67,7 @@ data RowPredicate (cols :: [(Symbol, Type)]) where
 -- >>> evaluate predicate row
 -- Just True
 evaluate :: FilterPredicate cols -> Map.Map T.Text Column -> Int -> Maybe Bool
-evaluate (FilterPredicate p) dfMap idx = evaluatePredicate p dfMap idx
+evaluate (FilterPredicate p) = evaluatePredicate p
 
 -- | Evaluates a `RowPredicate` on a given `DataFrame`'s internal map and row index.
 evaluatePredicate :: RowPredicate cols -> Map.Map T.Text Column -> Int -> Maybe Bool
