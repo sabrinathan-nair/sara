@@ -47,8 +47,6 @@ library
                      , streaming
                      , streaming-bytestring
                      , cassava-streams
-                     , json-stream
-                     , attoparsec-aeson
   ghc-options:         -Wall
 
 

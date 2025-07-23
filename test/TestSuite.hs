@@ -4,6 +4,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE TypeOperators #-}
 
 module Main where
 
@@ -22,6 +23,24 @@ import Data.Proxy (Proxy(..))
 import Streaming (Stream, Of)
 import qualified Streaming.Prelude as S
 import Data.Maybe (fromJust)
+import Data.List ()
+
+-- Helper function to convert a DataFrame to a Stream of single-row DataFrames
+dfToStream :: DataFrame cols -> Stream (Of (DataFrame cols)) IO ()
+dfToStream df = S.each (map (\row -> DataFrame (Map.map V.singleton row)) (toRows df))
+
+-- Helper function to combine two DataFrames (pure version)
+combineDataFramesPure :: DataFrame cols -> DataFrame cols -> DataFrame cols
+combineDataFramesPure (DataFrame dfMap1) (DataFrame dfMap2) =
+    DataFrame $ Map.unionWith (V.++) dfMap1 dfMap2
+
+-- Helper function to convert a Stream of single-row DataFrames back to a single DataFrame
+streamToDf :: KnownColumns cols => Stream (Of (DataFrame cols)) IO () -> IO (DataFrame cols)
+streamToDf stream = do
+    (dfs S.:> ()) <- S.toList stream
+    if null dfs
+        then return $ DataFrame Map.empty
+        else return $ foldr1 combineDataFramesPure dfs
 
 main :: IO ()
 main = hspec $ do
@@ -38,8 +57,8 @@ main = hspec $ do
         it "filters rows based on a simple predicate" $ do
             df <- createTestDataFrame
             let dfStream = S.yield df
-            filteredDf <- S.head_ $ filterRows (col (Proxy @"Age") >.> lit (30 :: Int)) dfStream
-            let (DataFrame filteredMap) = fromJust filteredDf
+            filteredDf <- streamToDf $ filterRows (col (Proxy @"Age") >.> lit (30 :: Int)) dfStream
+            let (DataFrame filteredMap) = filteredDf
             V.length (filteredMap Map.! "Name") `shouldBe` 1
 
     describe "Type-Safe applyColumn" $ do
@@ -94,7 +113,8 @@ main = hspec $ do
         it "performs inner join correctly" $ do
             df1 :: DataFrame '[ '("ID", Int), '("Name", T.Text), '("Age", Int)] <- createJoinTestDataFrame1
             df2 :: DataFrame '[ '("ID", Int), '("City", T.Text), '("Salary", Double)] <- createJoinTestDataFrame2
-            let joinedDf = Sara.DataFrame.Join.joinDF @'["ID"] df1 df2
+            let joinedDfStream = Sara.DataFrame.Join.joinDF @'["ID"] (dfToStream df1) (dfToStream df2)
+            joinedDf <- streamToDf joinedDfStream
             let (DataFrame joinedMap) = joinedDf
             V.length (joinedMap Map.! "ID") `shouldBe` 1
             let name = case (joinedMap Map.! "Name") V.!? 0 of
@@ -135,8 +155,8 @@ main = hspec $ do
 
         it "performs sum aggregation correctly" $ do
             df <- createAggTestDataFrame
-            let groupedDf = groupBy @'["Category"] df
-            let aggregatedDf = sumAgg @"Value" groupedDf
+            let groupedDf = groupBy @'["Category"] (dfToStream df)
+            aggregatedDf <- sumAgg @"Value" <$> groupedDf
             let (DataFrame aggMap) = aggregatedDf
             let sumA = case (aggMap Map.! "Value_sum") V.!? 0 of
                           Just (DoubleValue d) -> d
@@ -149,8 +169,8 @@ main = hspec $ do
 
         it "performs mean aggregation correctly" $ do
             df <- createAggTestDataFrame
-            let groupedDf = groupBy @'["Category"] df
-            let aggregatedDf = meanAgg @"Value" groupedDf
+            let groupedDf = groupBy @'["Category"] (dfToStream df)
+            aggregatedDf <- meanAgg @"Value" <$> groupedDf
             let (DataFrame aggMap) = aggregatedDf
             let meanA = case (aggMap Map.! "Value_mean") V.!? 0 of
                           Just (DoubleValue d) -> d
@@ -163,8 +183,8 @@ main = hspec $ do
 
         it "performs count aggregation correctly" $ do
             df <- createAggTestDataFrame
-            let groupedDf = groupBy @'["Category"] df
-            let aggregatedDf = countAgg @"Value" groupedDf
+            let groupedDf = groupBy @'["Category"] (dfToStream df)
+            aggregatedDf <- countAgg @"Value" <$> groupedDf
             let (DataFrame aggMap) = aggregatedDf
             let countA = case (aggMap Map.! "Value_count") V.!? 0 of
                           Just (IntValue i) -> i
@@ -174,5 +194,3 @@ main = hspec $ do
                           _ -> error "Expected IntValue for countB"
             countA `shouldBe` 2
             countB `shouldBe` 2
-
-    

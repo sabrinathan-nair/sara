@@ -39,6 +39,7 @@ import Data.Kind (Type)
 import Sara.DataFrame.Types
 import qualified Data.Map.Strict as Map
 import qualified Data.Vector as V
+import Control.Applicative (liftA2)
 
 
 -- | A type-safe expression GADT for `DataFrame` operations.
@@ -84,8 +85,9 @@ data Expr (cols :: [(Symbol, Type)]) a where
 evaluateExpr :: Expr cols a -> Map.Map T.Text Column -> Int -> Maybe a
 evaluateExpr (Lit val) _ _ = Just val
 evaluateExpr (Col p) dfMap idx = 
-    let val = (dfMap Map.! (T.pack (symbolVal p))) V.! idx
-    in if isNA val then Nothing else fromDFValue val
+    case Map.lookup (T.pack (symbolVal p)) dfMap of
+        Just colData -> if isNA (colData V.! idx) then Nothing else fromDFValue (colData V.! idx)
+        Nothing -> Nothing
 evaluateExpr (Add e1 e2) dfMap idx = liftA2 (+) (evaluateExpr e1 dfMap idx) (evaluateExpr e2 dfMap idx)
 evaluateExpr (Subtract e1 e2) dfMap idx = liftA2 (-) (evaluateExpr e1 dfMap idx) (evaluateExpr e2 dfMap idx)
 evaluateExpr (Multiply e1 e2) dfMap idx = liftA2 (*) (evaluateExpr e1 dfMap idx) (evaluateExpr e2 dfMap idx)

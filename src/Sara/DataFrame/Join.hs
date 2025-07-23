@@ -25,6 +25,9 @@ import Control.Applicative ((<|>))
 import GHC.TypeLits
 import Data.Proxy (Proxy(..))
 import Data.Kind (Type)
+import Streaming (Stream, Of)
+import qualified Streaming.Prelude as S
+import Control.Monad.IO.Class (liftIO)
 
 -- | A helper typeclass for creating the output row of a join operation.
 class CreateOutputRow (cols :: [(Symbol, Type)]) where
@@ -50,28 +53,23 @@ joinDF :: forall (onCols :: [Symbol]) (cols1 :: [(Symbol, Type)]) (cols2 :: [(Sy
          , All CanBeDFValue (GetColumnTypes cols2)
          , All CanBeDFValue (GetColumnTypes colsOut)
          , CreateOutputRow colsOut
-         ) => DataFrame cols1 -> DataFrame cols2 -> DataFrame colsOut
-joinDF df1 df2 = 
-    let 
-        rows1 = toRows df1
-        rows2 = toRows df2
-
-        getJoinKey :: Row -> TypeLevelRow (SymbolsToSchema onCols cols1)
+         ) => Stream (Of (DataFrame cols1)) IO () -> Stream (Of (DataFrame cols2)) IO () -> Stream (Of (DataFrame colsOut)) IO ()
+joinDF df1Stream df2Stream = do
+    -- Read the second stream into memory for efficient lookups
+    df2sList <- liftIO $ S.toList_ df2Stream
+    let df2Rows = concatMap toRows df2sList
+    let getJoinKey :: Row -> TypeLevelRow (SymbolsToSchema onCols cols1)
         getJoinKey = toTypeLevelRow @(SymbolsToSchema onCols cols1)
+    let df2Map = Map.fromListWith (++) $ map (\r -> (getJoinKey r, [r])) df2Rows
 
-        map1 = Map.fromListWith (++) $ map (\r -> (getJoinKey r, [r])) rows1
-        map2 = Map.fromListWith (++) $ map (\r -> (getJoinKey r, [r])) rows2
-
-        processRow :: [Row] -> [Row]
-        processRow rs1 = 
-            let 
-                key = getJoinKey (head rs1)
-            in 
-                case Map.lookup key map2 of
-                    Just rs2 -> [createOutputRow (Proxy @colsOut) r1 r2 | r1 <- rs1, r2 <- rs2]
-                    Nothing -> []
-        
-        joinedRows = concatMap processRow (Map.elems map1)
-    in 
-        fromRows @colsOut joinedRows
-
+    -- Process the first stream
+    S.for df1Stream $ \df1 -> do
+        let df1Rows = toRows df1
+        S.for (S.each df1Rows) $ \r1 -> do
+            let key = getJoinKey r1
+            case Map.lookup key df2Map of
+                Just matchingRows2 -> do
+                    S.for (S.each matchingRows2) $ \r2 -> do
+                        let joinedRow = createOutputRow (Proxy @colsOut) r1 r2
+                        S.yield (fromRows @colsOut [joinedRow])
+                Nothing -> return ()

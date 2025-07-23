@@ -34,10 +34,10 @@ import qualified Data.Text as T
 import qualified Data.Map.Strict as Map
 import qualified Data.Vector as V
 import Data.List (sortBy)
-import Sara.DataFrame.Types (DFValue(..), DataFrame(..), Row, toRows, fromRows, SortOrder(..), SortCriterion(..), SortableColumn, KnownColumns(..), KnownSymbols(..), CanBeDFValue(..), getDataFrameMap, Column, TypeOf, HasColumn, HasColumns, isNA)
-import Data.Maybe (fromMaybe)
+import Sara.DataFrame.Types (DFValue(..), DataFrame(..), Row, toRows, fromRows, SortOrder(..), SortCriterion(..), KnownColumns(..), CanBeDFValue(..), getDataFrameMap, Column, TypeOf, HasColumn, HasColumns, isNA)
+import Data.Maybe (fromMaybe, fromJust)
 import Sara.DataFrame.Predicate (FilterPredicate(FilterPredicate), evaluate, RowPredicate(ExprPredicate))
-import Sara.DataFrame.Expression (Expr(Col), lit)
+import Sara.DataFrame.Expression (Expr(Col))
 import GHC.TypeLits (Symbol, KnownSymbol, symbolVal, CmpSymbol, TypeError, ErrorMessage(..))
 import Data.Proxy (Proxy(..))
 import Data.Kind (Type)
@@ -57,7 +57,13 @@ instance (KnownSymbol x, AllKnownSymbol xs) => AllKnownSymbol (x ': xs) where
 
 -- | Filters rows from a `DataFrame` based on a type-safe `FilterPredicate`.
 filterRows :: forall cols. KnownColumns cols => FilterPredicate cols -> Stream (Of (DataFrame cols)) IO () -> Stream (Of (DataFrame cols)) IO ()
-filterRows p streamOfDFs = S.filterM (\df -> return $ fromMaybe False (evaluate p (getDataFrameMap df) 0)) streamOfDFs
+filterRows p streamOfDFs = S.mapMaybeM (\df -> do
+    let rows = toRows df
+    let filteredRows = [row | row <- rows, fromMaybe False (evaluate p (getDataFrameMap df) (fromJust (V.elemIndex row (V.fromList rows))))]
+    if null filteredRows
+        then return Nothing
+        else return $ Just (fromRows filteredRows)
+    ) streamOfDFs
 
 -- | Sorts a `DataFrame` based on a list of type-safe `SortCriterion`s.
 -- The sort criteria are applied in order, from left to right.

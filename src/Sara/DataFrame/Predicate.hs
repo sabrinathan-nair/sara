@@ -35,6 +35,7 @@ import Sara.DataFrame.Expression (Expr, evaluateExpr)
 
 import qualified Data.Map.Strict as Map
 import qualified Data.Text as T
+import Control.Applicative (liftA2)
 
 -- | A type-safe predicate for filtering a `DataFrame`.
 -- The @cols@ type parameter ensures that the predicate only refers to columns

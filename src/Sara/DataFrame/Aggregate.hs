@@ -37,6 +37,9 @@ import GHC.TypeLits
 import Data.Proxy (Proxy(..))
 
 import Data.Kind (Type)
+import Streaming (Stream, Of)
+import qualified Streaming.Prelude as S
+import Control.Monad.IO.Class (liftIO)
 
 -- | A `GroupedDataFrame` is the result of a `groupBy` operation.
 -- It's a map where keys are `TypeLevelRow`s representing the unique values of grouping columns,
@@ -53,25 +56,23 @@ type GroupedDataFrame (groupCols :: [(Symbol, Type)]) (originalCols :: [(Symbol,
 -- >>> Map.size grouped
 -- 2
 groupBy :: forall (groupCols :: [Symbol]) (cols :: [(Symbol, Type)])
-        . (HasColumns groupCols cols, KnownColumns (SymbolsToSchema groupCols cols)) => DataFrame cols -> GroupedDataFrame (SymbolsToSchema groupCols cols) cols
-groupBy df = 
-    let
-        rows = toRows df
-        getGroupKey :: Row -> TypeLevelRow (SymbolsToSchema groupCols cols)
-        getGroupKey row = toTypeLevelRow @(SymbolsToSchema groupCols cols) row
+        . (HasColumns groupCols cols, KnownColumns (SymbolsToSchema groupCols cols)) => Stream (Of (DataFrame cols)) IO () -> IO (GroupedDataFrame (SymbolsToSchema groupCols cols) cols)
+groupBy dfStream =
+    S.foldM_ (\accMap df -> do
+        let rows = toRows df
+        let getGroupKey :: Row -> TypeLevelRow (SymbolsToSchema groupCols cols)
+            getGroupKey row = toTypeLevelRow @(SymbolsToSchema groupCols cols) row
 
-        initialGroupedMap = Map.empty
-        groupedMap = foldl' (\accMap row ->
+        return $! foldl' (\currentMap row ->
             let
                 groupKey = getGroupKey row
                 singleRowDf = DataFrame $ Map.map V.singleton row
             in
                 Map.insertWith (\(DataFrame newMap) (DataFrame existingMap) ->
                     DataFrame $ Map.unionWith (V.++) existingMap newMap
-                ) groupKey singleRowDf accMap
-            ) initialGroupedMap rows
-    in
-        groupedMap
+                ) groupKey singleRowDf currentMap
+            ) accMap rows
+        ) (return Map.empty) return dfStream
 
 -- | A type family to generate a new column name for an aggregation.
 -- For example, `AggColName "age" "sum"` becomes `"age_sum"`.
