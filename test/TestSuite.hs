@@ -19,6 +19,9 @@ import Sara.DataFrame.Expression
 import Sara.DataFrame.Predicate
 import Sara.DataFrame.Join
 import Data.Proxy (Proxy(..))
+import Streaming (Stream, Of)
+import qualified Streaming.Prelude as S
+import Data.Maybe (fromJust)
 
 main :: IO ()
 main = hspec $ do
@@ -34,15 +37,17 @@ main = hspec $ do
     describe "Type-Safe filterRows" $ do
         it "filters rows based on a simple predicate" $ do
             df <- createTestDataFrame
-            let filteredDf = filterRows (col (Proxy @"Age") >.> lit (30 :: Int)) df
-            let (DataFrame filteredMap) = filteredDf
+            let dfStream = S.yield df
+            filteredDf <- S.head_ $ filterRows (col (Proxy @"Age") >.> lit (30 :: Int)) dfStream
+            let (DataFrame filteredMap) = fromJust filteredDf
             V.length (filteredMap Map.! "Name") `shouldBe` 1
 
     describe "Type-Safe applyColumn" $ do
         it "applies a function to a column with the correct type" $ do
             df <- createTestDataFrame
-            let appliedDf = applyColumn (Proxy @"Age") ((+ 2) :: Int -> Int) df
-            let (DataFrame appliedMap) = appliedDf
+            let dfStream = S.yield df
+            appliedDf <- S.head_ $ applyColumn (Proxy @"Age") ((+ 2) :: Int -> Int) dfStream
+            let (DataFrame appliedMap) = fromJust appliedDf
             let age = case (appliedMap Map.! "Age") V.!? 0 of
                           Just (IntValue i) -> i
                           _ -> error "Expected IntValue for Age" -- Should not happen in this test
@@ -87,8 +92,8 @@ main = hspec $ do
                 return $ fromRows @'[ '("ID", Int), '("City", T.Text), '("Salary", Double)] rows
 
         it "performs inner join correctly" $ do
-            df1 <- createJoinTestDataFrame1
-            df2 <- createJoinTestDataFrame2
+            df1 :: DataFrame '[ '("ID", Int), '("Name", T.Text), '("Age", Int)] <- createJoinTestDataFrame1
+            df2 :: DataFrame '[ '("ID", Int), '("City", T.Text), '("Salary", Double)] <- createJoinTestDataFrame2
             let joinedDf = Sara.DataFrame.Join.joinDF @'["ID"] df1 df2
             let (DataFrame joinedMap) = joinedDf
             V.length (joinedMap Map.! "ID") `shouldBe` 1

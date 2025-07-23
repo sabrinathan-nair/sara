@@ -34,12 +34,15 @@ import qualified Data.Text as T
 import qualified Data.Map.Strict as Map
 import qualified Data.Vector as V
 import Data.List (sortBy)
-import Sara.DataFrame.Types
+import Sara.DataFrame.Types (DFValue(..), DataFrame(..), Row, toRows, fromRows, SortOrder(..), SortCriterion(..), SortableColumn, KnownColumns(..), KnownSymbols(..), CanBeDFValue(..), getDataFrameMap, Column, TypeOf, HasColumn, HasColumns, isNA)
 import Data.Maybe (fromMaybe)
-import Sara.DataFrame.Predicate (FilterPredicate, evaluate)
+import Sara.DataFrame.Predicate (FilterPredicate(FilterPredicate), evaluate, RowPredicate(ExprPredicate))
+import Sara.DataFrame.Expression (Expr(Col), lit)
 import GHC.TypeLits (Symbol, KnownSymbol, symbolVal, CmpSymbol, TypeError, ErrorMessage(..))
 import Data.Proxy (Proxy(..))
 import Data.Kind (Type)
+import Streaming (Stream, Of)
+import qualified Streaming.Prelude as S
 
 -- | A typeclass for converting a type-level list of `Symbol`s to a list of `T.Text` values.
 class AllKnownSymbol (xs :: [Symbol]) where
@@ -53,23 +56,8 @@ instance (KnownSymbol x, AllKnownSymbol xs) => AllKnownSymbol (x ': xs) where
     symbolsToTexts _ = T.pack (symbolVal (Proxy @x)) : symbolsToTexts (Proxy @xs)
 
 -- | Filters rows from a `DataFrame` based on a type-safe `FilterPredicate`.
-filterRows :: forall cols. KnownColumns cols => FilterPredicate cols -> DataFrame cols -> DataFrame cols
-filterRows p (DataFrame dfMap) = 
-    let
-        colNames = columnNames (Proxy @cols)
-        numRows = if Map.null dfMap then 0 else V.length (snd . head . Map.toList $ dfMap)
-
-        -- Identify indices of rows that satisfy the predicate, treating Nothing as False
-        keptIndices = V.fromList [ idx | idx <- [0 .. numRows - 1], fromMaybe False (evaluate p dfMap idx) ]
-
-        newDfMap = if V.null keptIndices
-                   then Map.empty
-                   else
-                       Map.fromList [ (colName, V.map (\idx -> (dfMap Map.! colName) V.! idx) keptIndices)
-                                    | colName <- colNames
-                                    ]
-    in
-        DataFrame newDfMap
+filterRows :: forall cols. KnownColumns cols => FilterPredicate cols -> Stream (Of (DataFrame cols)) IO () -> Stream (Of (DataFrame cols)) IO ()
+filterRows p streamOfDFs = S.filterM (\df -> return $ fromMaybe False (evaluate p (getDataFrameMap df) 0)) streamOfDFs
 
 -- | Sorts a `DataFrame` based on a list of type-safe `SortCriterion`s.
 -- The sort criteria are applied in order, from left to right.
@@ -207,24 +195,8 @@ fillNA replacementValue (DataFrame dfMap) =
 -- Only rows where the boolean column is `True` are kept.
 filterByBoolColumn :: forall (boolCol :: Symbol) (cols :: [(Symbol, Type)]).
                      (HasColumn boolCol cols, KnownColumns cols, TypeOf boolCol cols ~ Bool)
-                     => Proxy boolCol -> DataFrame cols -> DataFrame cols
-filterByBoolColumn _ df =
-    let
-        boolColName = T.pack (symbolVal (Proxy @boolCol))
-        rows = toRows df
-        filteredRows = filter (\row -> fromDFValue @Bool (Map.findWithDefault NA boolColName row) == Just True) rows
-        newDfMap = if null filteredRows
-                   then Map.empty
-                   else
-                       let
-                           colNames = columnNames (Proxy @cols)
-                           cols = [ V.fromList [ Map.findWithDefault NA colName r | r <- filteredRows ]
-                                  | colName <- colNames
-                                  ]
-                       in
-                           Map.fromList (zip colNames cols)
-    in
-        DataFrame newDfMap
+                     => Proxy boolCol -> Stream (Of (DataFrame cols)) IO () -> Stream (Of (DataFrame cols)) IO ()
+filterByBoolColumn p streamOfDFs = filterRows (FilterPredicate (ExprPredicate (Col p))) streamOfDFs
 
 -- | Selects a subset of columns from a `DataFrame`.
 type family SelectCols (selected :: [Symbol]) (cols :: [(Symbol, Type)]) :: [(Symbol, Type)] where

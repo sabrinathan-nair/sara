@@ -5,6 +5,7 @@
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE TypeOperators #-}
 
 -- | This module provides a tutorial on how to use the Sara library.
 -- It demonstrates how to infer schemas from CSV files, load data into
@@ -12,16 +13,15 @@
 -- and mutation.
 module Main where
 
-import Sara.DataFrame.Static (inferCsvSchema, readCsv)
-import Sara.DataFrame.Wrangling
-import Sara.DataFrame.Transform
-import Sara.DataFrame.Aggregate
-import Sara.DataFrame.Expression (col, lit, (>.), (*.*))
+import Sara.DataFrame.Static (inferCsvSchema)
+import Sara.DataFrame.IO (readCsvStreaming)
+import qualified Streaming.Prelude as S
+import Sara.DataFrame.Wrangling (filterByBoolColumn)
+import Sara.DataFrame.Transform (mutate)
+import Sara.DataFrame.Expression (col, lit, (>.))
 import Data.Proxy
-import Sara.DataFrame.Internal (toDataFrame, HasSchema, Schema)
-import qualified Data.Vector as V
+import Sara.DataFrame.Internal (HasSchema, Schema)
 import Data.Time.Calendar (Day)
-import qualified Data.Text as T
 import Data.Text (Text)
 import Data.Csv (FromNamedRecord)
 import GHC.Generics (Generic)
@@ -39,16 +39,13 @@ $(inferCsvSchema "Departments" "departments.csv")
 -- This function is not currently used in the main application.
 tutorial :: IO ()
 tutorial = do
-    Right records <- readCsv "employees.csv" :: IO (Either String (V.Vector EmployeesRecord))
-    let df = toDataFrame records
+    let employeesStream = readCsvStreaming (Proxy @EmployeesRecord) "employees.csv"
+    let dfStream = S.map (\df -> df) employeesStream
 
-    let groupedDf = groupBy @'[] df
-    let _ = sumAgg @"EmployeesSalary" groupedDf
+    let dfWithBoolColStream = S.map (mutate (Proxy :: Proxy "IsSalaryHigh") (col (Proxy @"EmployeesSalary") >. lit 70000)) dfStream
 
-    let _ = mutate (Proxy :: Proxy "EmployeesSalaryX") (col (Proxy @"EmployeesSalary") *.* lit 2) df
-
-    let dfWithBoolCol = mutate (Proxy :: Proxy "IsSalaryHigh") (col (Proxy @"EmployeesSalary") >. lit 70000) df
-    let _ = filterByBoolColumn (Proxy :: Proxy "IsSalaryHigh") dfWithBoolCol
+    let filteredStream = filterByBoolColumn (Proxy :: Proxy "IsSalaryHigh") dfWithBoolColStream
+    S.mapM_ print filteredStream
     return ()
 
 -- | The main entry point for the application.

@@ -21,6 +21,7 @@ module Sara.DataFrame.Types (
     DFValue(..),
     Column,
     DataFrame(..),
+    getDataFrameMap,
     Row,
     toRows,
     fromRows,
@@ -50,7 +51,11 @@ module Sara.DataFrame.Types (
     ContainsColumn,
     ConcatAxis(..),
     JoinType(..),
-    type JoinCols
+    type JoinCols,
+    fromDFValueUnsafe,
+    type (:::),
+    type Fst,
+    type Snd
 ) where
 
 import qualified Data.Text as T
@@ -58,18 +63,35 @@ import Data.Time (Day, UTCTime)
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
 import Data.Vector (Vector)
-import qualified Data.Vector as V
-import Data.Aeson
-
-import Data.Scientific (toRealFloat)
-import Data.Time.Format (formatTime, parseTimeM, defaultTimeLocale)
+import Data.Time.Format (parseTimeM, defaultTimeLocale)
 import Text.Read (readMaybe)
+import Data.Proxy (Proxy(..))
+import GHC.TypeLits (symbolVal, Symbol)
+
+import Data.Aeson
 import Control.DeepSeq
 import GHC.Generics (Generic)
-import GHC.TypeLits (ErrorMessage(Text, (:<>:), ShowType), Symbol, KnownSymbol, TypeError, CmpSymbol, symbolVal)
+import GHC.TypeLits (ErrorMessage(Text, (:<>:), ShowType), KnownSymbol, TypeError, CmpSymbol)
 import Data.Kind (Type, Constraint)
-import Data.Proxy (Proxy(..))
 import Data.Typeable (TypeRep, Typeable, typeRep)
+import Data.Maybe (fromMaybe)
+import qualified Data.Vector as V
+import Data.Scientific (toRealFloat)
+import Data.Time.Format (formatTime)
+
+type family Fst (pair :: (k1, k2)) :: k1 where
+    Fst '(x, _) = x
+
+type family Snd (pair :: (k1, k2)) :: k2 where
+    Snd '(_, y) = y
+
+infixr 5 :::
+type family (a :: k) ::: (b :: [k]) :: [k] where
+    a ::: '[] = '[a]
+    a ::: (x ': xs) = a ': x ': xs
+    
+    
+
 
 
 isNA :: DFValue -> Bool
@@ -130,6 +152,9 @@ type Row = Map T.Text DFValue
 -- This structure allows for efficient column-wise operations and access.
 newtype DataFrame (cols :: [(Symbol, Type)]) = DataFrame (Map T.Text Column)
     deriving (Generic)
+
+getDataFrameMap :: DataFrame cols -> Map T.Text Column
+getDataFrameMap (DataFrame dfMap) = dfMap
 
 instance NFData (DataFrame cols)
 
@@ -248,6 +273,9 @@ instance CanBeDFValue a => CanBeDFValue (Maybe a) where
     toDFValue (Just a) = toDFValue a
     fromDFValue NA = Just Nothing
     fromDFValue x = Just <$> fromDFValue x
+
+fromDFValueUnsafe :: CanBeDFValue a => DFValue -> a
+fromDFValueUnsafe dfValue = fromMaybe (error "fromDFValueUnsafe: NA or type mismatch") (fromDFValue dfValue)
 
 -- | Converts a 'DataFrame' into a list of 'Row's.
 -- Each 'Row' is a 'Map' where keys are column names and values are the corresponding 'DFValue's for that row.

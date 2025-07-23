@@ -83,7 +83,9 @@ data Expr (cols :: [(Symbol, Type)]) a where
 -- Returns `Nothing` if any part of the expression evaluation fails (e.g., a column is missing, a value is `NA`).
 evaluateExpr :: Expr cols a -> Map.Map T.Text Column -> Int -> Maybe a
 evaluateExpr (Lit val) _ _ = Just val
-evaluateExpr (Col p) dfMap idx = fromDFValue ((dfMap Map.! (T.pack (symbolVal p))) V.! idx)
+evaluateExpr (Col p) dfMap idx = 
+    let val = (dfMap Map.! (T.pack (symbolVal p))) V.! idx
+    in if isNA val then Nothing else fromDFValue val
 evaluateExpr (Add e1 e2) dfMap idx = liftA2 (+) (evaluateExpr e1 dfMap idx) (evaluateExpr e2 dfMap idx)
 evaluateExpr (Subtract e1 e2) dfMap idx = liftA2 (-) (evaluateExpr e1 dfMap idx) (evaluateExpr e2 dfMap idx)
 evaluateExpr (Multiply e1 e2) dfMap idx = liftA2 (*) (evaluateExpr e1 dfMap idx) (evaluateExpr e2 dfMap idx)

@@ -14,7 +14,7 @@
 -- conversions.
 module Sara.DataFrame.Internal where
 
-import Data.Csv (FromNamedRecord)
+import Data.Csv (FromNamedRecord, ToNamedRecord)
 import qualified Data.Vector as V
 import Sara.DataFrame.Types
 import qualified Data.Map.Strict as Map
@@ -22,6 +22,15 @@ import Data.Proxy (Proxy(..))
 import GHC.TypeLits (Symbol)
 import Data.Kind (Type)
 import GHC.Generics
+import qualified Data.Text as T
+import qualified Data.Text.Encoding as TE
+import qualified Data.HashMap.Strict as HM
+import Data.Aeson
+import qualified Data.Aeson.Types as A
+
+-- | Converts a record to a list of Text values.
+recordToDFValueList :: (Generic a, GToFields (Rep a)) => a -> [DFValue]
+recordToDFValueList = gtoFields . from
 
 -- | A typeclass for records that can be converted to a `DataFrame`.
 -- It uses `DefaultSignatures` to provide a default implementation for any

@@ -14,6 +14,7 @@
 module Sara.DataFrame.Predicate (
     -- * The Predicate GADT
     FilterPredicate(..),
+    RowPredicate(..),
     -- * Evaluation
     evaluate,
     -- * Logical Operators

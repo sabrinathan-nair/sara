@@ -27,21 +27,16 @@ module Sara.DataFrame.Transform (
 import qualified Data.Text as T
 import qualified Data.Map.Strict as Map
 import qualified Data.Vector as V
-import Sara.DataFrame.Types
+import Sara.DataFrame.Types (DFValue(..), DataFrame(..), Row, toRows, SortOrder(..), SortCriterion(..), KnownColumns(..), CanBeDFValue(..), getDataFrameMap, Column, TypeOf, HasColumn, fromDFValueUnsafe, toDFValue, type Append, type Remove, type Nub, type UpdateColumn, type Fst, type Snd)
 import Sara.DataFrame.Expression (Expr(..), evaluateExpr)
 import GHC.TypeLits
 import Data.Proxy (Proxy(..))
 import Data.Kind (Type)
 
-import Sara.DataFrame.Apply
+import Streaming (Stream, Of)
+import qualified Streaming.Prelude as S
 
--- | A type family to extract the first element of a tuple.
-type family Fst (t :: (k, v)) :: k where
-    Fst '(a, b) = a
 
--- | A type family to extract the second element of a tuple.
-type family Snd (t :: (k, v)) :: v where
-    Snd '(a, b) = b
 
 -- | Selects a subset of columns from a `DataFrame`.
 -- The selected columns are specified by a type-level list of `(Symbol, Type)` tuples.
@@ -128,8 +123,17 @@ melt df =
 -- The schema of the `DataFrame` is updated accordingly.
 applyColumn :: forall col oldType newType cols newCols.
               (HasColumn col cols, KnownColumns cols, CanBeDFValue oldType, CanBeDFValue newType, TypeOf col cols ~ oldType, newCols ~ UpdateColumn col newType cols, KnownColumns newCols)
-              => Proxy col -> (oldType -> newType) -> DataFrame cols -> DataFrame newCols
-applyColumn colProxy f = apply (Apply colProxy f)
+              => Proxy col -> (oldType -> newType) -> Stream (Of (DataFrame cols)) IO () -> Stream (Of (DataFrame newCols)) IO ()
+applyColumn colProxy f streamOfDFs = S.map (\df -> 
+    let
+        colName = T.pack (symbolVal colProxy)
+        dfMap = getDataFrameMap df
+        oldColumn = dfMap Map.! colName
+        newColumn = V.map (toDFValue . f . fromDFValueUnsafe) oldColumn
+        newDfMap = Map.insert colName newColumn dfMap
+    in
+        DataFrame newDfMap
+    ) streamOfDFs
 
 
 -- | Adds a new column or modifies an existing one based on a type-safe expression.

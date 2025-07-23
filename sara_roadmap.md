@@ -19,11 +19,11 @@ This is Sara's special plan for growing up and becoming an even better helper fo
     *   **1.2. Initial Performance Measurement:** Obtained baseline performance metrics for core DataFrame operations, starting with `filterRows`. (Completed!)
 
 2.  **Implement Streaming for Large Datasets:**
-    *   **2.1. Research Streaming Libraries:** Evaluate existing Haskell streaming libraries (`pipes`, `conduit`, `streaming`) for suitability and performance characteristics in data processing contexts.
-    *   **2.2. Identify Streaming Candidates:** Pinpoint specific DataFrame operations (e.g., `readCSV`, `filterRows`, `applyColumn`, `groupBy`, `joinDF`) that are bottlenecks for large datasets and can benefit from streaming.
-    *   **2.3. Design Streaming Data Flow:** Architect how DataFrames will be represented and processed in a streaming fashion, including considerations for lazy evaluation and memory efficiency. This may involve introducing new type-level constructs to manage stream-based schemas.
-    *   **2.4. Develop Core Streaming Functionalities:** Implement streaming versions of identified DataFrame operations, ensuring compatibility with existing type-safe patterns.
-    *   **2.5. Benchmark Streaming Performance:** Create and execute benchmarks using large, synthetic datasets to compare the performance of streaming operations against their in-memory counterparts.
+    *   **2.1. Research Streaming Libraries:** Researched `pipes`, `conduit`, `streaming`, and `streamly`. Decided to proceed with the `streaming` library due to its simplicity, flexibility, and good fit for the project's type-safety goals. `streamly` will be considered if higher performance is required. (Completed!)
+    *   **2.2. Identify Streaming Candidates:** Pinpointed `readCSV`, `readJSON`, `filterRows`, `applyColumn`, `joinDF`, and aggregation functions as primary candidates for streaming. (Completed!)
+    *   **2.3. Design Streaming Data Flow:** Architected a streaming data flow using the `streaming` library, where each row is processed as a single-row `DataFrame`. (Completed!)
+    *   **2.4. Develop Core Streaming Functionalities:** Implemented `readCsvStreaming` and `readJSONStreaming` to handle large datasets efficiently. Implemented streaming for `filterRows` and `applyColumn`. (Partially Completed!)
+    *   **2.5. Benchmark Streaming Performance:** Benchmarked `filterRows` with streaming. (Partially Completed!)
 
 3.  **Optimize Data Structures:**
     *   **3.1. Analyze Current Data Structure Usage:** Profile memory consumption and access patterns of existing `Map Text Column` and `Vector DFValue` structures.

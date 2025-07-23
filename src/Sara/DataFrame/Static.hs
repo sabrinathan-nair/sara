@@ -1,6 +1,7 @@
 -- | This module provides Template Haskell functions for statically inferring schemas
 -- from CSV files. This allows for creating `DataFrame`s with compile-time guarantees
 -- about column names and types.
+{-# LANGUAGE DoAndIfThenElse #-}
 module Sara.DataFrame.Static (
     -- * Template Haskell Functions
     tableTypes,
@@ -71,13 +72,13 @@ inferColumnTypeFromSamples samples = do
     let nonNaSamples = filter (\s -> T.toLower s /= T.pack "na" && not (T.null s)) samples
     let hasNa = length nonNaSamples < length samples -- If any sample was NA or empty
 
-    let baseTypeQ = if null nonNaSamples
+    baseTypeQ <- if null nonNaSamples
         then pure (ConT (mkName "Data.Text.Text")) -- Default to Text if all are NA/empty
         else inferMostSpecificType nonNaSamples
 
     if hasNa
-        then fmap (AppT (ConT (mkName "Data.Maybe.Maybe"))) baseTypeQ
-        else baseTypeQ
+        then fmap (AppT (ConT (mkName "Data.Maybe.Maybe"))) (pure baseTypeQ)
+        else pure baseTypeQ
 
 -- | Infers the most specific type from a list of non-`NA` sample strings.
 inferMostSpecificType :: [T.Text] -> Q Language.Haskell.TH.Type

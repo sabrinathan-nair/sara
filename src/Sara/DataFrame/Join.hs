@@ -33,7 +33,7 @@ class CreateOutputRow (cols :: [(Symbol, Type)]) where
 instance CreateOutputRow '[] where
     createOutputRow _ _ _ = Map.empty
 
-instance (KnownSymbol col, CanBeDFValue (TypeOf col cols), CreateOutputRow rest) => CreateOutputRow ('(col, ty) ': rest) where
+instance (KnownSymbol col, CanBeDFValue ty, CreateOutputRow rest) => CreateOutputRow ('(col, ty) ': rest) where
     createOutputRow _ r1 r2 =
         let colName = T.pack $ symbolVal (Proxy @col)
             val1 = Map.lookup colName r1

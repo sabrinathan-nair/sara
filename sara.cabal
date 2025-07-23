@@ -44,7 +44,11 @@ library
                      , scientific
                      , sqlite-simple
                      , constraints
-  default-language:    Haskell2010
+                     , streaming
+                     , streaming-bytestring
+                     , cassava-streams
+                     , json-stream
+                     , attoparsec-aeson
   ghc-options:         -Wall
 
 
@@ -52,7 +56,7 @@ library
 executable sara-tutorial
   main-is:          Tutorial.hs
   hs-source-dirs:      app
-  build-depends:       base, sara, text, containers, vector, time, parallel, vector-strategies, deepseq, cassava
+  build-depends:       base, sara, text, containers, vector, time, parallel, vector-strategies, deepseq, cassava, streaming
   default-language:    Haskell2010
   ghc-options:         -Wall
 
@@ -60,7 +64,7 @@ test-suite sara-test
   type:                exitcode-stdio-1.0
   main-is:             TestSuite.hs
   hs-source-dirs:      test, src
-  build-depends:       base, hspec, text, containers, time, sara, vector, template-haskell, cassava, bytestring, aeson, scientific, unordered-containers, parallel, deepseq, vector-strategies, criterion
+  build-depends:       base, hspec, text, containers, time, sara, vector, template-haskell, cassava, bytestring, aeson, scientific, unordered-containers, parallel, deepseq, vector-strategies, criterion, streaming
   default-language:    Haskell2010
   ghc-options:         -Wall
   other-modules:
@@ -79,11 +83,20 @@ test-suite sara-test
     , Sara.DataFrame.Static
     , Sara.DataFrame.Internal
     , Sara.DataFrame.Apply
+    , Sara.DataFrame.Join
 
 benchmark sara-benchmark
   type:                exitcode-stdio-1.0
   main-is:             Benchmark.hs
   hs-source-dirs:      test
-  build-depends:       base, criterion, sara, text, containers, vector
+  build-depends:       base, criterion, sara, text, containers, vector, streaming
   default-language:    Haskell2010
   ghc-options:         -Wall -O2
+
+-- benchmark sara-streaming-benchmark
+--   type:                exitcode-stdio-1.0
+--   main-is:             StreamingBenchmark.hs
+--   hs-source-dirs:      test
+--   build-depends:       base, criterion, sara, text, containers, vector, json-stream
+--   default-language:    Haskell2010
+--   ghc-options:         -Wall -O2

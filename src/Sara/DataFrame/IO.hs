@@ -8,6 +8,8 @@
 {-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE LambdaCase #-}
 
 -- | This module provides functions for reading from and writing to common
 -- data formats like CSV and JSON. It ensures that the data conforms to the
@@ -16,13 +18,17 @@ module Sara.DataFrame.IO (
     -- * CSV Functions
     readCsv,
     writeCSV,
+    readCsvStreaming,
     -- * JSON Functions
     readJSON,
+    readJSONStreaming,
     writeJSON
 ) where
 
 import qualified Data.ByteString.Lazy as BL
+import qualified Data.ByteString.Lazy.Char8 as BL8
 import qualified Data.Csv as C
+import Data.Csv (FromNamedRecord)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
 import qualified Data.Vector as V
@@ -36,9 +42,34 @@ import qualified Data.HashMap.Strict as HM
 import Data.Char (toUpper)
 import Data.Aeson as A
 import Data.Proxy (Proxy(..))
+import GHC.Generics (Generic, Rep)
 
 import Sara.DataFrame.Types (DFValue(..), DataFrame(..), KnownColumns(..), toRows)
 import Sara.DataFrame.Static (readCsv)
+import Sara.DataFrame.Internal (HasSchema, Schema, recordToDFValueList, GToFields)
+
+import Streaming (Stream, Of)
+import qualified Streaming.Prelude as S
+import Control.Monad.IO.Class (liftIO)
+
+-- | Reads a CSV file in a streaming fashion.
+-- It returns a `Stream` of `DataFrame`s, where each `DataFrame` contains a single row.
+readCsvStreaming :: forall record cols. (FromNamedRecord record, HasSchema record, cols ~ Schema record, KnownColumns cols, Generic record, GToFields (Rep record)) => Proxy record -> FilePath -> Stream (Of (DataFrame cols)) IO ()
+readCsvStreaming p filePath = do
+    let expectedColNames = V.fromList $ columnNames (Proxy @cols)
+    contents <- liftIO $ BL.readFile filePath
+    case C.decodeByName contents :: Either String (C.Header, V.Vector record) of
+        Left err -> liftIO $ ioError $ userError $ "CSV parsing error: " ++ err
+        Right (header, records) -> do
+            let actualHeader = V.map TE.decodeUtf8 header
+            if actualHeader /= expectedColNames
+                then liftIO $ ioError $ userError $ "CSV header mismatch. Expected: " ++ show expectedColNames ++ ", Got: " ++ show actualHeader
+                else do
+                    S.for (S.each (V.toList records)) $ \record -> do
+                        let rowMap = Map.fromList $ V.toList $ V.zip actualHeader (V.fromList (recordToDFValueList record))
+                        let df = DataFrame (Map.map V.singleton rowMap)
+                        S.yield df
+
 
 -- | Converts a `DFValue` to a `ByteString` for writing to a CSV file.
 valueToByteString :: DFValue -> BC.ByteString
@@ -100,7 +131,18 @@ readJSON p filePath = do
 
                             return $ DataFrame finalColumnsMap
 
-
+-- | Reads a JSON file in a streaming fashion.
+-- NOTE: This is a temporary non-streaming implementation due to issues with streaming JSON libraries.
+-- It reads the entire file into memory before processing.
+readJSONStreaming :: forall cols. KnownColumns cols => Proxy cols -> FilePath -> Stream (Of (DataFrame cols)) IO ()
+readJSONStreaming p filePath = do
+    jsonData <- liftIO $ BL.readFile filePath
+    case A.eitherDecode jsonData :: Either String [Map T.Text DFValue] of
+        Left err -> liftIO $ ioError $ userError $ "JSON parsing error: " ++ err
+        Right rows -> do
+            S.for (S.each rows) $ \row -> do
+                let rowMap = Map.map V.singleton row
+                S.yield (DataFrame rowMap)
 
 -- | Writes a `DataFrame` to a JSON file.
 -- The output is an array of objects, where each object represents a row.
