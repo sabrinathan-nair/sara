@@ -40,15 +40,12 @@ $(inferCsvSchema "Departments" "departments.csv")
 tutorial :: IO ()
 tutorial = do
     let employeesStream = readCsvStreaming (Proxy @EmployeesRecord) "employees.csv"
-    let dfStream = S.map (\df -> df) employeesStream
+    let dfStream = S.map id employeesStream
 
     let dfWithBoolColStream = S.map (mutate (Proxy :: Proxy "IsSalaryHigh") (col (Proxy @"EmployeesSalary") >. lit 70000)) dfStream
 
     let filteredStream = filterByBoolColumn (Proxy :: Proxy "IsSalaryHigh") dfWithBoolColStream
     S.mapM_ print filteredStream
-    return ()
 
--- | The main entry point for the application.
--- This is currently a no-op.
 main :: IO ()
-main = return ()
+main = tutorial

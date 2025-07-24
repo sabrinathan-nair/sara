@@ -7,6 +7,7 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE TupleSections #-}
 
 -- | This module provides functions for reading from and writing to common
 -- data formats like CSV and JSON. It ensures that the data conforms to the
@@ -117,7 +118,7 @@ readJSON p filePath = do
                     if V.fromList expectedColNames /= V.fromList actualColumnNames
                         then error $ "JSON header mismatch. Expected: " ++ show expectedColNames ++ ", Got: " ++ show actualColumnNames
                         else do
-                            let initialColumnsMap = Map.fromList $ V.toList $ V.map (\colName -> (colName, V.empty)) (V.fromList actualColumnNames)
+                            let initialColumnsMap = Map.fromList $ V.toList $ V.map (, V.empty) (V.fromList actualColumnNames)
                                 finalColumnsMap = V.foldl' (\accMap row ->
                                         Map.mapWithKey (\colName colVec ->
                                             let val = fromMaybe NA (Map.lookup colName row) -- Get DFValue from row

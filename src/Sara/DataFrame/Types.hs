@@ -65,16 +65,14 @@ import Data.Time.Format (parseTimeM, defaultTimeLocale, formatTime)
 import Text.Read (readMaybe)
 import Data.Proxy (Proxy(..))
 import GHC.TypeLits (symbolVal, Symbol, ErrorMessage(Text, (:<>:), ShowType), KnownSymbol, TypeError, CmpSymbol)
-
-import Data.Aeson
-import Control.DeepSeq
-import GHC.Generics (Generic)
-import GHC.TypeLits (ErrorMessage(Text, (:<>:), ShowType), KnownSymbol, TypeError, CmpSymbol)
 import Data.Kind (Type, Constraint)
 import Data.Typeable (TypeRep, Typeable, typeRep)
 import Data.Maybe (fromMaybe)
 import qualified Data.Vector as V
 import Data.Scientific (toRealFloat)
+import GHC.Generics (Generic)
+import Control.DeepSeq (NFData)
+import Data.Aeson (ToJSON, FromJSON, toJSON, parseJSON, Value(Number, String, Bool, Null))
 
 
 type family Fst (pair :: (k1, k2)) :: k1 where
