@@ -3,3 +3,6 @@ dist-newstyle/
 *.o
 vega_lite_plot.html
 sara_tutorial.txt
+
+sara_roadmap.md
+sara_vs_frames.md

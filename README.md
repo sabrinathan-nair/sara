@@ -1,34 +1,33 @@
 # Sara: Your Super Smart Data Helper!
 
-Imagine you have a big box of toys, and each toy has a special label telling you what it is (like 'red car' or 'blue block'). Sara is like a super smart helper that makes sure you always play with your toys the right way!
+Sara is a powerful and intuitive Haskell library for data manipulation, designed with type safety and performance at its core. It leverages the full power of Haskell's type system to provide compile-time guarantees for data operations, eliminating a wide range of common runtime errors. By using a streaming approach, Sara can handle large datasets with a minimal memory footprint.
 
-## What Sara Does (The Magic!)
+## Core Features
 
-Sara helps you play with your data (which are like your toys) without making silly mistakes. It has special magic rules that check everything *before* you even start playing. So, no broken toys or mixed-up parts!
+- **Compile-Time Type Safety:** Sara's API is designed to catch errors at compile time. Operations like selecting a non-existent column or filtering with an incorrect type will result in a compilation error, not a runtime crash.
+- **Streaming:** Process large datasets that don't fit in memory. Sara reads and processes data in chunks, ensuring your application remains responsive and memory-efficient.
+- **Schema Inference:** Automatically infer data schemas from CSV files at compile time, reducing boilerplate and ensuring your types always match your data.
+- **Expressive DSL:** A clear and concise Domain Specific Language (DSL) for common data manipulation tasks like filtering, mutation, and aggregation.
+- **Extensible:** Easily add new functionality and integrate with other Haskell libraries.
 
-### Sara's Super Powers:
+## Project Status
 
--   **No Oopsies!** Sara checks your data rules very carefully. If you try to do something wrong (like adding a car to a pile of blocks), Sara says, "Whoa! That's not right!" *before* you even try it. It's like having a grown-up tell you the rules of the game before you play.
+Sara is currently in a stable state. The core API is well-defined, and the library is suitable for use in production environments. The project is under active development, with a focus on expanding the library's functionality and improving performance.
 
--   **Smart Rules:** Sara uses very clever rules to understand your data. It knows what kind of toy each piece of data is, so it can help you sort them, count them, and put them together perfectly.
+### Implemented
 
--   **Playing with Your Data:** Sara can do lots of cool things with your data, like:
-    -   **Finding Special Toys:** "Show me all the red cars!" (Filtering)
-    -   **Changing Toys:** "Make all the small blocks big!" (Transforming)
-    -   **Sorting Toys:** "Put all the toys from smallest to biggest!" (Sorting)
-    -   **Adding New Toys:** "Let's add a new shiny toy to the box!" (Mutating)
-    -   **Counting and Grouping Toys:** "How many red cars do I have? And how many blue blocks?" (Aggregating)
-    -   **Putting Toy Boxes Together:** "Let's combine these two toy boxes into one big one!" (Joining)
+- **Type-Safe Schemas:** Core data structures are parameterized by type-level schemas.
+- **Streaming IO:** Efficiently read CSV and JSON data in a streaming fashion.
+- **Wrangling:** Filter, select, and transform data with compile-time guarantees.
+- **Expressions:** A type-safe DSL for building complex data transformations.
+- **Static Schema Inference:** Automatically generate schemas from CSV files.
 
--   **Reading Your Toy Lists:** Sara can read your toy lists from special papers (like CSV and JSON files) and even guess what kind of toys are on the list!
+### Roadmap
 
-## How Sara is Doing Now
-
-Sara is super good now! It has learned all its magic rules perfectly, so it almost never makes mistakes when playing with your data. It's like a super careful friend who helps you keep your toys in perfect order.
-
-We've also started making Sara even faster by adding special tools to measure how quickly it plays with your data. This helps us find ways to make it even quicker!
-
-Sometimes, if your toy list is ripped or missing, Sara might get a little confused. But for all the playing and sorting inside, Sara is super reliable!
+- **Enhanced Aggregation:** Expand the set of aggregation functions and improve their performance.
+- **Advanced Joins:** Implement more complex join operations (e.g., outer joins, cross joins).
+- **Time Series Analysis:** Add specialized functions for time series data.
+- **Visualization:** Integrate with plotting libraries to provide easy data visualization.
 
 ## How to Get Sara (and Play!)
 
