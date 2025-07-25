@@ -22,12 +22,14 @@ import Sara.DataFrame.Join
 import Data.Proxy (Proxy(..))
 import Streaming (Stream, Of)
 import qualified Streaming.Prelude as S
+import Sara.DataFrame.IO (readJSONStreaming, writeJSONStreaming)
 import Data.Maybe (fromJust)
 import Data.List ()
 import System.IO.Temp (withSystemTempFile)
 import qualified Data.ByteString.Lazy as BL
 import System.IO (hClose)
-import Sara.DataFrame.IO (readJSONStreaming, writeJSONStreaming)
+import Test.QuickCheck
+import Test.Hspec.QuickCheck
 
 -- Helper function to convert a DataFrame to a Stream of single-row DataFrames
 dfToStream :: DataFrame cols -> Stream (Of (DataFrame cols)) IO ()
@@ -213,3 +215,6 @@ main = hspec $ do
                 let readDfStream = readJSONStreaming (Proxy @[ '("name", T.Text), '("age", Int)]) filePath
                 readDf <- streamToDf readDfStream
                 readDf `shouldBe` testDataFrame
+
+    describe "QuickCheck Properties" $ do
+        prop "fromRows . toRows is identity" prop_fromRows_toRows_identity

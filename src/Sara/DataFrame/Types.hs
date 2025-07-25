@@ -74,6 +74,42 @@ import Data.Scientific (toRealFloat)
 import GHC.Generics (Generic)
 import Control.DeepSeq (NFData)
 import Data.Aeson as A
+import Test.QuickCheck
+import Data.Time.Calendar (fromGregorian)
+import Data.Time.Clock (UTCTime(..), secondsToDiffTime)
+
+-- Arbitrary instance for DFValue
+instance Arbitrary DFValue where
+    arbitrary = oneof [
+        IntValue <$> arbitrary,
+        DoubleValue <$> arbitrary,
+        TextValue <$> (T.pack <$> listOf (elements ['a'..'z'])),
+        DateValue <$> arbitraryDay,
+        TimestampValue <$> arbitraryUTCTime,
+        BoolValue <$> arbitrary,
+        return NA
+        ]
+
+arbitraryDay :: Gen Day
+arbitraryDay = fromGregorian <$> arbitrary <*> (choose (1,12)) <*> (choose (1,28))
+
+arbitraryUTCTime :: Gen UTCTime
+arbitraryUTCTime = UTCTime <$> arbitraryDay <*> (secondsToDiffTime <$> choose (0, 86400))
+
+-- Arbitrary instance for DataFrame
+instance (KnownColumns cols, Arbitrary (DFValue)) => Arbitrary (DataFrame cols) where
+    arbitrary = do
+        let colNames = columnNames (Proxy @cols)
+        numRows <- choose (1, 10) -- Generate 1 to 10 rows
+        rows <- vectorOf numRows (genRow colNames)
+        return $ fromRows rows
+
+genRow :: [T.Text] -> Gen Row
+genRow colNames = do
+    Map.fromList <$> mapM genColValue colNames
+  where
+    genColValue :: T.Text -> Gen (T.Text, DFValue)
+    genColValue colName = (colName,) <$> arbitrary
 
 
 type family Fst (pair :: (k1, k2)) :: k1 where
