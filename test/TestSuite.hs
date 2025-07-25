@@ -24,6 +24,10 @@ import Streaming (Stream, Of)
 import qualified Streaming.Prelude as S
 import Data.Maybe (fromJust)
 import Data.List ()
+import System.IO.Temp (withSystemTempFile)
+import qualified Data.ByteString.Lazy as BL
+import System.IO (hClose)
+import Sara.DataFrame.IO (readJSONStreaming, writeJSONStreaming)
 
 -- Helper function to convert a DataFrame to a Stream of single-row DataFrames
 dfToStream :: DataFrame cols -> Stream (Of (DataFrame cols)) IO ()
@@ -194,3 +198,18 @@ main = hspec $ do
                           _ -> error "Expected IntValue for countB"
             countA `shouldBe` 2
             countB `shouldBe` 2
+
+    describe "JSON Streaming" $ do
+        let testDataFrame = fromRows @'[ '("name", T.Text), '("age", Int)] [
+                Map.fromList [("name", TextValue "Alice"), ("age", IntValue 30)],
+                Map.fromList [("name", TextValue "Bob"), ("age", IntValue 25)]
+                ]
+
+        it "writes and reads JSON in a streaming fashion" $ do
+            withSystemTempFile "test.json" $ \filePath handle -> do
+                BL.hPutStr handle ""
+                hClose handle
+                writeJSONStreaming filePath (dfToStream testDataFrame)
+                let readDfStream = readJSONStreaming (Proxy @[ '("name", T.Text), '("age", Int)]) filePath
+                readDf <- streamToDf readDfStream
+                readDf `shouldBe` testDataFrame

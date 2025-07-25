@@ -73,7 +73,7 @@ import qualified Data.Vector as V
 import Data.Scientific (toRealFloat)
 import GHC.Generics (Generic)
 import Control.DeepSeq (NFData)
-import Data.Aeson (ToJSON, FromJSON, toJSON, parseJSON, Value(Number, String, Bool, Null))
+import Data.Aeson as A
 
 
 type family Fst (pair :: (k1, k2)) :: k1 where
@@ -108,7 +108,7 @@ data DFValue = IntValue Int
 
 -- | ToJSON instance for DFValue, allowing conversion to JSON.
 instance ToJSON DFValue where
-    toJSON (IntValue i) = toJSON i
+    toJSON (IntValue i) = A.Number (fromIntegral i)
     toJSON (DoubleValue d) = toJSON d
     toJSON (TextValue t) = toJSON t
     toJSON (DateValue d) = toJSON (formatTime defaultTimeLocale "%Y-%m-%d" d)
@@ -118,8 +118,11 @@ instance ToJSON DFValue where
 
 -- | FromJSON instance for DFValue, allowing parsing from JSON.
 instance FromJSON DFValue where
-    parseJSON (Number n) = pure (DoubleValue (toRealFloat n))
-    parseJSON (String s) =
+    parseJSON (A.Number n) = 
+        case A.fromJSON (A.Number n) :: A.Result Int of
+            A.Success i -> pure (IntValue i)
+            A.Error _ -> pure (DoubleValue (toRealFloat n))
+    parseJSON (A.String s) =
         -- Try parsing as Date, then Bool, then Int, then Double, otherwise Text
         case parseTimeM True defaultTimeLocale "%Y-%m-%dT%H:%M:%S%QZ" (T.unpack s) :: Maybe UTCTime of
             Just t -> pure (TimestampValue t)
@@ -134,8 +137,8 @@ instance FromJSON DFValue where
                                 "true" -> pure (BoolValue True)
                                 "false" -> pure (BoolValue False)
                                 _ -> pure (TextValue s)
-    parseJSON (Bool b) = pure (BoolValue b)
-    parseJSON Null = pure NA
+    parseJSON (A.Bool b) = pure (BoolValue b)
+    parseJSON A.Null = pure NA
     parseJSON _ = fail "Unsupported JSON value type for DFValue"
 
 -- | A column in a DataFrame, represented as a 'Vector' of 'DFValue's.

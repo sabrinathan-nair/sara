@@ -20,7 +20,8 @@ module Sara.DataFrame.IO (
     -- * JSON Functions
     readJSON,
     readJSONStreaming,
-    writeJSON
+    writeJSON,
+    writeJSONStreaming
 ) where
 
 import qualified Data.ByteString.Lazy as BL
@@ -147,3 +148,10 @@ writeJSON :: KnownColumns cols => FilePath -> DataFrame cols -> IO ()
 writeJSON filePath df = do
     let rows = toRows df
     BL.writeFile filePath (A.encode rows)
+
+-- | Writes a `DataFrame` to a JSON file in a streaming fashion.
+writeJSONStreaming :: KnownColumns cols => FilePath -> Stream (Of (DataFrame cols)) IO () -> IO ()
+writeJSONStreaming filePath dfStream = do
+    dfs <- S.toList_ dfStream
+    let allRows = concatMap toRows dfs
+    BL.writeFile filePath (A.encode (map A.toJSON allRows))
