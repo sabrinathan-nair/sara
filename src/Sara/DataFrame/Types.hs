@@ -30,6 +30,7 @@ module Sara.DataFrame.Types (
     KnownSymbols(..),
     CanBeDFValue(..),
     -- * Type-level programming helpers
+    type (:++:),
     type Append,
     type Remove,
     type Nub,
@@ -153,6 +154,12 @@ getDataFrameMap :: DataFrame cols -> Map T.Text Column
 getDataFrameMap (DataFrame dfMap) = dfMap
 
 instance NFData (DataFrame cols)
+
+instance Semigroup (DataFrame cols) where
+    (DataFrame dfMap1) <> (DataFrame dfMap2) = DataFrame $ Map.unionWith (V.++) dfMap1 dfMap2
+
+instance Monoid (DataFrame cols) where
+    mempty = DataFrame Map.empty
 
 -- | A type to represent a single row with its schema at the type level.
 newtype TypeLevelRow (cols :: [(Symbol, Type)]) = TypeLevelRow (Map T.Text DFValue)
@@ -306,10 +313,17 @@ type family TypeOf (s :: Symbol) (cols :: [(Symbol, Type)]) :: Type where
   TypeOf s '[] = TypeError (Text "Column '" :<>: ShowType s :<>: Text "' not found in DataFrame schema.")
 
 -- | A type family to append two type-level lists.
+type family (:++:) (xs :: [k]) (ys :: [k]) :: [k] where
+    -- | Appends two type-level lists. Used for combining schemas.
+    (:++:) '[] ys = ys
+    (:++:) (x ': xs) ys = x ': (xs :++: ys)
+
 type family Append (xs :: [k]) (ys :: [k]) :: [k] where
     -- | Appends two type-level lists. Used for combining schemas.
     Append '[] ys = ys
     Append (x ': xs) ys = x ': Append xs ys
+
+
 
 -- | A type family to remove an element from a type-level list.
 type family Remove (x :: k) (ys :: [k]) :: [k] where
@@ -384,7 +398,7 @@ type family ContainsColumn (s :: Symbol) (cols :: [(Symbol, Type)]) :: Bool wher
     ContainsColumn s (_ ': xs) = ContainsColumn s xs
 
 type family JoinCols (cols1 :: [(Symbol, Type)]) (cols2 :: [(Symbol, Type)]) :: [(Symbol, Type)] where
-    JoinCols cols1 cols2 = Nub (Append cols1 cols2)
+    JoinCols cols1 cols2 = Nub (cols1 :++: cols2)
 
 
 

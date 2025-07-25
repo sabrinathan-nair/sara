@@ -155,8 +155,8 @@ main = hspec $ do
 
         it "performs sum aggregation correctly" $ do
             df <- createAggTestDataFrame
-            let groupedDf = groupBy @'["Category"] (dfToStream df)
-            aggregatedDf <- sumAgg @"Value" <$> groupedDf
+            groupedDf <- groupBy @'["Category"] (dfToStream df)
+            aggregatedDf <- sumAgg @"Value" (return groupedDf)
             let (DataFrame aggMap) = aggregatedDf
             let sumA = case (aggMap Map.! "Value_sum") V.!? 0 of
                           Just (DoubleValue d) -> d
@@ -169,8 +169,8 @@ main = hspec $ do
 
         it "performs mean aggregation correctly" $ do
             df <- createAggTestDataFrame
-            let groupedDf = groupBy @'["Category"] (dfToStream df)
-            aggregatedDf <- meanAgg @"Value" <$> groupedDf
+            groupedDf <- groupBy @'["Category"] (dfToStream df)
+            aggregatedDf <- meanAgg @"Value" (return groupedDf)
             let (DataFrame aggMap) = aggregatedDf
             let meanA = case (aggMap Map.! "Value_mean") V.!? 0 of
                           Just (DoubleValue d) -> d
@@ -183,13 +183,13 @@ main = hspec $ do
 
         it "performs count aggregation correctly" $ do
             df <- createAggTestDataFrame
-            let groupedDf = groupBy @'["Category"] (dfToStream df)
-            aggregatedDf <- countAgg @"Value" <$> groupedDf
+            groupedDf <- groupBy @'["Category"] (dfToStream df)
+            aggregatedDf <- countAgg @"Category" (return groupedDf)
             let (DataFrame aggMap) = aggregatedDf
-            let countA = case (aggMap Map.! "Value_count") V.!? 0 of
+            let countA = case (aggMap Map.! "Category_count") V.!? 0 of
                           Just (IntValue i) -> i
                           _ -> error "Expected IntValue for countA"
-            let countB = case (aggMap Map.! "Value_count") V.!? 1 of
+            let countB = case (aggMap Map.! "Category_count") V.!? 1 of
                           Just (IntValue i) -> i
                           _ -> error "Expected IntValue for countB"
             countA `shouldBe` 2

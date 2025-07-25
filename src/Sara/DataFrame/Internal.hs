@@ -70,3 +70,8 @@ instance (CanBeDFValue a) => GToFields (K1 i a) where
 transpose :: [[a]] -> [[a]]
 transpose ([]:_) = []
 transpose x = map head x : transpose (map tail x)
+
+-- | Helper function to combine two DataFrames (pure version)
+combineDataFramesPure :: DataFrame cols -> DataFrame cols -> DataFrame cols
+combineDataFramesPure (DataFrame dfMap1) (DataFrame dfMap2) =
+    DataFrame $ Map.unionWith (V.++) dfMap1 dfMap2

@@ -47,6 +47,7 @@ library
                      , streaming
                      , streaming-bytestring
                      , cassava-streams
+                     , transformers
   ghc-options:         -Wall
   default-language:    Haskell2010
 
@@ -63,7 +64,8 @@ test-suite sara-test
   type:                exitcode-stdio-1.0
   main-is:             TestSuite.hs
   hs-source-dirs:      test, src
-  build-depends:       base, hspec, text, containers, time, sara, vector, template-haskell, cassava, bytestring, aeson, scientific, unordered-containers, parallel, deepseq, vector-strategies, criterion, streaming
+  build-depends:       base, hspec, text, containers, time, sara, vector, template-haskell, cassava, bytestring, aeson, scientific, unordered-containers, parallel, deepseq, vector-strategies, criterion                     , streaming, transformers
+                     , json-stream
   default-language:    Haskell2010
   ghc-options:         -Wall
   other-modules:
