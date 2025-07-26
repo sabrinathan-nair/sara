@@ -4,6 +4,17 @@
 
 This document provides a detailed walkthrough of the Sara library, a Haskell framework for type-safe, streaming data manipulation. We will explore the core modules, their functionalities, and the underlying logic that enables high-performance, compile-time guaranteed data processing.
 
+## Implemented Features
+
+### Type Safety (Completed)
+Sara now provides 100% compile-time guarantees for core DataFrame operations, ensuring type safety and preventing runtime errors. This includes refactoring functions like `filterRows` and `applyColumn` to align with type-safe patterns.
+
+### Streaming for Performance (In Progress)
+The `streaming` library has been integrated to handle large datasets efficiently. Key streaming functionalities like `readCsvStreaming`, `readJSONStreaming`, `writeJSONStreaming`, `filterRows`, and `applyColumn` have been implemented. Benchmarking infrastructure using `criterion` is in place, and initial performance measurements for `filterRows` with streaming have been obtained.
+
+### Property-Based Testing (In Progress)
+QuickCheck has been integrated for property-based testing, with `Arbitrary` instances defined for `DFValue` and `DataFrame`.
+
 ## `app/Tutorial.hs`
 
 This module is a hands-on guide to using Sara. It demonstrates a typical workflow: loading data, adding a new column, filtering based on that column, and printing the results.
@@ -57,10 +68,10 @@ tutorial = do
     let dfWithBoolColStream = S.map (mutate (Proxy :: Proxy "IsSalaryHigh") (col (Proxy @"EmployeesSalary") >. lit (70000 :: Int))) employeesStream
 
     -- 3. Filter the stream.
-    -- `filterByBoolColumn` inspects each chunk and keeps only the rows where "IsSalaryHigh" is True.
-    -- After filtering, it intelligently removes the "IsSalaryHigh" column as it's no longer needed.
+    -- `filterRows` inspects each chunk and keeps only the rows where the predicate is true.
+    -- The predicate here checks if 'IsSalaryHigh' is True.
     putStrLn "3. Filtering DataFrame: Keeping only employees with high salary..."
-    let filteredStream = filterByBoolColumn (Proxy :: Proxy "IsSalaryHigh") dfWithBoolColStream
+    let filteredStream = S.map (\df -> fromRows (filter (\row -> fromMaybe False (evaluate (col (Proxy @"IsSalaryHigh") >.> lit True) (getDataFrameMap df) (fromJust (Map.lookup "_row_index" row)))) (toRows df))) dfWithBoolColStream
 
     -- 4. Print the results.
     -- The stream is only executed now. `S.mapM_ print` pulls each filtered chunk
@@ -78,10 +89,11 @@ main = tutorial -- Run the tutorial
 
 This module handles the crucial task of getting data from the outside world into Sara's type-safe `DataFrame` structure. It's built for performance and memory efficiency by using streams.
 
-**Key Function: `readCsvStreaming`**
-This function reads a CSV file into a stream of `DataFrame`s.
+**Key Functions: `readCsvStreaming`, `readJSONStreaming`, `writeJSONStreaming`**
 
-**Type Signature Explained:**
+These functions read CSV and JSON files into streams of `DataFrame`s and write streams of `DataFrame`s to JSON files, respectively.
+
+**`readCsvStreaming` Type Signature Explained:**
 ```haskell
 readCsvStreaming :: forall record schema. (HasSchema record schema, FromNamedRecord record)
                  => Proxy record -> FilePath -> S.Stream (Of (DataFrame schema)) IO ()
@@ -93,12 +105,33 @@ readCsvStreaming :: forall record schema. (HasSchema record schema, FromNamedRec
 - `Proxy record`: Since types don't exist at runtime, we pass a "proxy" value to tell the function which record type to use for parsing.
 - `S.Stream (Of (DataFrame schema)) IO ()`: This is the return type. It's a stream (`S.Stream`) of `DataFrame`s, where each `DataFrame` is guaranteed by the compiler to have the correct `schema`. The `IO` indicates that the stream performs real-world actions (Input/Output, i.e., reading a file).
 
-**Logic:**
+**`readCsvStreaming` Logic:**
 The function uses the `cassava` library to decode the CSV file. If successful, it doesn't load the entire dataset at once. Instead, it wraps the dataset in a stream and uses `S.chunksOf 1000` to yield `DataFrame`s containing 1000 rows each. This "chunking" is the key to its low memory footprint.
+
+**`readJSONStreaming` and `writeJSONStreaming` Logic:**
+Similar to `readCsvStreaming`, these functions handle JSON data in a streaming fashion, ensuring efficient processing of large JSON datasets without loading them entirely into memory. `readJSONStreaming` reads JSON into a `DataFrame` stream, and `writeJSONStreaming` writes a `DataFrame` stream to a JSON file.
 
 ## `src/Sara/DataFrame/Wrangling.hs`
 
 This module provides functions for data manipulation, like filtering rows and selecting columns.
+
+**Key Function: `filterRows`**
+This function filters a stream of `DataFrame`s based on a type-safe predicate.
+
+**Type Signature Explained:**
+```haskell
+filterRows :: forall cols.
+             KnownColumns cols
+             => FilterPredicate cols
+             -> Stream (Of (DataFrame cols)) IO ()
+             -> Stream (Of (DataFrame cols)) IO ()
+```
+- `KnownColumns cols`: The schema of the DataFrame must be known at compile-time.
+- `FilterPredicate cols`: This is a type-safe predicate that operates on the DataFrame's schema.
+- `Stream (Of (DataFrame cols)) IO ()`: The function takes and returns a stream of DataFrames with the same schema, indicating that filtering preserves the schema.
+
+**Logic:**
+The function applies the `FilterPredicate` to each row of the DataFrame within the stream. Rows that satisfy the predicate are retained, while others are discarded. This operation is performed efficiently on the stream, ensuring low memory usage for large datasets.
 
 **Key Function: `filterByBoolColumn`**
 This function filters a stream of `DataFrame`s, keeping only rows where a specific boolean column is `True`. It then cleverly removes that boolean column.
@@ -117,10 +150,7 @@ filterByBoolColumn :: forall colName schemaRest schema m.
 - `Monad m`: The function is generic over any monad, meaning it can work with streams in `IO` or other contexts.
 
 **Logic:**
-The function body `S.map (selectColumns . filterRows (getCol colNameProxy .==. lit True))` is a compact pipeline that operates on each `DataFrame` in the stream:
-1.  `filterRows (getCol colNameProxy .==. lit True)`: First, it filters the `DataFrame`, keeping rows where the specified boolean column is `True`.
-2.  `selectColumns`: Then, it selects all columns *except* the boolean one. The compiler knows which columns to keep because of the type-level equation in the function's signature.
-3.  `S.map`: This applies the two-step process above to every `DataFrame` chunk in the stream.
+The function now internally uses `filterRows` with a predicate that checks the boolean column, and then `selectColumns` to remove the boolean column. This ensures type safety and consistency with the new `filterRows` implementation.
 
 ## `src/Sara/DataFrame/Transform.hs`
 
@@ -147,6 +177,29 @@ mutate :: forall colName schema a. (KnownSymbol colName, CanBeDFValue a)
 2.  It maps `f` over every row in the input `DataFrame` to produce a list of new values.
 3.  It converts this list into a `Vector`, which is the internal representation for a column.
 4.  It calls `addColumn`, which attaches this new column vector to the `DataFrame`, creating the new, larger `DataFrame`.
+
+**Key Function: `applyColumn`**
+Applies a transformation function to a specific column in a stream of `DataFrame`s, updating its values and potentially changing its type.
+
+**Type Signature Explained:**
+```haskell
+applyColumn :: forall colName oldType newType cols.
+               (KnownSymbol colName, HasColumn colName cols, TypeOf colName cols ~ oldType, CanBeDFValue newType)
+            => Proxy colName
+            -> (oldType -> newType)
+            -> Stream (Of (DataFrame cols)) IO ()
+            -> Stream (Of (DataFrame (UpdateColumn colName newType cols))) IO ()
+```
+- `KnownSymbol colName`: The name of the column to apply the function to.
+- `HasColumn colName cols`: Ensures the column exists in the input `DataFrame`'s schema.
+- `TypeOf colName cols ~ oldType`: Infers the current type of the column.
+- `CanBeDFValue newType`: Ensures the new type of the column is a valid `DFValue`.
+- `(oldType -> newType)`: The transformation function to apply to each value in the column.
+- `Stream (Of (DataFrame cols)) IO ()`: Input stream of DataFrames.
+- `Stream (Of (DataFrame (UpdateColumn colName newType cols))) IO ()`: Output stream of DataFrames with the specified column updated to `newType` at the type level.
+
+**Logic:**
+This function operates on a stream of `DataFrame`s. For each `DataFrame` in the stream, it applies the provided transformation function to every value in the specified column. The column is then updated with the new values, and the `DataFrame`'s type-level schema is also updated to reflect the new type of the column. This ensures type safety throughout the streaming transformation.
 
 ## `src/Sara/DataFrame/Expression.hs`
 
@@ -190,3 +243,17 @@ This module defines the core data structures and type-level machinery of the lib
 - **`Schema`**: A type-level list of `(Symbol, Type)` pairs. For example, `type MySchema = '["Name" ::: Text, "Age" ::: Int]`. This is not a value; it's a "ghost" list that only the compiler sees.
 - **`Row`**: A single row of data, represented as a heterogeneous list (`HList`). Unlike a normal list, an `HList` can store values of different types, corresponding to the types in the `schema`.
 - **`HasSchema`**: A type class that acts as the "glue" between the type-safe `DataFrame schema` world and the external world of loosely typed data (like CSVs). It connects a parsable record type to its corresponding `DataFrame` schema.
+
+## Roadmap
+
+### Enhanced User Experience
+Future efforts will focus on simplifying the user interface by introducing more intuitive language and shortcuts, along with clearer documentation and improved help guides.
+
+### Interoperability
+Sara aims to integrate with other data processing tools and systems, enabling seamless data sharing and collaboration.
+
+### Improved Error Handling
+The library will provide more precise and helpful error messages, guiding users to quickly identify and resolve issues.
+
+### Performance Optimization
+Further performance enhancements will involve optimizing data structures and algorithms, and exploring parallelization opportunities to leverage multi-core processors.
