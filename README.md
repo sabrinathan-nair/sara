@@ -29,36 +29,6 @@ Sara is currently in a stable state. The core API is well-defined, and the libra
 - **Time Series Analysis:** Add specialized functions for time series data.
 - **Visualization:** Integrate with plotting libraries to provide easy data visualization.
 
-## How to Get Sara (and Play!)
+## License
 
-To get Sara and start playing, you need a special helper called **Haskell**.
-
-1.  **Get the Toy Box:**
-    ```bash
-    git clone https://github.com/sabrinathan-nair/sara.git
-    cd sara
-    ```
-
-2.  **Build Sara's Magic Tools:**
-    ```bash
-    cabal build
-    # or stack build
-    ```
-
-3.  **Check if Sara's Tools Work:**
-    ```bash
-    cabal test
-    # or stack test
-    ```
-
-## More Fun Stuff
-
-(Coming soon: More simple examples of how to play with Sara!)
-
-## Help Make Sara Even Better!
-
-If you want to help make Sara even smarter, please ask a grown-up to help you share your ideas!
-
-## Rules for Playing (License)
-
-Sara plays by the MIT rules. You can find them in the `LICENSE` paper.
+Sara is licensed under the MIT License. See the `LICENSE` file for more details.
