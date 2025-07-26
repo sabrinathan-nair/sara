@@ -14,6 +14,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE TupleSections #-}
 
 module Sara.DataFrame.Types (
     DFValue(..),
@@ -54,7 +55,9 @@ module Sara.DataFrame.Types (
     fromDFValueUnsafe,
     type (:::),
     type Fst,
-    type Snd
+    type Snd,
+    prop_fromRows_toRows_identity,
+    getDFValueType
 ) where
 
 import qualified Data.Text as T
@@ -78,6 +81,28 @@ import Test.QuickCheck
 import Data.Time.Calendar (fromGregorian)
 import Data.Time.Clock (UTCTime(..), secondsToDiffTime)
 
+-- | A type class for generating arbitrary DFValues of a specific type.
+class ArbitraryDFValueType a where
+    arbitraryDFValue :: Gen DFValue
+
+instance ArbitraryDFValueType Int where
+    arbitraryDFValue = IntValue <$> arbitrary
+
+instance ArbitraryDFValueType Double where
+    arbitraryDFValue = DoubleValue <$> arbitrary
+
+instance ArbitraryDFValueType T.Text where
+    arbitraryDFValue = TextValue <$> (T.pack <$> listOf (elements ['a'..'z']))
+
+instance ArbitraryDFValueType Day where
+    arbitraryDFValue = DateValue <$> arbitraryDay
+
+instance ArbitraryDFValueType UTCTime where
+    arbitraryDFValue = TimestampValue <$> arbitraryUTCTime
+
+instance ArbitraryDFValueType Bool where
+    arbitraryDFValue = BoolValue <$> arbitrary
+
 -- Arbitrary instance for DFValue
 instance Arbitrary DFValue where
     arbitrary = oneof [
@@ -97,19 +122,24 @@ arbitraryUTCTime :: Gen UTCTime
 arbitraryUTCTime = UTCTime <$> arbitraryDay <*> (secondsToDiffTime <$> choose (0, 86400))
 
 -- Arbitrary instance for DataFrame
-instance (KnownColumns cols, Arbitrary (DFValue)) => Arbitrary (DataFrame cols) where
+instance (KnownColumns cols, GencolRow cols) => Arbitrary (DataFrame cols) where
     arbitrary = do
-        let colNames = columnNames (Proxy @cols)
         numRows <- choose (1, 10) -- Generate 1 to 10 rows
-        rows <- vectorOf numRows (genRow colNames)
-        return $ fromRows rows
+        rowsList <- vectorOf numRows (gencolRow (Proxy @cols))
+        return $ fromRows (map Map.fromList rowsList)
 
-genRow :: [T.Text] -> Gen Row
-genRow colNames = do
-    Map.fromList <$> mapM genColValue colNames
-  where
-    genColValue :: T.Text -> Gen (T.Text, DFValue)
-    genColValue colName = (colName,) <$> arbitrary
+class GencolRow (cols :: [(Symbol, Type)]) where
+    gencolRow :: Proxy cols -> Gen [(T.Text, DFValue)]
+
+instance GencolRow '[] where
+    gencolRow _ = return []
+
+instance (KnownSymbol s, Typeable t, ArbitraryDFValueType t, GencolRow rest) => GencolRow ('(s, t) : rest) where
+    gencolRow _ = do
+        let colName = T.pack (symbolVal (Proxy @s))
+        val <- arbitraryDFValue @t
+        restOfRow <- gencolRow (Proxy @rest)
+        return $ (colName, val) : restOfRow
 
 
 type family Fst (pair :: (k1, k2)) :: k1 where
@@ -123,17 +153,25 @@ type family (a :: k) ::: (b :: [k]) :: [k] where
     a ::: '[] = '[a]
     a ::: (x ': xs) = a ': x ': xs
     
-    
-
 
 
 isNA :: DFValue -> Bool
 isNA NA = True
 isNA _ = False
 
+-- | Returns the TypeRep of the value contained within a DFValue, or Nothing if it's NA.
+getDFValueType :: DFValue -> Maybe TypeRep
+getDFValueType (IntValue _) = Just (typeRep (Proxy @Int))
+getDFValueType (DoubleValue _) = Just (typeRep (Proxy @Double))
+getDFValueType (TextValue _) = Just (typeRep (Proxy @T.Text))
+getDFValueType (DateValue _) = Just (typeRep (Proxy @Day))
+getDFValueType (TimestampValue _) = Just (typeRep (Proxy @UTCTime))
+getDFValueType (BoolValue _) = Just (typeRep (Proxy @Bool))
+getDFValueType NA = Nothing
+
 -- | A type to represent a single value in a DataFrame.
 -- It can hold different types of data such as integers, doubles, text, dates, booleans, or missing values (NA).
-data DFValue = IntValue Int
+{-@ data DFValue = IntValue { iVal :: Int } @-}
            | DoubleValue Double
            | TextValue T.Text
            | DateValue Day
@@ -221,6 +259,7 @@ fromTypeLevelRow (TypeLevelRow row) = row
 class KnownColumns (cols :: [(Symbol, Type)]) where
     columnNames :: Proxy cols -> [T.Text]
     columnTypes :: Proxy cols -> [TypeRep]
+    columnSchema :: Proxy cols -> [(T.Text, TypeRep)]
 
 class KnownSymbols (ss :: [Symbol]) where
   symbolVals :: Proxy ss -> [String]
@@ -234,10 +273,12 @@ instance (KnownSymbol s, KnownSymbols ss) => KnownSymbols (s ': ss) where
 instance KnownColumns '[] where
     columnNames _ = []
     columnTypes _ = []
+    columnSchema _ = []
 
 instance (KnownSymbol x, Typeable a, KnownColumns xs) => KnownColumns ('(x, a) ': xs) where
     columnNames _ = T.pack (symbolVal (Proxy @x)) : columnNames (Proxy @xs)
     columnTypes _ = typeRep (Proxy @a) : columnTypes (Proxy @xs)
+    columnSchema _ = (T.pack (symbolVal (Proxy @x)), typeRep (Proxy @a)) : columnSchema (Proxy @xs)
 
 
 
@@ -347,15 +388,18 @@ fromRows rows@(firstRow:_) =
 
 -- | A type family to get the type of a column from a schema.
 type family TypeOf (s :: Symbol) (cols :: [(Symbol, Type)]) :: Type where
-  TypeOf s ('(s, t) ': xs) = t
-  TypeOf s (_ ': xs) = TypeOf s xs
+  TypeOf s ('(colName, colType) ': rest) = TypeOfImpl (CmpSymbol s colName) s colType rest
   TypeOf s '[] = TypeError (Text "Column '" :<>: ShowType s :<>: Text "' not found in DataFrame schema.")
+
+type family TypeOfImpl (ord :: Ordering) (s :: Symbol) (colType :: Type) (rest :: [(Symbol, Type)]) :: Type where
+  TypeOfImpl 'EQ s colType rest = colType
+  TypeOfImpl _ s colType rest = TypeOf s rest
 
 -- | A type family to append two type-level lists.
 type family (:++:) (xs :: [k]) (ys :: [k]) :: [k] where
     -- | Appends two type-level lists. Used for combining schemas.
-    (:++:) '[] ys = ys
-    (:++:) (x ': xs) ys = x ': (xs :++: ys)
+    '[] :++: ys = ys
+    (x ': xs) :++: ys = x ': (xs :++: ys)
 
 type family Append (xs :: [k]) (ys :: [k]) :: [k] where
     -- | Appends two type-level lists. Used for combining schemas.
@@ -378,27 +422,14 @@ type family Nub (xs :: [k]) :: [k] where
     Nub (x ': xs) = x ': Nub (Remove x xs)
 
 -- | A constraint to check if a column is present in a list of columns, with a custom type error.
-type family CheckHasColumn (s :: Symbol) (ss :: [(Symbol, Type)]) :: Constraint where
-  -- | Checks if a column is present in a list of columns, with a custom type error.
-  CheckHasColumn s '[] = TypeError (Text "Column '" :<>: ShowType s :<>: Text "' not found in DataFrame schema.")
-  CheckHasColumn s ('(h, t) ': rest) = CheckHasColumnImpl (CmpSymbol s h) s rest
-
-type family CheckHasColumnImpl (o :: Ordering) (s :: Symbol) (rest :: [(Symbol, Type)]) :: Constraint where
-  CheckHasColumnImpl 'EQ s rest = ()
-  CheckHasColumnImpl _ s rest = CheckHasColumn s rest
-
 -- | A constraint synonym for checking if a column exists in a DataFrame.
-type HasColumn (col :: Symbol) (cols :: [(Symbol, Type)]) = (KnownSymbol col, CheckHasColumn col cols)
+type HasColumn (col :: Symbol) (cols :: [(Symbol, Type)]) = (KnownSymbol col, Typeable (TypeOf col cols))
 
 -- | Constraint to ensure a list of columns exists in another list of columns.
 type family HasColumns (subset :: [Symbol]) (superset :: [(Symbol, Type)]) :: Constraint where
     -- | Constraint to ensure a list of columns exists in another list of columns.
     HasColumns '[] _ = ()
     HasColumns (s ': ss) superset = (HasColumn s superset, HasColumns ss superset)
-
-
-
-
 
 
 
@@ -413,7 +444,6 @@ type family GetColumnTypes (cols :: [(Symbol, Type)]) :: [Type] where
 type family SymbolsToSchema (syms :: [Symbol]) (originalSchema :: [(Symbol, Type)]) :: [(Symbol, Type)] where
     SymbolsToSchema '[] _ = '[]
     SymbolsToSchema (s ': ss) originalSchema = '(s, TypeOf s originalSchema) ': SymbolsToSchema ss originalSchema
-
 
 
 
@@ -439,12 +469,5 @@ type family ContainsColumn (s :: Symbol) (cols :: [(Symbol, Type)]) :: Bool wher
 type family JoinCols (cols1 :: [(Symbol, Type)]) (cols2 :: [(Symbol, Type)]) :: [(Symbol, Type)] where
     JoinCols cols1 cols2 = Nub (cols1 :++: cols2)
 
-
-
-
-
-
-
-
-
-
+prop_fromRows_toRows_identity :: (KnownColumns cols, Eq (DataFrame cols), Arbitrary (DataFrame cols)) => DataFrame cols -> Bool
+prop_fromRows_toRows_identity df = (fromRows . toRows) df == df

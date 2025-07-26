@@ -24,12 +24,12 @@ import Streaming (Stream, Of)
 import qualified Streaming.Prelude as S
 import Sara.DataFrame.IO (readJSONStreaming, writeJSONStreaming)
 import Data.Maybe (fromJust)
-import Data.List ()
 import System.IO.Temp (withSystemTempFile)
 import qualified Data.ByteString.Lazy as BL
 import System.IO (hClose)
 import Test.QuickCheck
 import Test.Hspec.QuickCheck
+
 
 -- Helper function to convert a DataFrame to a Stream of single-row DataFrames
 dfToStream :: DataFrame cols -> Stream (Of (DataFrame cols)) IO ()
@@ -59,11 +59,22 @@ main = hspec $ do
                     ]
             return $ fromRows @'[ '("Name", T.Text), '("Age", Int), '("Salary", Double)] rows
 
+    describe "Type-Safe col function" $ do
+        it "correctly infers the type of a column" $ do
+            let df = fromRows @'[ '("Name", T.Text), '("Age", Int), '("Salary", Double)] [
+                    Map.fromList [("Name", TextValue "Alice"), ("Age", IntValue 30), ("Salary", DoubleValue 50000.0)]
+                    ]
+            let ageColExpr = col (Proxy @"Age") :: Expr '[ '("Name", T.Text), '("Age", Int), '("Salary", Double)] Int
+            -- This test primarily checks for compilation errors. If it compiles, type inference worked.
+            -- We can add a runtime check to be sure.
+            let evaluatedAge = evaluateExpr ageColExpr (getDataFrameMap df) 0
+            evaluatedAge `shouldBe` Just 30
+
     describe "Type-Safe filterRows" $ do
         it "filters rows based on a simple predicate" $ do
             df <- createTestDataFrame
             let dfStream = S.yield df
-            filteredDf <- streamToDf $ filterRows (col (Proxy @"Age") >.> lit (30 :: Int)) dfStream
+            filteredDf <- streamToDf $ Sara.DataFrame.Transform.filterRows (col (Proxy @"Age") >.> lit (30 :: Int)) dfStream
             let (DataFrame filteredMap) = filteredDf
             V.length (filteredMap Map.! "Name") `shouldBe` 1
 
@@ -91,7 +102,7 @@ main = hspec $ do
     describe "Type-Safe mutate" $ do
         it "adds a new column based on an expression" $ do
             df <- createTestDataFrame
-            let expr = (col (Proxy @"Age") :: Expr '[ '("Name", T.Text), '("Age", Int), '("Salary", Double)] Int) +.+ lit (5 :: Int)
+            let expr = col (Proxy @"Age") +.+ lit (5 :: Int)
             let mutatedDf = mutate @"AgePlusFive" (Proxy @"AgePlusFive") expr df
             let (DataFrame mutatedMap) = mutatedDf
             let val = case (mutatedMap Map.! "AgePlusFive") V.!? 0 of
@@ -212,9 +223,28 @@ main = hspec $ do
                 BL.hPutStr handle ""
                 hClose handle
                 writeJSONStreaming filePath (dfToStream testDataFrame)
-                let readDfStream = readJSONStreaming (Proxy @[ '("name", T.Text), '("age", Int)]) filePath
+                let readDfStream = readJSONStreaming (Proxy @'[ '("name", T.Text), '("age", Int)]) filePath
                 readDf <- streamToDf readDfStream
                 readDf `shouldBe` testDataFrame
 
+    
+
     describe "QuickCheck Properties" $ do
-        prop "fromRows . toRows is identity" prop_fromRows_toRows_identity
+        prop "fromRows . toRows is identity" (prop_fromRows_toRows_identity @'[ '("Name", T.Text), '("Age", Int), '("Salary", Double)])
+        prop "Arbitrary DataFrame respects type-level schema" (prop_arbitrary_dataframe_type_awareness @'[ '("Name", T.Text), '("Age", Int), '("Salary", Double)])
+
+prop_arbitrary_dataframe_type_awareness :: forall cols. (KnownColumns cols, Arbitrary (DataFrame cols)) => DataFrame cols -> Bool
+prop_arbitrary_dataframe_type_awareness df = 
+    let schema = columnSchema (Proxy @cols)
+        dfMap = getDataFrameMap df
+    in all (\(colName, colType) -> 
+        case Map.lookup colName dfMap of
+            Just colVec -> 
+                -- Check if all values in the column vector match the expected type
+                V.all (\dfVal -> 
+                    case getDFValueType dfVal of
+                        Just valType -> valType == colType
+                        Nothing -> True -- NA values are considered type-agnostic for this check
+                ) colVec
+            Nothing -> False -- Column from schema not found in generated DataFrame, which is an error
+    ) schema

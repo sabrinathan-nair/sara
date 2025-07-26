@@ -5,6 +5,9 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE KindSignatures #-}
+{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 -- | This module defines a type-safe GADT for building and evaluating expressions
 -- on `DataFrame` rows. It provides a way to construct complex, type-checked
@@ -38,6 +41,7 @@ import Data.Kind (Type)
 import Sara.DataFrame.Types
 import qualified Data.Map.Strict as Map
 import qualified Data.Vector as V
+
 
 
 -- | A type-safe expression GADT for `DataFrame` operations.
@@ -104,6 +108,7 @@ lit :: CanBeDFValue a => a -> Expr cols a
 lit = Lit
 
 -- | Smart constructor for a column reference expression.
+    -- | Smart constructor for a column reference expression.
 col :: (HasColumn c cols, CanBeDFValue a, TypeOf c cols ~ a) => Proxy c -> Expr cols a
 col = Col
 

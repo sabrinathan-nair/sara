@@ -19,6 +19,8 @@ module Sara.DataFrame.Transform (
     addColumn,
     applyColumn,
     mutate,
+    -- * Row Operations
+    filterRows,
     -- * Reshaping
     melt,
 ) where
@@ -26,11 +28,13 @@ module Sara.DataFrame.Transform (
 import qualified Data.Text as T
 import qualified Data.Map.Strict as Map
 import qualified Data.Vector as V
-import Sara.DataFrame.Types (DFValue(..), DataFrame(..), Row, toRows, KnownColumns(..), CanBeDFValue(..), getDataFrameMap, TypeOf, HasColumn, fromDFValueUnsafe, toDFValue, type Append, type Nub, type UpdateColumn, type Fst, type Snd)
+import Sara.DataFrame.Types (DFValue(..), DataFrame(..), Row, toRows, fromRows, KnownColumns(..), CanBeDFValue(..), getDataFrameMap, TypeOf, HasColumn, fromDFValueUnsafe, toDFValue, type Append, type Nub, type UpdateColumn, type Fst, type Snd)
 import Sara.DataFrame.Expression (Expr(..), evaluateExpr)
+import Sara.DataFrame.Predicate (FilterPredicate, evaluate)
 import GHC.TypeLits
 import Data.Proxy (Proxy(..))
 import Data.Kind (Type)
+import Data.Maybe (fromMaybe)
 
 import Streaming (Stream, Of)
 import qualified Streaming.Prelude as S
@@ -152,3 +156,17 @@ mutate newColProxy expr (DataFrame dfMap) =
         updatedDfMap = Map.insert newColName newColumnValues dfMap
     in
         DataFrame updatedDfMap
+
+-- | Filters rows from a DataFrame based on a type-safe predicate.
+filterRows :: forall cols.
+             KnownColumns cols
+             => FilterPredicate cols
+             -> Stream (Of (DataFrame cols)) IO ()
+             -> Stream (Of (DataFrame cols)) IO ()
+filterRows predicate = S.mapMaybeM (\df -> do
+    let dfMap = getDataFrameMap df
+    let rows = toRows df
+    let filteredRows = [row | (row, idx) <- zip rows [0..], fromMaybe False (evaluate predicate dfMap idx)]
+    if null filteredRows
+        then return Nothing
+        else return (Just (fromRows filteredRows)))
