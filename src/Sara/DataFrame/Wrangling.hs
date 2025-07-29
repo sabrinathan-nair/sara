@@ -20,12 +20,17 @@ module Sara.DataFrame.Wrangling (
     dropColumns,
     dropRows,
     dropNA,
+    DropColumns,
     -- * Renaming
     renameColumn,
     -- * Missing Data
     fillNA,
     -- * Selecting
-    selectColumns
+    selectColumns,
+    SelectCols,
+    AllKnownSymbol,
+    symbolsToTexts,
+    MapFst
 ) where
 
 import qualified Data.Text as T

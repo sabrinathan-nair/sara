@@ -71,6 +71,7 @@ test-suite sara-test
                      , json-stream
                      , temporary
                      , QuickCheck
+                     , constraints
   default-language:    Haskell2010
   ghc-options:         -Wall
   other-modules:

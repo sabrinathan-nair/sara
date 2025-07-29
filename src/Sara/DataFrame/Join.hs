@@ -11,7 +11,8 @@
 
 -- | This module provides functions for joining `DataFrame`s.
 module Sara.DataFrame.Join (
-    joinDF
+    joinDF,
+    CreateOutputRow
 ) where
 
 import qualified Data.Text as T

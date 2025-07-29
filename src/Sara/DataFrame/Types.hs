@@ -171,7 +171,7 @@ getDFValueType NA = Nothing
 
 -- | A type to represent a single value in a DataFrame.
 -- It can hold different types of data such as integers, doubles, text, dates, booleans, or missing values (NA).
-{-@ data DFValue = IntValue { iVal :: Int } @-}
+data DFValue = IntValue Int
            | DoubleValue Double
            | TextValue T.Text
            | DateValue Day
@@ -300,9 +300,15 @@ data SortOrder = Ascending  -- ^ Sort in ascending order.
                | Descending -- ^ Sort in descending order.
     deriving (Show, Eq)
 
+instance Arbitrary SortOrder where
+    arbitrary = elements [Ascending, Descending]
+
 -- | A type-safe criterion for sorting a DataFrame.
 data SortCriterion (cols :: [(Symbol, Type)]) where
     SortCriterion :: (KnownSymbol col, HasColumn col cols, Ord (TypeOf col cols), CanBeDFValue (TypeOf col cols)) => Proxy col -> SortOrder -> SortCriterion cols
+
+instance Show (SortCriterion cols) where
+    show (SortCriterion proxy order) = "SortCriterion " ++ symbolVal proxy ++ " " ++ show order
 
 -- | A type synonym for a sortable column.
 type SortableColumn (col :: Symbol) (cols :: [(Symbol, Type)]) = (KnownSymbol col, HasColumn col cols)

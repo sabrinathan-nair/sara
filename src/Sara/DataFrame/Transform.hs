@@ -19,6 +19,7 @@ module Sara.DataFrame.Transform (
     addColumn,
     applyColumn,
     mutate,
+    AddColumn,
     -- * Row Operations
     filterRows,
     -- * Reshaping
