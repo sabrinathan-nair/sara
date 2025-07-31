@@ -554,7 +554,82 @@ Analysis Complete.
 
 This example shows how to use `percentile` to understand the spread of your data in terms of percentages.
 
+### How to Calculate Correlation
+
+Correlation measures the statistical relationship between two numeric columns. The Pearson correlation coefficient, which Sara's `correlate` function calculates, ranges from -1 to +1:
+
+*   **+1:** Perfect positive linear relationship (as one variable increases, the other increases proportionally).
+*   **-1:** Perfect negative linear relationship (as one variable increases, the other decreases proportionally).
+*   **0:** No linear relationship.
+
+Sara's `correlate` function takes two column proxies and a DataFrame, returning the correlation coefficient or an error if the columns are not found, are not numeric, or have insufficient data.
+
+Let's use a DataFrame with student data, including their study hours and exam scores:
+
+`studentDataDF`:
+```
+Student  StudyHours  ExamScore
+Alice    10          85
+Bob      12          92
+Charlie  8           78
+David    15          95
+Eve      11          88
+Frank    7           70
+Grace    9           80
+```
+
+To calculate the correlation between 'StudyHours' and 'ExamScore':
+
+```haskell
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE OverloadedStrings #-}
+
+import Sara.DataFrame
+import Sara.DataFrame.Static (C)
+import Sara.DataFrame.Statistics (correlate)
+import Data.Proxy (Proxy(..))
+import qualified Data.Map.Strict as Map
+import qualified Data.Text as T
+
+main :: IO ()
+main = do
+  let studentRows = [
+          Map.fromList [("Student", TextValue "Alice"), ("StudyHours", IntValue 10), ("ExamScore", IntValue 85)],
+          Map.fromList [("Student", TextValue "Bob"), ("StudyHours", IntValue 12), ("ExamScore", IntValue 92)],
+          Map.fromList [("Student", TextValue "Charlie"), ("StudyHours", IntValue 8), ("ExamScore", IntValue 78)],
+          Map.fromList [("Student", TextValue "David"), ("StudyHours", IntValue 15), ("ExamScore", IntValue 95)],
+          Map.fromList [("Student", TextValue "Eve"), ("StudyHours", IntValue 11), ("ExamScore", IntValue 88)],
+          Map.fromList [("Student", TextValue "Frank"), ("StudyHours", IntValue 7), ("ExamScore", IntValue 70)],
+          Map.fromList [("Student", TextValue "Grace"), ("StudyHours", IntValue 9), ("ExamScore", IntValue 80)]
+          ]
+  let studentDataDF = fromRows @'[ '("Student", T.Text), '("StudyHours", Int), '("ExamScore", Int)] studentRows
+
+  putStrLn "\nOriginal Student Data DataFrame:"
+  print studentDataDF
+
+  -- Calculate the correlation between StudyHours and ExamScore
+  case correlate (Proxy @"StudyHours") (Proxy @"ExamScore") studentDataDF of
+    Left err -> putStrLn $ "Error: " ++ show err
+    Right correlation -> putStrLn $ "\nCorrelation between StudyHours and ExamScore: " ++ show correlation
+
+  putStrLn "\nAnalysis Complete."
+```
+
+**Expected Output (conceptual):**
+```
+Original Student Data DataFrame:
+...
+
+Correlation between StudyHours and ExamScore: 0.98...
+
+Analysis Complete.
+```
+
+This example demonstrates how to use `correlate` to understand the linear relationship between two numeric variables in your DataFrame.
+
 ## 4. IDE Configuration for Haskell Development
+
 
 
 

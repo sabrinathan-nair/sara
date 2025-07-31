@@ -28,7 +28,9 @@ module Sara.DataFrame.Statistics (
     -- * Quantile Calculation
     quantile,
     -- * Percentile Calculation
-    percentile
+    percentile,
+    -- * Correlation Calculation
+    correlate
 ) where
 
 import Sara.DataFrame.Types
@@ -265,3 +267,51 @@ percentile :: forall (col :: Symbol) cols.
 percentile p_col p_val df
     | p_val < 0.0 || p_val > 100.0 = Left $ InvalidArgument "Percentile value must be between 0.0 and 100.0."
     | otherwise = quantile p_col (p_val / 100.0) df
+
+-- | Calculates the Pearson correlation coefficient between two numeric columns.
+-- Non-numeric values and NA values are ignored.
+-- Returns `Left SaraError` if columns are not found, are not numeric, or have insufficient data.
+correlate :: forall (col1 :: Symbol) (col2 :: Symbol) cols.
+             ( KnownSymbol col1
+             , KnownSymbol col2
+             , HasColumn col1 cols
+             , HasColumn col2 cols
+             , CanBeDFValue (TypeOf col1 cols)
+             , CanBeDFValue (TypeOf col2 cols)
+             ) => Proxy col1 -> Proxy col2 -> DataFrame cols -> Either SaraError Double
+correlate p1 p2 df = do
+    let colName1 = T.pack $ symbolVal p1
+    let colName2 = T.pack $ symbolVal p2
+
+    colVector1 <- case Map.lookup colName1 (getDataFrameMap df) of
+        Nothing -> Left $ ColumnNotFound colName1
+        Just vec -> Right vec
+
+    colVector2 <- case Map.lookup colName2 (getDataFrameMap df) of
+        Nothing -> Left $ ColumnNotFound colName2
+        Just vec -> Right vec
+
+    let numericVals1 = V.mapMaybe toNumeric colVector1
+    let numericVals2 = V.mapMaybe toNumeric colVector2
+
+    -- Filter out NAs from both vectors simultaneously based on their indices
+    let filteredVals = V.zip numericVals1 numericVals2
+
+    let len = V.length filteredVals
+    if len < 2
+       then Left $ InvalidArgument "Correlation requires at least 2 data points after filtering NAs."
+       else
+           let xVals = V.map fst filteredVals
+               yVals = V.map snd filteredVals
+
+               meanX = V.sum xVals / fromIntegral len
+               meanY = V.sum yVals / fromIntegral len
+
+               stdX = sqrt (V.sum (V.map (\x -> (x - meanX) * (x - meanX)) xVals) / fromIntegral (len - 1))
+               stdY = sqrt (V.sum (V.map (\y -> (y - meanY) * (y - meanY)) yVals) / fromIntegral (len - 1))
+
+           in if stdX == 0.0 || stdY == 0.0
+              then Left $ InvalidArgument "Cannot calculate correlation: standard deviation is zero for one or both columns."
+              else
+                  let covariance = V.sum (V.zipWith (\x y -> (x - meanX) * (y - meanY)) xVals yVals) / fromIntegral (len - 1)
+                  in Right $ covariance / (stdX * stdY)
