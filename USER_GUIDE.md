@@ -333,6 +333,163 @@ productCountByRegion <- salesDF & groupBy (C "Region") countAgg
 -- West    2
 ```
 
+### How to Count Value Occurrences
+
+Counting the occurrences of unique values in a column is a common statistical operation, useful for understanding the distribution of categorical data or identifying frequent items. Sara provides the `countValues` function for this purpose.
+
+Let's use a DataFrame representing survey responses:
+
+`surveyDF`:
+```
+ID  Response
+1   Yes
+2   No
+3   Yes
+4   Maybe
+5   Yes
+6   No
+```
+
+To count the occurrences of each unique 'Response':
+
+```haskell
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE OverloadedStrings #-}
+
+import Sara.DataFrame
+import Sara.DataFrame.Static (C)
+import Sara.DataFrame.Statistics (countValues)
+import Data.Proxy (Proxy(..))
+import qualified Data.Map.Strict as Map
+import qualified Data.Text as T
+
+main :: IO ()
+main = do
+  let surveyRows = [
+          Map.fromList [("ID", IntValue 1), ("Response", TextValue "Yes")],
+          Map.fromList [("ID", IntValue 2), ("Response", TextValue "No")],
+          Map.fromList [("ID", IntValue 3), ("Response", TextValue "Yes")],
+          Map.fromList [("ID", IntValue 4), ("Response", TextValue "Maybe")],
+          Map.fromList [("ID", IntValue 5), ("Response", TextValue "Yes")],
+          Map.fromList [("ID", IntValue 6), ("Response", TextValue "No")]
+          ]
+  let surveyDF = fromRows @'[ '("ID", Int), '("Response", T.Text)] surveyRows
+
+  putStrLn "\nOriginal Survey DataFrame:"
+  print surveyDF
+
+  case countValues (Proxy @"Response") surveyDF of
+    Left err -> putStrLn $ "Error: " ++ show err
+    Right countsDF -> do
+      putStrLn "\nValue Counts for 'Response':"
+      print countsDF
+
+  putStrLn "\nAnalysis Complete."
+```
+
+**Expected Output (conceptual):**
+```
+Response  Count
+Yes       3
+No        2
+Maybe     1
+```
+
+This demonstrates how `countValues` provides a quick summary of the frequency of each unique item in a column, sorted by their counts in descending order.
+
+## 4. IDE Configuration for Haskell Development
+
+
+Aggregating data means performing calculations on groups of rows to produce a single summary value, like finding the total sum of a column, the average, or counting items. This is like counting how many red LEGO bricks you have, or finding the average height of all your LEGO towers.
+
+Let's use a DataFrame with sales data:
+
+`salesDF`:
+```
+Region    Product   Sales
+East      A         100
+East      B         150
+West      A         200
+West      C         50
+East      A         120
+```
+
+#### Sum Aggregation
+
+To find the total sales for all products:
+
+```haskell
+import Sara.DataFrame.Aggregate (sumAgg)
+import Sara.DataFrame.Static (C)
+
+totalSales <- salesDF & sumAgg (C "Sales")
+-- Result: 620 (a single numeric value)
+```
+
+To find the total sales per region (group by 'Region'):
+
+```haskell
+import Sara.DataFrame.Aggregate (groupBy, sumAgg)
+import Sara.DataFrame.Static (C)
+
+salesByRegion <- salesDF & groupBy (C "Region") (sumAgg (C "Sales"))
+-- Result (conceptual DataFrame):
+-- Region  TotalSales
+-- East    370
+-- West    250
+```
+
+#### Average Aggregation
+
+To find the average sales for all products:
+
+```haskell
+import Sara.DataFrame.Aggregate (meanAgg)
+import Sara.DataFrame.Static (C)
+
+averageSales <- salesDF & meanAgg (C "Sales")
+-- Result: 124.0 (a single numeric value)
+```
+
+To find the average sales per product:
+
+```haskell
+import Sara.DataFrame.Aggregate (groupBy, meanAgg)
+import Sara.DataFrame.Static (C)
+
+averageSalesByProduct <- salesDF & groupBy (C "Product") (meanAgg (C "Sales"))
+-- Result (conceptual DataFrame):
+-- Product  AverageSales
+-- A        140.0
+-- B        150.0
+-- C        50.0
+```
+
+#### Count Aggregation
+
+To count the number of sales records:
+
+```haskell
+import Sara.DataFrame.Aggregate (countAgg)
+
+recordCount <- salesDF & countAgg
+-- Result: 5 (a single numeric value)
+```
+
+To count the number of products sold per region:
+
+```haskell
+import Sara.DataFrame.Aggregate (groupBy, countAgg)
+import Sara.DataFrame.Static (C)
+
+productCountByRegion <- salesDF & groupBy (C "Region") countAgg
+-- Result (conceptual DataFrame):
+-- Region  Count
+-- East    3
+-- West    2
+```
+
 ## 4. IDE Configuration for Haskell Development
 
 Developing with Sara, like any Haskell project, greatly benefits from a well-configured Integrated Development Environment (IDE) or text editor. The key to a good Haskell development experience across most editors is the **Haskell Language Server (HLS)**. HLS provides features like:

@@ -22,7 +22,9 @@ module Sara.DataFrame.Statistics (
     skewV,
     kurtosisV,
     -- * Rolling Window Functions
-    rollingApply
+    rollingApply,
+    -- * Value Counting
+    countValues
 ) where
 
 import Sara.DataFrame.Types
@@ -31,6 +33,9 @@ import qualified Data.Map.Strict as Map
 import qualified Data.Text as T
 import Data.List (sort, group, sortBy)
 import Data.Ord (comparing)
+import GHC.TypeLits (Symbol, KnownSymbol, symbolVal)
+import Data.Proxy (Proxy(..))
+import Sara.Error (SaraError(..))
 
 -- | Converts a `DFValue` to a `Double` for calculations.
 -- Returns `Nothing` if the value is not numeric.
@@ -175,3 +180,34 @@ rollingApply (DataFrame dfMap) window colName aggFunc =
             ) [0 .. V.length col - 1]
         newDfMap = Map.insert (T.pack colName `T.append` "_rolling") rollingCol dfMap
     in DataFrame newDfMap
+
+-- | Counts the occurrences of unique, non-NA values in a specified column.
+-- Returns a new DataFrame with two columns: the unique values and their counts.
+-- The resulting DataFrame is sorted by count in descending order.
+--
+-- Example:
+-- >>> let df = fromRows @'["Category" ::: T.Text] [Map.fromList [("Category", TextValue "A")], Map.fromList [("Category", TextValue "B")], Map.fromList [("Category", TextValue "A")], Map.fromList [("Category", NA)]]
+-- >>> countValues (Proxy @"Category") df
+-- DataFrame {dfMap = fromList [("Category",[TextValue "A",TextValue "B"]),("Count",[IntValue 2,IntValue 1])]}
+countValues :: forall (col :: Symbol) cols.
+               ( KnownSymbol col
+               , HasColumn col cols
+               , KnownColumns '[ '(col, TypeOf col cols), '("Count", Int)]
+               , CanBeDFValue (TypeOf col cols)
+               ) => Proxy col -> DataFrame cols -> Either SaraError (DataFrame '[ '(col, TypeOf col cols), '("Count", Int)])
+countValues p df = do
+    let colName = T.pack $ symbolVal p
+    case Map.lookup colName (getDataFrameMap df) of
+        Nothing -> Left $ ColumnNotFound colName
+        Just colVector ->
+            let nonNAValues = V.filter (/= NA) colVector
+                -- Group and count frequencies
+                counts = Map.fromListWith (+) [(v, 1) | v <- V.toList nonNAValues]
+                -- Convert to a list of (value, count) pairs and sort by count descending
+                sortedCounts = sortBy (comparing (negate . snd)) (Map.toList counts)
+                -- Create new columns for the result DataFrame
+                valueCol = V.fromList $ map fst sortedCounts
+                countCol = V.fromList $ map (IntValue . snd) sortedCounts
+                -- Construct the new DataFrame
+                resultMap = Map.fromList [(colName, valueCol), ("Count", countCol)]
+            in Right $ DataFrame resultMap
