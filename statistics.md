@@ -4,7 +4,7 @@ This document outlines statistical functions commonly available in the Pandas li
 
 | Pandas Function/Feature | Description | Notes for Sara Implementation |
 | :---------------------- | :---------- | :---------------------------- |
-| `quantile()` / `percentile()` | Calculates the quantile(s) of the values over the requested axis. This is crucial for understanding data distribution beyond just mean/median. | Requires implementation for calculating arbitrary quantiles (e.g., 25th, 75th percentiles) on DataFrame columns. |
+
 | `corr()` (Correlation)  | Computes pairwise correlation of columns, excluding NA/null values. Essential for understanding relationships between variables. | Needs functions to calculate Pearson, Spearman, or Kendall correlation coefficients between two numeric columns. |
 | `cov()` (Covariance)    | Computes pairwise covariance of columns, excluding NA/null values. Used to determine how two variables change together. | Requires implementation for calculating covariance between two numeric columns. |
 | `describe()` (Summary Statistics) | Generates descriptive statistics that summarize the central tendency, dispersion, and shape of a dataset's distribution, excluding `NaN` values. Provides count, mean, std, min, 25%, 50%, 75%, max. | A convenience function that combines several existing (or planned) basic statistics into a single, easy-to-read output. This would involve orchestrating calls to `countV`, `meanV`, `stdV`, `minV`, `maxV`, and the new `quantile` function. |

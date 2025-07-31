@@ -20,6 +20,10 @@ data SaraError =
     IOError T.Text |
     -- | An error for an operation on an empty DataFrame.
     EmptyDataFrameError T.Text |
+    -- | An error for invalid arguments provided to a function.
+    InvalidArgument T.Text |
+    -- | An error for an operation on an empty column.
+    EmptyColumn T.Text T.Text |
     -- | A generic error, with a descriptive message.
     GenericError T.Text
     deriving (Eq)
@@ -30,4 +34,6 @@ instance Show SaraError where
     show (TypeMismatch expected actual) = "Type Mismatch: Expected " ++ T.unpack expected ++ ", but got " ++ T.unpack actual
     show (IOError msg) = "IO Error: " ++ T.unpack msg
     show (EmptyDataFrameError msg) = "Empty DataFrame Error: " ++ T.unpack msg
+    show (InvalidArgument msg) = "Invalid Argument: " ++ T.unpack msg
+    show (EmptyColumn colName msg) = "Empty Column Error for '" ++ T.unpack colName ++ "': " ++ T.unpack msg
     show (GenericError msg) = "Error: " ++ T.unpack msg

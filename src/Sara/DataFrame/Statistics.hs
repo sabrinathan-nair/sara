@@ -24,7 +24,9 @@ module Sara.DataFrame.Statistics (
     -- * Rolling Window Functions
     rollingApply,
     -- * Value Counting
-    countValues
+    countValues,
+    -- * Quantile Calculation
+    quantile
 ) where
 
 import Sara.DataFrame.Types
@@ -211,3 +213,40 @@ countValues p df = do
                 -- Construct the new DataFrame
                 resultMap = Map.fromList [(colName, valueCol), ("Count", countCol)]
             in Right $ DataFrame resultMap
+
+-- | Calculates the specified quantile (e.g., 0.25 for Q1, 0.5 for median, 0.75 for Q3) of a numeric column.
+-- Non-numeric values and NA values are ignored.
+-- The quantile value `q` must be between 0.0 and 1.0 (inclusive).
+-- Returns `Left SaraError` if the column is not found, is empty after filtering, or `q` is out of range.
+quantile :: forall (col :: Symbol) cols.
+            ( KnownSymbol col
+            , HasColumn col cols
+            , CanBeDFValue (TypeOf col cols)
+            ) => Proxy col -> Double -> DataFrame cols -> Either SaraError DFValue
+quantile p q df
+    | q < 0.0 || q > 1.0 = Left $ InvalidArgument "Quantile value must be between 0.0 and 1.0."
+    | otherwise = do
+        let colName = T.pack $ symbolVal p
+        case Map.lookup colName (getDataFrameMap df) of
+            Nothing -> Left $ ColumnNotFound colName
+            Just colVector ->
+                let numericVals = V.mapMaybe toNumeric colVector
+                    len = V.length numericVals
+                in if len == 0
+                   then Left $ EmptyColumn colName "Cannot calculate quantile for an empty column."
+                   else
+                       let sortedVals = sort (V.toList numericVals)
+                           -- Linear interpolation for quantile calculation
+                           -- (N - 1) * q
+                           index = fromIntegral (len - 1) * q
+                           -- Floor and ceiling indices
+                           idxFloor = floor index
+                           idxCeil = ceiling index
+                       in if idxFloor == idxCeil
+                          then Right $ DoubleValue (sortedVals !! idxFloor)
+                          else
+                              let v1 = sortedVals !! idxFloor
+                                  v2 = sortedVals !! idxCeil
+                                  -- Interpolate: v1 + (v2 - v1) * (index - idxFloor)
+                                  interpolated = v1 + (v2 - v1) * (index - fromIntegral idxFloor)
+                              in Right $ DoubleValue interpolated

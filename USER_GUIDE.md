@@ -398,7 +398,90 @@ Maybe     1
 
 This demonstrates how `countValues` provides a quick summary of the frequency of each unique item in a column, sorted by their counts in descending order.
 
+### How to Calculate Quantiles
+
+Quantiles (also known as percentiles) are points in a distribution that divide the data into equal-sized groups. For example, the 0.5 quantile is the median, dividing the data into two halves. The 0.25 and 0.75 quantiles (Q1 and Q3) divide the data into four quarters.
+
+Sara's `quantile` function allows you to calculate these values for any numeric column. It handles missing values (`NA`) by ignoring them.
+
+Let's use a DataFrame with student scores:
+
+`scoresDF`:
+```
+Student  Score
+Alice    85
+Bob      92
+Charlie  78
+David    95
+Eve      88
+Frank    70
+Grace    80
+```
+
+To calculate the median (0.5 quantile) of the 'Score' column:
+
+```haskell
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE OverloadedStrings #-}
+
+import Sara.DataFrame
+import Sara.DataFrame.Static (C)
+import Sara.DataFrame.Statistics (quantile)
+import Data.Proxy (Proxy(..))
+import qualified Data.Map.Strict as Map
+import qualified Data.Text as T
+
+main :: IO ()
+main = do
+  let scoreRows = [
+          Map.fromList [("Student", TextValue "Alice"), ("Score", IntValue 85)],
+          Map.fromList [("Student", TextValue "Bob"), ("Score", IntValue 92)],
+          Map.fromList [("Student", TextValue "Charlie"), ("Score", IntValue 78)],
+          Map.fromList [("Student", TextValue "David"), ("Score", IntValue 95)],
+          Map.fromList [("Student", TextValue "Eve"), ("Score", IntValue 88)],
+          Map.fromList [("Student", TextValue "Frank"), ("Score", IntValue 70)],
+          Map.fromList [("Student", TextValue "Grace"), ("Score", IntValue 80)]
+          ]
+  let scoresDF = fromRows @'[ '("Student", T.Text), '("Score", Int)] scoreRows
+
+  putStrLn "\nOriginal Scores DataFrame:"
+  print scoresDF
+
+  -- Calculate the median (0.5 quantile)
+  case quantile (Proxy @"Score") 0.5 scoresDF of
+    Left err -> putStrLn $ "Error: " ++ show err
+    Right medianVal -> putStrLn $ "\nMedian Score: " ++ show medianVal
+
+  -- Calculate the 0.25 quantile (Q1)
+  case quantile (Proxy @"Score") 0.25 scoresDF of
+    Left err -> putStrLn $ "Error: " ++ show err
+    Right q1Val -> putStrLn $ "Q1 Score: " ++ show q1Val
+
+  -- Calculate the 0.75 quantile (Q3)
+  case quantile (Proxy @"Score") 0.75 scoresDF of
+    Left err -> putStrLn $ "Error: " ++ show err
+    Right q3Val -> putStrLn $ "Q3 Score: " ++ show q3Val
+
+  putStrLn "\nAnalysis Complete."
+```
+
+**Expected Output (conceptual):**
+```
+Original Scores DataFrame:
+...
+
+Median Score: DoubleValue 85.0
+Q1 Score: DoubleValue 79.0
+Q3 Score: DoubleValue 90.0
+
+Analysis Complete.
+```
+
+This example demonstrates how to use `quantile` to get key statistical measures of your data's distribution.
+
 ## 4. IDE Configuration for Haskell Development
+
 
 
 Aggregating data means performing calculations on groups of rows to produce a single summary value, like finding the total sum of a column, the average, or counting items. This is like counting how many red LEGO bricks you have, or finding the average height of all your LEGO towers.
