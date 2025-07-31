@@ -129,11 +129,14 @@ main = hspec $ do
         it "adds a new column based on an expression" $ do
             df <- createTestDataFrame
             let expr = col (Proxy @"Age") +.+ lit (5 :: Int)
-            let mutatedDf = mutate @"AgePlusFive" (Proxy @"AgePlusFive") expr df
-            let (DataFrame mutatedMap) = mutatedDf
-            case (mutatedMap Map.! "AgePlusFive") V.!? 0 of
-                Just (IntValue i) -> i `shouldBe` 35
-                _ -> expectationFailure "Expected IntValue for AgePlusFive"
+            let mutatedDfEither = mutate @"AgePlusFive" (Proxy @"AgePlusFive") expr df
+            case mutatedDfEither of
+                Left err -> expectationFailure $ show err
+                Right mutatedDf -> do
+                    let (DataFrame mutatedMap) = mutatedDf
+                    case (mutatedMap Map.! "AgePlusFive") V.!? 0 of
+                        Just (IntValue i) -> i `shouldBe` 35
+                        _ -> expectationFailure "Expected IntValue for AgePlusFive"
 
     describe "Type-Safe joinDF" $ do
         let createJoinTestDataFrame1 :: IO (DataFrame '[ '("ID", Int), '("Name", T.Text), '("Age", Int)])
@@ -294,13 +297,16 @@ prop_applyColumn_plus_one df = ioProperty $ do
             return $ (appliedAges === expectedAges) .&&. (originalNames === appliedNames)
 
 prop_mutate_correctness :: DataFrame '[ '("Name", T.Text), '("Age", Int), '("Salary", Double)] -> Property
-prop_mutate_correctness df =
+prop_mutate_correctness df = ioProperty $ do
     let expr = col (Proxy @"Age") +.+ lit (5 :: Int)
-        mutatedDf = mutate (Proxy @"AgePlusFive") expr df
-        originalAges = map (fromRight' . fromDFValue @Int . (Map.! "Age")) (toRows df)
-        newColValues = map (fromRight' . fromDFValue @Int . (Map.! "AgePlusFive")) (toRows mutatedDf)
-        expectedValues = map (+5) originalAges
-    in property $ newColValues === expectedValues .&&. Map.member "AgePlusFive" (getDataFrameMap mutatedDf)
+    let mutatedDfEither = mutate (Proxy @"AgePlusFive") expr df
+    case mutatedDfEither of
+        Left _ -> return $ property False
+        Right mutatedDf -> do
+            let originalAges = map (fromRight' . fromDFValue @Int . (Map.! "Age")) (toRows df)
+            let newColValues = map (fromRight' . fromDFValue @Int . (Map.! "AgePlusFive")) (toRows mutatedDf)
+            let expectedValues = map (+5) originalAges
+            return $ newColValues === expectedValues .&&. Map.member "AgePlusFive" (getDataFrameMap mutatedDf)
 
 
 prop_sumAgg_correctness :: DataFrame '[ '("Category", T.Text), '("Value", Int)] -> Property
