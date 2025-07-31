@@ -480,7 +480,82 @@ Analysis Complete.
 
 This example demonstrates how to use `quantile` to get key statistical measures of your data's distribution.
 
+### How to Calculate Percentiles
+
+Percentiles are very similar to quantiles, but instead of a fraction (0.0 to 1.0), they use a percentage (0 to 100). The `percentile` function in Sara allows you to find the value below which a given percentage of observations fall.
+
+Let's use the same `scoresDF` from the quantile example:
+
+`scoresDF`:
+```
+Student  Score
+Alice    85
+Bob      92
+Charlie  78
+David    95
+Eve      88
+Frank    70
+Grace    80
+```
+
+To find the 90th percentile of the 'Score' column (the score below which 90% of students fall):
+
+```haskell
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE OverloadedStrings #-}
+
+import Sara.DataFrame
+import Sara.DataFrame.Static (C)
+import Sara.DataFrame.Statistics (percentile)
+import Data.Proxy (Proxy(..))
+import qualified Data.Map.Strict as Map
+import qualified Data.Text as T
+
+main :: IO ()
+main = do
+  let scoreRows = [
+          Map.fromList [("Student", TextValue "Alice"), ("Score", IntValue 85)],
+          Map.fromList [("Student", TextValue "Bob"), ("Score", IntValue 92)],
+          Map.fromList [("Student", TextValue "Charlie"), ("Score", IntValue 78)],
+          Map.fromList [("Student", TextValue "David"), ("Score", IntValue 95)],
+          Map.fromList [("Student", TextValue "Eve"), ("Score", IntValue 88)],
+          Map.fromList [("Student", TextValue "Frank"), ("Score", IntValue 70)],
+          Map.fromList [("Student", TextValue "Grace"), ("Score", IntValue 80)]
+          ]
+  let scoresDF = fromRows @'[ '("Student", T.Text), '("Score", Int)] scoreRows
+
+  putStrLn "\nOriginal Scores DataFrame:"
+  print scoresDF
+
+  -- Calculate the 90th percentile
+  case percentile (Proxy @"Score") 90.0 scoresDF of
+    Left err -> putStrLn $ "Error: " ++ show err
+    Right p90Val -> putStrLn $ "\n90th Percentile Score: " ++ show p90Val
+
+  -- Calculate the 10th percentile
+  case percentile (Proxy @"Score") 10.0 scoresDF of
+    Left err -> putStrLn $ "Error: " ++ show err
+    Right p10Val -> putStrLn $ "10th Percentile Score: " ++ show p10Val
+
+  putStrLn "\nAnalysis Complete."
+```
+
+**Expected Output (conceptual):**
+```
+Original Scores DataFrame:
+...
+
+90th Percentile Score: DoubleValue 93.0
+10th Percentile Score: DoubleValue 72.0
+
+Analysis Complete.
+```
+
+This example shows how to use `percentile` to understand the spread of your data in terms of percentages.
+
 ## 4. IDE Configuration for Haskell Development
+
 
 
 

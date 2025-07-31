@@ -26,7 +26,9 @@ module Sara.DataFrame.Statistics (
     -- * Value Counting
     countValues,
     -- * Quantile Calculation
-    quantile
+    quantile,
+    -- * Percentile Calculation
+    percentile
 ) where
 
 import Sara.DataFrame.Types
@@ -250,3 +252,16 @@ quantile p q df
                                   -- Interpolate: v1 + (v2 - v1) * (index - idxFloor)
                                   interpolated = v1 + (v2 - v1) * (index - fromIntegral idxFloor)
                               in Right $ DoubleValue interpolated
+
+-- | Calculates the specified percentile (e.g., 25 for 25th percentile, 50 for median, 75 for 75th percentile) of a numeric column.
+-- Non-numeric values and NA values are ignored.
+-- The percentile value `p` must be between 0.0 and 100.0 (inclusive).
+-- Returns `Left SaraError` if the column is not found, is empty after filtering, or `p` is out of range.
+percentile :: forall (col :: Symbol) cols.
+              ( KnownSymbol col
+              , HasColumn col cols
+              , CanBeDFValue (TypeOf col cols)
+              ) => Proxy col -> Double -> DataFrame cols -> Either SaraError DFValue
+percentile p_col p_val df
+    | p_val < 0.0 || p_val > 100.0 = Left $ InvalidArgument "Percentile value must be between 0.0 and 100.0."
+    | otherwise = quantile p_col (p_val / 100.0) df

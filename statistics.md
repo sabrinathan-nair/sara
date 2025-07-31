@@ -9,6 +9,8 @@ This document outlines statistical functions commonly available in the Pandas li
 | `cov()` (Covariance)    | Computes pairwise covariance of columns, excluding NA/null values. Used to determine how two variables change together. | Requires implementation for calculating covariance between two numeric columns. |
 | `describe()` (Summary Statistics) | Generates descriptive statistics that summarize the central tendency, dispersion, and shape of a dataset's distribution, excluding `NaN` values. Provides count, mean, std, min, 25%, 50%, 75%, max. | A convenience function that combines several existing (or planned) basic statistics into a single, easy-to-read output. This would involve orchestrating calls to `countV`, `meanV`, `stdV`, `minV`, `maxV`, and the new `quantile` function. |
 
+**Note:** `quantile()` and `percentile()` functions have been implemented in Sara.
+
 | `expanding()` (Expanding Window) | Provides expanding transformations (e.g., cumulative sum, cumulative mean). The window grows with the data. | Requires implementation of functions that apply an aggregation over an expanding window, rather than a fixed-size rolling window. |
 | `ewm()` (Exponentially Weighted Moving) | Provides exponentially weighted (EW) functions. Useful for time series analysis where more recent observations are given more weight. | Involves implementing EWMA, EWMS, etc., which require specific weighting schemes. |
 
