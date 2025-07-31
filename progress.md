@@ -8,36 +8,52 @@ However, the implementation has been inconsistent. Some functions, particularly 
 
 The project is currently undergoing a refactoring effort to align all DataFrame operations with the type-safe patterns, ensuring that functions return `Either SaraError` for explicit error handling instead of relying on `Maybe` or partial functions like `fromJust`/`fromMaybe`. Performance improvements through streaming are also a key focus, with the `streaming` library integrated. Property-based testing with QuickCheck is also being utilized to enhance test coverage and ensure correctness.
 
-## Work Done So Far
-
-### Error Handling Refactoring:
-*   **`readJSONStreaming` in `src/Sara/DataFrame/IO.hs`**: Refactored to return `IO (Either SaraError (Stream (Of (DataFrame cols)) IO ()))`, providing explicit error handling for JSON parsing and header mismatches.
-*   **`readCsvStreaming` in `src/Sara/DataFrame/IO.hs`**: Refactored to return `IO (Either SaraError (Stream (Of (DataFrame cols)) IO ()))`, ensuring explicit error handling for CSV parsing and header mismatches.
-*   **`applyColumn` in `src/Sara/DataFrame/Transform.hs`**: Modified to return `Stream (Of (Either SaraError (DataFrame newCols))) IO ()`, wrapping the result in `Either` for error propagation.
-*   **`joinDF` in `src/Sara/DataFrame/Join.hs`**: Modified to return `Stream (Of (Either SaraError (DataFrame colsOut))) IO ()`, enabling error handling within the join operation.
-
-### Codebase Cleanup and Integration:
-*   **Import Fixes**: Addressed missing imports (`SaraError`, `fromJust`, `partitionEithers`, `liftIO`) and removed redundant imports across `src/Sara/DataFrame/Wrangling.hs`, `src/Sara/DataFrame/Transform.hs`, `src/Sara/DataFrame/Join.hs`, and `test/TestSuite.hs`.
-*   **`app/Tutorial.hs` Update**: Updated the tutorial application to correctly handle the new `Either SaraError` return types from `readCsvStreaming` and `filterByBoolColumn`.
-*   **`test/TestSuite.hs` Adjustments**: Modified test cases to correctly handle `Either SaraError` in streams and fixed `expectationFailure` calls to return appropriate dummy values in `IO` contexts.
-
 ## Pending Work
 
-### Immediate Blocker:
-*   **`streamToDf` Function in `test/TestSuite.hs`**: This helper function in the test suite is still causing compilation errors related to type mismatches with `S.toList` and `partitionEithers`. This needs to be fixed to allow the test suite to compile and run.
+### Least Effort:
 
-### Error Handling Consistency (Ongoing):
-*   **Refactor Remaining `Maybe` and Partial Functions**: Conduct a comprehensive scan of the codebase to identify any other functions that currently return `Maybe` or use partial functions like `fromJust`/`fromMaybe` for error handling. These should be refactored to return `Either SaraError` for consistent and robust error management.
+*   **Phase 2: Expanded "Should-Not-Compile" Tests**
+    *   Create a dedicated test suite for tests that are expected to fail compilation.
+    *   Add a test case for each type-level guarantee we want to enforce, including:
+        *   Trying to `sumAgg` a column of `Text`.
+        *   Joining two DataFrames on columns of incompatible types (`Int` vs `Text`).
+        *   Applying a function to a column that doesn't exist.
+        *   Selecting a column that doesn't exist.
+        *   Renaming a column to a name that already exists.
+        *   Dropping a column that doesn't exist.
 
-### Streaming Integration (Verification and Completion):
-*   **Aggregation Functions (`sumAgg`, `meanAgg`, `countAgg`)**: Verify that these functions are fully integrated with the `streaming` library and correctly handle errors through the `Either SaraError` type.
-*   **Row-wise Operations (`filterByBoolColumn`)**: Confirm that `filterByBoolColumn` is fully streaming and error-aware.
-*   **Other DataFrame Operations (`sortDataFrame`)**: Integrate streaming and error handling into `sortDataFrame` and any other relevant DataFrame operations that currently operate on in-memory DataFrames.
+*   **Phase 1: Enhanced Property-Based Testing - Sophisticated `Arbitrary` Instances**
+    *   Create custom generators for `DataFrame`s that produce more challenging and diverse test cases.
+    *   Generate DataFrames that are already sorted, have many duplicate values, or are entirely empty.
+    *   Generate DataFrames with specific column types and value ranges to target edge cases in our functions.
 
-### Testing Enhancements:
-*   **QuickCheck Integration**: Ensure that QuickCheck is fully integrated and that property-based tests are comprehensive for all critical DataFrame operations, especially after streaming and error handling refactoring.
+### Medium Effort:
 
-### Advanced Type Safety:
-*   **Liquid Haskell Investigation**: Research and investigate the potential of using Liquid Haskell for refinement types to further enhance compile-time guarantees and prevent a broader class of runtime errors. This is a longer-term goal but should be kept in mind.
+*   **Phase 1: Enhanced Property-Based Testing - Testing Algebraic Laws**
+    *   Write QuickCheck properties to verify that our functions adhere to expected algebraic laws.
+    *   For example, test that `select("a", "b") >> select("c")` is equivalent to `select("a", "b", "c")`.
+    *   Test that `sort` is idempotent (i.e., sorting an already sorted DataFrame produces the same DataFrame).
 
-This granular breakdown should provide a clear roadmap for continuing the development of the Sara project.
+*   **Phase 3: Performance and Memory Profiling - Benchmarking**
+    *   Use the `criterion` library to create a benchmark suite for our key functions.
+    *   Run the benchmarks against DataFrames of varying sizes (e.g., 100 rows, 10,000 rows, 1,000,000 rows) to see how they scale.
+    *   Identify and optimize any performance bottlenecks.
+
+### Most Effort:
+
+*   **Phase 1: Enhanced Property-Based Testing - Stateful Testing**
+    *   Use `QuickCheck-SM` to model a `DataFrame` as a state machine.
+    *   Generate long, complex sequences of operations (`filter`, `mutate`, `join`, `sort`, etc.) to see if any sequence of valid operations can lead to an invalid state.
+
+*   **Phase 3: Performance and Memory Profiling - Memory Profiling**
+    *   Use GHC's built-in profiling tools (`+RTS -p -h`) to generate memory usage graphs for our streaming functions.
+    *   Prove that functions like `filterRows` and `readCsvStreaming` have a constant (`O(1)`) memory footprint and do not load the entire dataset into memory at once.
+
+*   **Phase 4: Formal Verification with Liquid Haskell**
+    *   Integrate Liquid Haskell into our build process.
+    *   Add Liquid Haskell annotations to our function signatures and invariants, including:
+        *   **`filterRows`:** Prove that the output DataFrame has a row count less than or equal to the input DataFrame.
+        *   **`joinDF`:** Prove that the columns used for the join exist and have compatible types.
+        *   **`sumAgg`:** Prove that this function is only ever called on a column whose type is numeric.
+        *   **`readCsvStreaming`:** Prove that the output DataFrame's schema *exactly* matches the type-level schema provided, preventing runtime errors from malformed CSVs.
+    *   Refine our types to be more specific and expressive, allowing us to prove more complex properties.

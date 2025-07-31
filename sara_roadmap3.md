@@ -84,7 +84,7 @@ This document outlines the next steps to elevate Sara to a production-ready stat
     *   **Propagated parsing errors** up the call stack or converted them into meaningful `DFValue` representations (e.g., `NA`) where appropriate.
     *   **Used `Text.Read.readEither`** for more informative error messages during parsing.
 
-3.  **Comprehensive Error Handling Strategy:** (In Progress)
+3.  **Comprehensive Error Handling Strategy:** (Completed)
     *   **Defined a custom `SaraError` data type** to standardize error reporting.
-    *   **Began refactoring existing error handling** (e.g., `error` calls) to use `SaraError`.
-    *   **Currently resolving type mismatches** in the test suite due to changes in function signatures.
+    *   **Refactored existing error handling** (e.g., `error` calls) to use `SaraError`.
+    *   **Resolved all type mismatches** in the test suite due to changes in function signatures.
