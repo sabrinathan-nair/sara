@@ -5,6 +5,7 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE TypeOperators #-}
 
 -- | This module provides a collection of statistical functions that can be applied to `DataFrame` columns.
 -- These functions operate on `V.Vector DFValue` and return a single `DFValue` as the result.
@@ -34,7 +35,9 @@ module Sara.DataFrame.Statistics (
     -- * Covariance Calculation
     covariance,
     -- * Summary Statistics
-    summaryStatistics
+    summaryStatistics,
+    -- * Expanding Window Functions
+    expandingApply
 ) where
 
 import Sara.DataFrame.Types
@@ -428,3 +431,25 @@ summaryStatistics df =
             ) Map.empty (Map.toList numericColumnStats)
 
     in restructuredMap
+
+-- | Applies a function over an expanding window of a column.
+-- The new column is named by appending "_expanding" to the original column name.
+-- The aggregation function should operate on a `V.Vector DFValue` and return a `DFValue`.
+expandingApply :: forall (col :: Symbol) cols.
+                  ( KnownSymbol col
+                  , HasColumn col cols
+                  , KnownColumns (cols :++: '[ '(col, TypeOf col cols)]) -- Schema for the output DataFrame
+                  , CanBeDFValue (TypeOf col cols)
+                  ) => Proxy col -> (V.Vector DFValue -> DFValue) -> DataFrame cols -> Either SaraError (DataFrame (cols :++: '[ '(col, TypeOf col cols)]))
+expandingApply p aggFunc df = do
+    let colName = T.pack $ symbolVal p
+    case Map.lookup colName (getDataFrameMap df) of
+        Nothing -> Left $ ColumnNotFound colName
+        Just colVector ->
+            let expandingCol = V.generate (V.length colVector) (\i ->
+                    let windowed = V.slice 0 (i + 1) colVector
+                    in aggFunc windowed
+                    )
+                newColName = colName `T.append` "_expanding"
+                newDfMap = Map.insert newColName expandingCol (getDataFrameMap df)
+            in Right $ DataFrame newDfMap

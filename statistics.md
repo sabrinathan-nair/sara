@@ -11,7 +11,7 @@ This document outlines statistical functions commonly available in the Pandas li
 
 **Note:** `quantile()` and `percentile()` functions have been implemented in Sara.
 
-| `expanding()` (Expanding Window) | Provides expanding transformations (e.g., cumulative sum, cumulative mean). The window grows with the data. | Requires implementation of functions that apply an aggregation over an expanding window, rather than a fixed-size rolling window. |
+
 | `ewm()` (Exponentially Weighted Moving) | Provides exponentially weighted (EW) functions. Useful for time series analysis where more recent observations are given more weight. | Involves implementing EWMA, EWMS, etc., which require specific weighting schemes. |
 
 ## Implementation Notes for Sara:
