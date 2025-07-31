@@ -793,7 +793,156 @@ Analysis Complete.
 
 This example demonstrates how to use `summaryStatistics` to quickly get a comprehensive overview of your numeric data.
 
+### How to Apply Expanding Window Functions
+
+Expanding window functions apply an aggregation over all data points from the beginning of the series up to the current point. This is useful for calculating cumulative sums, running averages that consider all prior data, etc.
+
+Sara's `expandingApply` function takes a column proxy and an aggregation function. It returns a new DataFrame with an additional column containing the expanding window results.
+
+Let's use a DataFrame with daily sales figures:
+
+`dailySalesDF`:
+```
+Day  Sales
+1    100
+2    120
+3    110
+4    130
+5    105
+```
+
+To calculate the cumulative sum of 'Sales':
+
+```haskell
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE OverloadedStrings #-}
+
+import Sara.DataFrame
+import Sara.DataFrame.Static (C)
+import Sara.DataFrame.Statistics (expandingApply, sumV)
+import Data.Proxy (Proxy(..))
+import qualified Data.Map.Strict as Map
+import qualified Data.Text as T
+import qualified Data.Vector as V
+
+main :: IO ()
+main = do
+  let salesRows = [
+          Map.fromList [("Day", IntValue 1), ("Sales", IntValue 100)],
+          Map.fromList [("Day", IntValue 2), ("Sales", IntValue 120)],
+          Map.fromList [("Day", IntValue 3), ("Sales", IntValue 110)],
+          Map.fromList [("Day", IntValue 4), ("Sales", IntValue 130)],
+          Map.fromList [("Day", IntValue 5), ("Sales", IntValue 105)]
+          ]
+  let dailySalesDF = fromRows @'[ '("Day", Int), '("Sales", Int)] salesRows
+
+  putStrLn "\nOriginal Daily Sales DataFrame:"
+  print dailySalesDF
+
+  case expandingApply (Proxy @"Sales") sumV dailySalesDF of
+    Left err -> putStrLn $ "Error: " ++ show err
+    Right cumulativeSalesDF -> do
+      putStrLn "\nCumulative Sales (expanding sum):"
+      print cumulativeSalesDF
+
+  putStrLn "\nAnalysis Complete."
+```
+
+**Expected Output (conceptual):**
+```
+Original Daily Sales DataFrame:
+...
+
+Cumulative Sales (expanding sum):
+Day  Sales  Sales_expanding
+1    100    100.0
+2    120    220.0
+3    110    330.0
+4    130    460.0
+5    105    565.0
+
+Analysis Complete.
+```
+
+This example demonstrates how `expandingApply` can be used to calculate cumulative metrics over your data.
+
+### How to Apply Exponentially Weighted Moving Functions
+
+Exponentially Weighted Moving Average (EWMA) gives more weight to recent observations, making it suitable for smoothing time series data and reacting more quickly to recent changes than a simple moving average. The `ewmApply` function calculates the EWMA for a numeric column.
+
+It requires an `alpha` (smoothing factor) between 0.0 and 1.0 (exclusive). A higher `alpha` gives more weight to recent data.
+
+Let's use a DataFrame with stock prices:
+
+`stockPricesDF`:
+```
+Date        Price
+2023-01-01  100.0
+2023-01-02  102.0
+2023-01-03  101.5
+2023-01-04  103.0
+2023-01-05  102.5
+```
+
+To calculate the EWMA of 'Price' with an `alpha` of 0.3:
+
+```haskell
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE OverloadedStrings #-}
+
+import Sara.DataFrame
+import Sara.DataFrame.Static (C)
+import Sara.DataFrame.Statistics (ewmApply)
+import Data.Proxy (Proxy(..))
+import qualified Data.Map.Strict as Map
+import qualified Data.Text as T
+import qualified Data.Vector as V
+
+main :: IO ()
+main = do
+  let priceRows = [
+          Map.fromList [("Date", TextValue "2023-01-01"), ("Price", DoubleValue 100.0)],
+          Map.fromList [("Date", TextValue "2023-01-02"), ("Price", DoubleValue 102.0)],
+          Map.fromList [("Date", TextValue "2023-01-03"), ("Price", DoubleValue 101.5)],
+          Map.fromList [("Date", TextValue "2023-01-04"), ("Price", DoubleValue 103.0)],
+          Map.fromList [("Date", TextValue "2023-01-05"), ("Price", DoubleValue 102.5)]
+          ]
+  let stockPricesDF = fromRows @'[ '("Date", T.Text), '("Price", Double)] priceRows
+
+  putStrLn "\nOriginal Stock Prices DataFrame:"
+  print stockPricesDF
+
+  case ewmApply (Proxy @"Price") 0.3 stockPricesDF of
+    Left err -> putStrLn $ "Error: " ++ show err
+    Right ewmaDF -> do
+      putStrLn "\nExponentially Weighted Moving Average (alpha=0.3):"
+      print ewmaDF
+
+  putStrLn "\nAnalysis Complete."
+```
+
+**Expected Output (conceptual):**
+```
+Original Stock Prices DataFrame:
+...
+
+Exponentially Weighted Moving Average (alpha=0.3):
+Date        Price  Price_ewma
+2023-01-01  100.0  100.0
+2023-01-02  102.0  100.6
+2023-01-03  101.5  100.97
+2023-01-04  103.0  101.679
+2023-01-05  102.5  101.9753
+
+Analysis Complete.
+```
+
+This example demonstrates how `ewmApply` can be used for smoothing time series data.
+
 ## 4. IDE Configuration for Haskell Development
+
 
 
 

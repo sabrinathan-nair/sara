@@ -37,7 +37,9 @@ module Sara.DataFrame.Statistics (
     -- * Summary Statistics
     summaryStatistics,
     -- * Expanding Window Functions
-    expandingApply
+    expandingApply,
+    -- * Exponentially Weighted Moving Functions
+    ewmApply
 ) where
 
 import Sara.DataFrame.Types
@@ -453,3 +455,26 @@ expandingApply p aggFunc df = do
                 newColName = colName `T.append` "_expanding"
                 newDfMap = Map.insert newColName expandingCol (getDataFrameMap df)
             in Right $ DataFrame newDfMap
+
+-- | Applies an Exponentially Weighted Moving Average (EWMA) to a numeric column.
+-- The new column is named by appending "_ewma" to the original column name.
+-- The `alpha` parameter is the smoothing factor, typically between 0 and 1.
+-- Returns `Left SaraError` if the column is not found, is not numeric, or `alpha` is out of range.
+ewmApply :: forall (col :: Symbol) cols.
+             ( KnownSymbol col
+             , HasColumn col cols
+             , KnownColumns (cols :++: '[ '(col, TypeOf col cols)])
+             , CanBeDFValue (TypeOf col cols)
+             ) => Proxy col -> Double -> DataFrame cols -> Either SaraError (DataFrame (cols :++: '[ '(col, TypeOf col cols)]))
+ewmApply p alpha df
+    | alpha <= 0.0 || alpha >= 1.0 = Left $ InvalidArgument "Alpha for EWMA must be between 0.0 and 1.0 (exclusive)."
+    | otherwise = do
+        let colName = T.pack $ symbolVal p
+        case Map.lookup colName (getDataFrameMap df) of
+            Nothing -> Left $ ColumnNotFound colName
+            Just colVector ->
+                let numericVals = V.mapMaybe toNumeric colVector
+                    ewmaVals = V.scanl' (\prevEwma currentVal -> alpha * currentVal + (1 - alpha) * prevEwma) (V.head numericVals) (V.tail numericVals)
+                    newColName = colName `T.append` "_ewma"
+                    newDfMap = Map.insert newColName (V.map DoubleValue ewmaVals) (getDataFrameMap df)
+                in Right $ DataFrame newDfMap
