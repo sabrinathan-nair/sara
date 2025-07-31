@@ -628,7 +628,78 @@ Analysis Complete.
 
 This example demonstrates how to use `correlate` to understand the linear relationship between two numeric variables in your DataFrame.
 
+### How to Calculate Covariance
+
+Covariance measures how two variables change together. A positive covariance indicates that the variables tend to move in the same direction, while a negative covariance indicates they tend to move in opposite directions. A covariance of zero suggests no linear relationship.
+
+Sara's `covariance` function takes two column proxies and a DataFrame, returning the covariance or an error if the columns are not found, are not numeric, or have insufficient data.
+
+Let's use the same `studentDataDF` from the correlation example:
+
+`studentDataDF`:
+```
+Student  StudyHours  ExamScore
+Alice    10          85
+Bob      12          92
+Charlie  8           78
+David    15          95
+Eve      11          88
+Frank    7           70
+Grace    9           80
+```
+
+To calculate the covariance between 'StudyHours' and 'ExamScore':
+
+```haskell
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE OverloadedStrings #-}
+
+import Sara.DataFrame
+import Sara.DataFrame.Static (C)
+import Sara.DataFrame.Statistics (covariance)
+import Data.Proxy (Proxy(..))
+import qualified Data.Map.Strict as Map
+import qualified Data.Text as T
+
+main :: IO () 
+main = do
+  let studentRows = [
+          Map.fromList [("Student", TextValue "Alice"), ("StudyHours", IntValue 10), ("ExamScore", IntValue 85)],
+          Map.fromList [("Student", TextValue "Bob"), ("StudyHours", IntValue 12), ("ExamScore", IntValue 92)],
+          Map.fromList [("Student", TextValue "Charlie"), ("StudyHours", IntValue 8), ("ExamScore", IntValue 78)],
+          Map.fromList [("Student", TextValue "David"), ("StudyHours", IntValue 15), ("ExamScore", IntValue 95)],
+          Map.fromList [("Student", TextValue "Eve"), ("StudyHours", IntValue 11), ("ExamScore", IntValue 88)],
+          Map.fromList [("Student", TextValue "Frank"), ("StudyHours", IntValue 7), ("ExamScore", IntValue 70)],
+          Map.fromList [("Student", TextValue "Grace"), ("StudyHours", IntValue 9), ("ExamScore", IntValue 80)]
+          ]
+  let studentDataDF = fromRows @'[ '("Student", T.Text), '("StudyHours", Int), '("ExamScore", Int)] studentRows
+
+  putStrLn "\nOriginal Student Data DataFrame:"
+  print studentDataDF
+
+  -- Calculate the covariance between StudyHours and ExamScore
+  case covariance (Proxy @"StudyHours") (Proxy @"ExamScore") studentDataDF of
+    Left err -> putStrLn $ "Error: " ++ show err
+    Right cov -> putStrLn $ "\nCovariance between StudyHours and ExamScore: " ++ show cov
+
+  putStrLn "\nAnalysis Complete."
+```
+
+**Expected Output (conceptual):**
+```
+Original Student Data DataFrame:
+...
+
+Covariance between StudyHours and ExamScore: 12.0
+
+Analysis Complete.
+```
+
+This example demonstrates how to use `covariance` to understand how two numeric variables in your DataFrame vary together.
+
 ## 4. IDE Configuration for Haskell Development
+
 
 
 
