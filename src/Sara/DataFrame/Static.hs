@@ -22,8 +22,9 @@ import qualified Data.Text.Encoding as TE
 import qualified Data.Csv as C
 import Data.Time (Day, UTCTime)
 import Data.Time.Format (parseTimeM, defaultTimeLocale)
-import Text.Read (readMaybe)
+import Text.Read (readEither)
 import Data.Maybe (isJust)
+import Data.Either (isRight)
 import Sara.DataFrame.Internal ()
 import Sara.DataFrame.Instances ()
 
@@ -90,8 +91,8 @@ inferMostSpecificType (s:_) = inferDFType s
 inferDFType :: T.Text -> Q Language.Haskell.TH.Type
 inferDFType s = do
   let s_unpack = T.unpack s
-  if isJust (readMaybe s_unpack :: Maybe Int) then pure (ConT (mkName "Int"))
-  else if isJust (readMaybe s_unpack :: Maybe Double) then pure (ConT (mkName "Double"))
+  if isRight (readEither s_unpack :: Either String Int) then pure (ConT (mkName "Int"))
+  else if isRight (readEither s_unpack :: Either String Double) then pure (ConT (mkName "Double"))
   else if isJust (parseTimeM True defaultTimeLocale "%Y-%m-%d" s_unpack :: Maybe Day) then pure (ConT (mkName "Data.Time.Calendar.Day"))
   else if isJust (parseTimeM True defaultTimeLocale "%Y-%m-%dT%H:%M:%S%QZ" s_unpack :: Maybe UTCTime) then pure (ConT (mkName "Data.Time.Clock.UTCTime"))
   else if T.toLower s == T.pack "true" || T.toLower s == T.pack "false" then pure (ConT (mkName "Bool"))

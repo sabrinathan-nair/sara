@@ -44,6 +44,9 @@ import qualified Data.Vector as V
 
 
 
+import Sara.Error (SaraError(..))
+import Control.Applicative (liftA2)
+
 -- | A type-safe expression GADT for `DataFrame` operations.
 -- The @cols@ parameter is the schema of the `DataFrame`, and @a@ is the return type of the expression.
 -- The @dfMap@ parameter is the internal representation of the `DataFrame`.
@@ -84,12 +87,12 @@ data Expr (cols :: [(Symbol, Type)]) a where
 
 -- | Evaluates a type-safe expression on a given `DataFrame`'s internal map and row index.
 -- Returns `Nothing` if any part of the expression evaluation fails (e.g., a column is missing, a value is `NA`).
-evaluateExpr :: Expr cols a -> Map.Map T.Text Column -> Int -> Maybe a
-evaluateExpr (Lit val) _ _ = Just val
+evaluateExpr :: Expr cols a -> Map.Map T.Text Column -> Int -> Either SaraError a
+evaluateExpr (Lit val) _ _ = Right val
 evaluateExpr (Col p) dfMap idx = 
     case Map.lookup (T.pack (symbolVal p)) dfMap of
-        Just colData -> if isNA (colData V.! idx) then Nothing else fromDFValue (colData V.! idx)
-        Nothing -> Nothing
+        Just colData -> fromDFValue (colData V.! idx)
+        Nothing -> Left $ ColumnNotFound (T.pack (symbolVal p))
 evaluateExpr (Add e1 e2) dfMap idx = liftA2 (+) (evaluateExpr e1 dfMap idx) (evaluateExpr e2 dfMap idx)
 evaluateExpr (Subtract e1 e2) dfMap idx = liftA2 (-) (evaluateExpr e1 dfMap idx) (evaluateExpr e2 dfMap idx)
 evaluateExpr (Multiply e1 e2) dfMap idx = liftA2 (*) (evaluateExpr e1 dfMap idx) (evaluateExpr e2 dfMap idx)

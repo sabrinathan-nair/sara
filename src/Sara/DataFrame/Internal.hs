@@ -68,8 +68,9 @@ instance (CanBeDFValue a) => GToFields (K1 i a) where
 -- | Transposes a list of lists.
 -- Assumes that all inner lists have the same length.
 transpose :: [[a]] -> [[a]]
+transpose [] = []
 transpose ([]:_) = []
-transpose x = map head x : transpose (map tail x)
+transpose ((x:xs):xss) = (x : [h | (h:_) <- xss]) : transpose (xs : [t | (_:t) <- xss])
 
 -- | Helper function to combine two DataFrames (pure version)
 combineDataFramesPure :: DataFrame cols -> DataFrame cols -> DataFrame cols

@@ -33,6 +33,9 @@ import Sara.DataFrame.Expression (Expr, evaluateExpr)
 import qualified Data.Map.Strict as Map
 import qualified Data.Text as T
 
+import Sara.Error (SaraError(..))
+import Control.Applicative (liftA2)
+
 -- | A type-safe predicate for filtering a `DataFrame`.
 -- The @cols@ type parameter ensures that the predicate only refers to columns
 -- that are actually in the `DataFrame`.
@@ -66,11 +69,11 @@ data RowPredicate (cols :: [(Symbol, Type)]) where
 -- >>> let predicate = col @"age" >.> lit 25 &&& col @"salary" <.< lit 60000.0
 -- >>> evaluate predicate row
 -- Just True
-evaluate :: FilterPredicate cols -> Map.Map T.Text Column -> Int -> Maybe Bool
+evaluate :: FilterPredicate cols -> Map.Map T.Text Column -> Int -> Either SaraError Bool
 evaluate (FilterPredicate p) = evaluatePredicate p
 
 -- | Evaluates a `RowPredicate` on a given `DataFrame`'s internal map and row index.
-evaluatePredicate :: RowPredicate cols -> Map.Map T.Text Column -> Int -> Maybe Bool
+evaluatePredicate :: RowPredicate cols -> Map.Map T.Text Column -> Int -> Either SaraError Bool
 evaluatePredicate (And p1 p2) dfMap idx = liftA2 (&&) (evaluatePredicate p1 dfMap idx) (evaluatePredicate p2 dfMap idx)
 evaluatePredicate (Or p1 p2) dfMap idx = liftA2 (||) (evaluatePredicate p1 dfMap idx) (evaluatePredicate p2 dfMap idx)
 evaluatePredicate (GreaterThan e1 e2) dfMap idx = liftA2 (>) (evaluateExpr e1 dfMap idx) (evaluateExpr e2 dfMap idx)

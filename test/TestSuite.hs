@@ -30,7 +30,9 @@ import Data.Proxy (Proxy(..))
 import Streaming (Stream, Of)
 import qualified Streaming.Prelude as S
 import Sara.DataFrame.IO (readJSONStreaming, writeJSONStreaming)
-import Data.Maybe (fromJust)
+import Data.Either (partitionEithers)
+import Control.Monad.IO.Class (liftIO)
+import Sara.Error (SaraError(..))
 import System.IO.Temp (withSystemTempFile)
 import qualified Data.ByteString.Lazy as BL
 import System.IO (hClose)
@@ -42,6 +44,11 @@ import qualified Data.List as L
 import Data.Typeable (TypeRep, typeRep)
 import qualified Data.Set as Set
 
+-- Helper function to extract value from Either in tests
+fromRight' :: (Show e) => Either e a -> a
+fromRight' (Right a) = a
+fromRight' (Left e) = error ("Test failed: expected Right, got Left: " ++ show e)
+
 -- Helper function to convert a DataFrame to a Stream of single-row DataFrames
 dfToStream :: DataFrame cols -> Stream (Of (DataFrame cols)) IO ()
 dfToStream df = S.each (map (\row -> DataFrame (Map.map V.singleton row)) (toRows df))
@@ -52,12 +59,15 @@ combineDataFramesPure (DataFrame dfMap1) (DataFrame dfMap2) =
     DataFrame $ Map.unionWith (V.++) dfMap1 dfMap2
 
 -- Helper function to convert a Stream of single-row DataFrames back to a single DataFrame
-streamToDf :: KnownColumns cols => Stream (Of (DataFrame cols)) IO () -> IO (DataFrame cols)
+streamToDf :: KnownColumns cols => Stream (Of (Either SaraError (DataFrame cols))) IO () -> IO (Either SaraError (DataFrame cols))
 streamToDf stream = do
-    (dfs S.:> ()) <- S.toList stream
-    if null dfs
-        then return $ DataFrame Map.empty
-        else return $ foldr1 combineDataFramesPure dfs
+    list <- S.toList_ stream
+    let (errList, dfsList) = partitionEithers list
+    if null errList
+        then if null dfsList
+            then return $ Right $ DataFrame Map.empty
+            else return $ Right $ foldr1 combineDataFramesPure dfsList
+        else return $ Left $ head errList
 
 isEmpty :: DataFrame cols -> Bool
 isEmpty (DataFrame dfMap) = Map.null dfMap
@@ -80,36 +90,40 @@ main = hspec $ do
                     ]
             let ageColExpr = col (Proxy @"Age") :: Expr '[ '("Name", T.Text), '("Age", Int), '("Salary", Double)] Int
             let evaluatedAge = evaluateExpr ageColExpr (getDataFrameMap df) 0
-            evaluatedAge `shouldBe` Just 30
+            evaluatedAge `shouldBe` Right 30
 
     describe "Type-Safe filterRows" $ do
         it "filters rows based on a simple predicate" $ do
             df <- createTestDataFrame
             let dfStream = S.yield df
-            filteredDf <- streamToDf $ Sara.DataFrame.Wrangling.filterRows (col (Proxy @"Age") >.> lit (30 :: Int)) dfStream
-            let (DataFrame filteredMap) = filteredDf
-            V.length (filteredMap Map.! "Name") `shouldBe` 1
+            filteredDfEither <- streamToDf $ Sara.DataFrame.Wrangling.filterRows (col (Proxy @"Age") >.> lit (30 :: Int)) dfStream
+            case filteredDfEither of
+                Left err -> expectationFailure $ show err
+                Right filteredDf -> do
+                    let (DataFrame filteredMap) = filteredDf
+                    V.length (filteredMap Map.! "Name") `shouldBe` 1
 
     describe "Type-Safe applyColumn" $ do
         it "applies a function to a column with the correct type" $ do
             df <- createTestDataFrame
             let dfStream = S.yield df
-            appliedDf <- S.head_ $ applyColumn (Proxy @"Age") ((+ 2) :: Int -> Int) dfStream
-            let (DataFrame appliedMap) = fromJust appliedDf
-            let age = case (appliedMap Map.! "Age") V.!? 0 of
-                          Just (IntValue i) -> i
-                          _ -> error "Expected IntValue for Age"
-            age `shouldBe` 32
+            appliedDfEither <- streamToDf $ applyColumn (Proxy @"Age") ((+ 2) :: Int -> Int) dfStream
+            case appliedDfEither of
+                Left err -> expectationFailure $ show err
+                Right appliedDf -> do
+                    let (DataFrame appliedMap) = appliedDf
+                    case (appliedMap Map.! "Age") V.!? 0 of
+                        Just (IntValue i) -> i `shouldBe` 32
+                        _ -> expectationFailure "Expected IntValue for Age"
 
     describe "Type-Safe sortDataFrame" $ do
         it "sorts a DataFrame by a column" $ do
             df <- createTestDataFrame
             let sortedDf = sortDataFrame [SortCriterion (Proxy @"Age") Ascending] df
             let (DataFrame sortedMap) = sortedDf
-            let name = case (sortedMap Map.! "Name") V.!? 0 of
-                          Just (TextValue t) -> t
-                          _ -> error "Expected TextValue for Name"
-            name `shouldBe` "Bob"
+            case (sortedMap Map.! "Name") V.!? 0 of
+                Just (TextValue t) -> t `shouldBe` "Bob"
+                _ -> expectationFailure "Expected TextValue for Name"
 
     describe "Type-Safe mutate" $ do
         it "adds a new column based on an expression" $ do
@@ -117,10 +131,9 @@ main = hspec $ do
             let expr = col (Proxy @"Age") +.+ lit (5 :: Int)
             let mutatedDf = mutate @"AgePlusFive" (Proxy @"AgePlusFive") expr df
             let (DataFrame mutatedMap) = mutatedDf
-            let val = case (mutatedMap Map.! "AgePlusFive") V.!? 0 of
-                          Just (IntValue i) -> i
-                          _ -> error "Expected IntValue for AgePlusFive"
-            val `shouldBe` 35
+            case (mutatedMap Map.! "AgePlusFive") V.!? 0 of
+                Just (IntValue i) -> i `shouldBe` 35
+                _ -> expectationFailure "Expected IntValue for AgePlusFive"
 
     describe "Type-Safe joinDF" $ do
         let createJoinTestDataFrame1 :: IO (DataFrame '[ '("ID", Int), '("Name", T.Text), '("Age", Int)])
@@ -143,17 +156,18 @@ main = hspec $ do
             df1 :: DataFrame '[ '("ID", Int), '("Name", T.Text), '("Age", Int)] <- createJoinTestDataFrame1
             df2 :: DataFrame '[ '("ID", Int), '("City", T.Text), '("Salary", Double)] <- createJoinTestDataFrame2
             let joinedDfStream = Sara.DataFrame.Join.joinDF @'["ID"] (dfToStream df1) (dfToStream df2)
-            joinedDf <- streamToDf joinedDfStream
-            let (DataFrame joinedMap) = joinedDf
-            V.length (joinedMap Map.! "ID") `shouldBe` 1
-            let name = case (joinedMap Map.! "Name") V.!? 0 of
-                          Just (TextValue t) -> t
-                          _ -> error "Expected TextValue for Name"
-            name `shouldBe` "Alice"
-            let city = case (joinedMap Map.! "City") V.!? 0 of
-                          Just (TextValue t) -> t
-                          _ -> error "Expected TextValue for City"
-            city `shouldBe` "New York"
+            joinedDfEither <- streamToDf joinedDfStream
+            case joinedDfEither of
+                Left err -> expectationFailure $ show err
+                Right joinedDf -> do
+                    let (DataFrame joinedMap) = joinedDf
+                    V.length (joinedMap Map.! "ID") `shouldBe` 1
+                    case (joinedMap Map.! "Name") V.!? 0 of
+                        Just (TextValue t) -> t `shouldBe` "Alice"
+                        _ -> expectationFailure "Expected TextValue for Name"
+                    case (joinedMap Map.! "City") V.!? 0 of
+                        Just (TextValue t) -> t `shouldBe` "New York"
+                        _ -> expectationFailure "Expected TextValue for City"
 
     describe "Type-Safe dropColumns" $ do
         it "drops specified columns from a DataFrame" $ do
@@ -187,42 +201,36 @@ main = hspec $ do
             groupedDf <- groupBy @'["Category"] (dfToStream df)
             aggregatedDf <- sumAgg @"Value" (return groupedDf)
             let (DataFrame aggMap) = aggregatedDf
-            let sumA = case (aggMap Map.! "Value_sum") V.!? 0 of
-                          Just (DoubleValue d) -> d
-                          _ -> error "Expected DoubleValue for sumA"
-            let sumB = case (aggMap Map.! "Value_sum") V.!? 1 of
-                          Just (DoubleValue d) -> d
-                          _ -> error "Expected DoubleValue for sumB"
-            sumA `shouldBe` 30.0
-            sumB `shouldBe` 70.0
+            case (aggMap Map.! "Value_sum") V.!? 0 of
+                Just (DoubleValue d) -> d `shouldBe` 30.0
+                _ -> expectationFailure "Expected DoubleValue for sumA"
+            case (aggMap Map.! "Value_sum") V.!? 1 of
+                Just (DoubleValue d) -> d `shouldBe` 70.0
+                _ -> expectationFailure "Expected DoubleValue for sumB"
 
         it "performs mean aggregation correctly" $ do
             df <- createAggTestDataFrame
             groupedDf <- groupBy @'["Category"] (dfToStream df)
             aggregatedDf <- meanAgg @"Value" (return groupedDf)
             let (DataFrame aggMap) = aggregatedDf
-            let meanA = case (aggMap Map.! "Value_mean") V.!? 0 of
-                          Just (DoubleValue d) -> d
-                          _ -> error "Expected DoubleValue for meanA"
-            let meanB = case (aggMap Map.! "Value_mean") V.!? 1 of
-                          Just (DoubleValue d) -> d
-                          _ -> error "Expected DoubleValue for meanB"
-            meanA `shouldBe` 15.0
-            meanB `shouldBe` 35.0
+            case (aggMap Map.! "Value_mean") V.!? 0 of
+                Just (DoubleValue d) -> d `shouldBe` 15.0
+                _ -> expectationFailure "Expected DoubleValue for meanA"
+            case (aggMap Map.! "Value_mean") V.!? 1 of
+                Just (DoubleValue d) -> d `shouldBe` 35.0
+                _ -> expectationFailure "Expected DoubleValue for meanB"
 
         it "performs count aggregation correctly" $ do
             df <- createAggTestDataFrame
             groupedDf <- groupBy @'["Category"] (dfToStream df)
             aggregatedDf <- countAgg @"Category" (return groupedDf)
             let (DataFrame aggMap) = aggregatedDf
-            let countA = case (aggMap Map.! "Category_count") V.!? 0 of
-                          Just (IntValue i) -> i
-                          _ -> error "Expected IntValue for countA"
-            let countB = case (aggMap Map.! "Category_count") V.!? 1 of
-                          Just (IntValue i) -> i
-                          _ -> error "Expected IntValue for countB"
-            countA `shouldBe` 2
-            countB `shouldBe` 2
+            case (aggMap Map.! "Category_count") V.!? 0 of
+                Just (IntValue i) -> i `shouldBe` 2
+                _ -> expectationFailure "Expected IntValue for countA"
+            case (aggMap Map.! "Category_count") V.!? 1 of
+                Just (IntValue i) -> i `shouldBe` 2
+                _ -> expectationFailure "Expected IntValue for countB"
 
     describe "JSON Streaming" $ do
         let testDataFrame = fromRows @'[ '("name", T.Text), '("age", Int)] [
@@ -235,9 +243,14 @@ main = hspec $ do
                 BL.hPutStr handle ""
                 hClose handle
                 writeJSONStreaming filePath (dfToStream testDataFrame)
-                let readDfStream = readJSONStreaming (Proxy @'[ '("name", T.Text), '("age", Int)]) filePath
-                readDf <- streamToDf readDfStream
-                readDf `shouldBe` testDataFrame
+                readDfStreamEither <- liftIO $ readJSONStreaming (Proxy @'[ '("name", T.Text), '("age", Int)]) filePath
+                case readDfStreamEither of
+                    Left err -> expectationFailure $ show err
+                    Right readDfStream -> do
+                        readDfEither <- streamToDf (S.map Right readDfStream)
+                        case readDfEither of
+                            Left err -> expectationFailure $ show err
+                            Right readDf -> readDf `shouldBe` testDataFrame
 
     describe "QuickCheck Properties" $ do
         prop "fromRows . toRows is identity" (prop_fromRows_toRows_identity @'[ '("Name", T.Text), '("Age", Int), '("Salary", Double)])
@@ -266,24 +279,26 @@ main = hspec $ do
 prop_applyColumn_plus_one :: DataFrame '[ '("Name", T.Text), '("Age", Int), '("Salary", Double)] -> Property
 prop_applyColumn_plus_one df = ioProperty $ do
     let f = (+1) :: Int -> Int
-    appliedDf <- streamToDf $ applyColumn (Proxy @"Age") f (dfToStream df)
+    appliedDfEither <- streamToDf $ applyColumn (Proxy @"Age") f (dfToStream df)
+    case appliedDfEither of
+        Left _ -> return $ property False
+        Right appliedDf -> do
+            let originalAges = map (fromRight' . fromDFValue @Int . (Map.! "Age")) (toRows df)
+            let appliedAges = map (fromRight' . fromDFValue @Int . (Map.! "Age")) (toRows appliedDf)
+            let expectedAges = map f originalAges
 
-    let originalAges = map (\row -> fromJust (fromDFValue @Int (row Map.! "Age"))) (toRows df)
-    let appliedAges = map (\row -> fromJust (fromDFValue @Int (row Map.! "Age"))) (toRows appliedDf)
-    let expectedAges = map f originalAges
+            -- also check that other columns are untouched
+            let originalNames = map (fromRight' . fromDFValue @T.Text . (Map.! "Name")) (toRows df)
+            let appliedNames = map (fromRight' . fromDFValue @T.Text . (Map.! "Name")) (toRows appliedDf)
 
-    -- also check that other columns are untouched
-    let originalNames = map (\row -> fromJust (fromDFValue @T.Text (row Map.! "Name"))) (toRows df)
-    let appliedNames = map (\row -> fromJust (fromDFValue @T.Text (row Map.! "Name"))) (toRows appliedDf)
-
-    return $ (appliedAges === expectedAges) .&&. (originalNames === appliedNames)
+            return $ (appliedAges === expectedAges) .&&. (originalNames === appliedNames)
 
 prop_mutate_correctness :: DataFrame '[ '("Name", T.Text), '("Age", Int), '("Salary", Double)] -> Property
 prop_mutate_correctness df =
     let expr = col (Proxy @"Age") +.+ lit (5 :: Int)
         mutatedDf = mutate (Proxy @"AgePlusFive") expr df
-        originalAges = map (\row -> fromJust (fromDFValue @Int (row Map.! "Age"))) (toRows df)
-        newColValues = map (\row -> fromJust (fromDFValue @Int (row Map.! "AgePlusFive"))) (toRows mutatedDf)
+        originalAges = map (fromRight' . fromDFValue @Int . (Map.! "Age")) (toRows df)
+        newColValues = map (fromRight' . fromDFValue @Int . (Map.! "AgePlusFive")) (toRows mutatedDf)
         expectedValues = map (+5) originalAges
     in property $ newColValues === expectedValues .&&. Map.member "AgePlusFive" (getDataFrameMap mutatedDf)
 
@@ -295,14 +310,14 @@ prop_sumAgg_correctness df = not (isEmpty df) ==> ioProperty $ do
 
     let originalRows = toRows df
     let expectedSumMap = Map.fromListWith (+) $ map (\row ->
-            ( fromJust (fromDFValue @T.Text (row Map.! "Category"))
-            , fromIntegral @Int @Double $ fromJust (fromDFValue @Int (row Map.! "Value"))
+            ( fromRight' (fromDFValue @T.Text (row Map.! "Category"))
+            , fromIntegral @Int @Double $ fromRight' (fromDFValue @Int (row Map.! "Value"))
             )) originalRows
 
     let aggregatedRows = toRows aggregatedDf
     let actualSumMap = Map.fromList $ map (\row ->
-            ( fromJust (fromDFValue @T.Text (row Map.! "Category"))
-            , fromJust (fromDFValue @Double (row Map.! "Value_sum"))
+            ( fromRight' (fromDFValue @T.Text (row Map.! "Category"))
+            , fromRight' (fromDFValue @Double (row Map.! "Value_sum"))
             )) aggregatedRows
 
     return $ actualSumMap === expectedSumMap
@@ -314,15 +329,15 @@ prop_meanAgg_correctness df = not (isEmpty df) ==> ioProperty $ do
 
     let originalRows = toRows df
     let valueMap = Map.fromListWith (++) $ map (\row ->
-            ( fromJust (fromDFValue @T.Text (row Map.! "Category"))
-            , [fromIntegral @Int @Double $ fromJust (fromDFValue @Int (row Map.! "Value"))]
+            ( fromRight' (fromDFValue @T.Text (row Map.! "Category"))
+            , [fromIntegral @Int @Double $ fromRight' (fromDFValue @Int (row Map.! "Value"))]
             )) originalRows
     let expectedMeanMap = Map.map (\vals -> sum vals / fromIntegral (length vals)) valueMap
 
     let aggregatedRows = toRows aggregatedDf
     let actualMeanMap = Map.fromList $ map (\row ->
-            ( fromJust (fromDFValue @T.Text (row Map.! "Category"))
-            , fromJust (fromDFValue @Double (row Map.! "Value_mean"))
+            ( fromRight' (fromDFValue @T.Text (row Map.! "Category"))
+            , fromRight' (fromDFValue @Double (row Map.! "Value_mean"))
             )) aggregatedRows
 
     return $ actualMeanMap === expectedMeanMap
@@ -334,17 +349,18 @@ prop_countAgg_correctness df = not (isEmpty df) ==> ioProperty $ do
 
     let originalRows = toRows df
     let expectedCountMap = Map.fromListWith (+) $ map (\row ->
-            ( fromJust (fromDFValue @T.Text (row Map.! "Category"))
+            ( fromRight' (fromDFValue @T.Text (row Map.! "Category"))
             , 1 :: Int
             )) originalRows
 
     let aggregatedRows = toRows aggregatedDf
     let actualCountMap = Map.fromList $ map (\row ->
-            ( fromJust (fromDFValue @T.Text (row Map.! "Category"))
-            , fromJust (fromDFValue @Int (row Map.! "Category_count"))
+            ( fromRight' (fromDFValue @T.Text (row Map.! "Category"))
+            , fromRight' (fromDFValue @Int (row Map.! "Category_count"))
             )) aggregatedRows
 
     return $ actualCountMap === expectedCountMap
+
 
 prop_arbitrary_dataframe_type_awareness :: forall cols. (KnownColumns cols, Arbitrary (DataFrame cols)) => DataFrame cols -> Property
 prop_arbitrary_dataframe_type_awareness df = property $ do
@@ -366,13 +382,17 @@ prop_arbitrary_dataframe_type_awareness df = property $ do
 
 prop_filterRows_tautology :: (KnownColumns cols, Arbitrary (DataFrame cols)) => DataFrame cols -> Property
 prop_filterRows_tautology df = ioProperty $ do
-    filteredDf <- streamToDf $ filterRows (FilterPredicate (ExprPredicate (lit True))) (dfToStream df)
-    return $ filteredDf === df
+    filteredDfEither <- streamToDf $ filterRows (FilterPredicate (ExprPredicate (lit True))) (dfToStream df)
+    case filteredDfEither of
+        Left _ -> return $ property False
+        Right filteredDf -> return $ filteredDf === df
 
 prop_filterRows_contradiction :: (KnownColumns cols, Arbitrary (DataFrame cols)) => DataFrame cols -> Property
 prop_filterRows_contradiction df = ioProperty $ do
-    filteredDf <- streamToDf $ filterRows (FilterPredicate (ExprPredicate (lit False))) (dfToStream df)
-    return $ toRows filteredDf === []
+    filteredDfEither <- streamToDf $ filterRows (FilterPredicate (ExprPredicate (lit False))) (dfToStream df)
+    case filteredDfEither of
+        Left _ -> return $ property False
+        Right filteredDf -> return $ toRows filteredDf === []
 
 prop_selectColumns_preserves_values :: forall (selectedCols :: [Symbol]) allCols.
     ( KnownColumns allCols, KnownColumns (SelectCols selectedCols allCols)
@@ -451,12 +471,34 @@ prop_sortDataFrame_core df criteria =
 
 prop_joinDF_correct_ids :: forall cols1 cols2. (KnownColumns cols1, KnownColumns cols2, Arbitrary (DataFrame cols1), Arbitrary (DataFrame cols2), HasColumn "ID" cols1, HasColumn "ID" cols2, TypeOf "ID" cols1 ~ Int, TypeOf "ID" cols2 ~ Int, KnownColumns (JoinCols cols1 cols2), All CanBeDFValue (GetColumnTypes cols1), All CanBeDFValue (GetColumnTypes cols2), All CanBeDFValue (GetColumnTypes (JoinCols cols1 cols2)), CreateOutputRow (JoinCols cols1 cols2)) => DataFrame cols1 -> DataFrame cols2 -> Property
 prop_joinDF_correct_ids df1 df2 = ioProperty $ do
-    joinedDf <- streamToDf $ joinDF @'["ID"] (dfToStream df1) (dfToStream df2)
-    let joinedIDs = Set.fromList $ map (\row -> fromJust (fromDFValue @Int (row Map.! "ID"))) (toRows joinedDf)
-    let df1IDs = Set.fromList $ map (\row -> fromJust (fromDFValue @Int (row Map.! "ID"))) (toRows df1)
-    let df2IDs = Set.fromList $ map (\row -> fromJust (fromDFValue @Int (row Map.! "ID"))) (toRows df2)
-    let expectedIDs = Set.intersection df1IDs df2IDs
-    return $ joinedIDs === expectedIDs
+    joinedDfEither <- streamToDf $ joinDF @'["ID"] (dfToStream df1) (dfToStream df2)
+    case joinedDfEither of
+        Left _ -> return $ property False
+        Right joinedDf -> do
+            let joinedIDs = Set.fromList $ map (fromRight' . fromDFValue @Int . (Map.! "ID")) (toRows joinedDf)
+            let df1IDs = Set.fromList $ map (fromRight' . fromDFValue @Int . (Map.! "ID")) (toRows df1)
+            let df2IDs = Set.fromList $ map (fromRight' . fromDFValue @Int . (Map.! "ID")) (toRows df2)
+            let expectedIDs = Set.intersection df1IDs df2IDs
+            return $ joinedIDs === expectedIDs
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

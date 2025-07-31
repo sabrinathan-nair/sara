@@ -29,18 +29,21 @@ module Sara.DataFrame.Transform (
 import qualified Data.Text as T
 import qualified Data.Map.Strict as Map
 import qualified Data.Vector as V
-import Sara.DataFrame.Types (DFValue(..), DataFrame(..), Row, toRows, fromRows, KnownColumns(..), CanBeDFValue(..), getDataFrameMap, TypeOf, HasColumn, fromDFValueUnsafe, toDFValue, type Append, type Nub, type UpdateColumn, type Fst, type Snd)
+import Sara.DataFrame.Types (DFValue(..), DataFrame(..), Row, toRows, fromRows, KnownColumns(..), CanBeDFValue(..), getDataFrameMap, TypeOf, HasColumn, toDFValue, type Append, type Nub, type UpdateColumn, type Fst, type Snd)
+import Sara.Error (SaraError(..))
 import Sara.DataFrame.Expression (Expr(..), evaluateExpr)
 import Sara.DataFrame.Predicate (FilterPredicate, evaluate)
 import GHC.TypeLits
 import Data.Proxy (Proxy(..))
 import Data.Kind (Type)
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, fromJust)
 
 import Streaming (Stream, Of)
 import qualified Streaming.Prelude as S
 
 
+
+import Data.Either (fromRight)
 
 -- | Selects a subset of columns from a `DataFrame`.
 -- The selected columns are specified by a type-level list of `(Symbol, Type)` tuples.
@@ -69,15 +72,18 @@ type family AddColumn (newCol :: (Symbol, Type)) (cols :: [(Symbol, Type)]) :: [
 -- The new column is defined by a type-safe expression.
 addColumn :: forall (newCol :: (Symbol, Type)) (cols :: [(Symbol, Type)]) (newCols :: [(Symbol, Type)]).
             (KnownSymbol (Fst newCol), KnownColumns cols, newCols ~ AddColumn newCol cols, KnownColumns newCols, CanBeDFValue (Snd newCol))
-            => Expr cols (Snd newCol) -> DataFrame cols -> DataFrame newCols
+            => Expr cols (Snd newCol) -> DataFrame cols -> Either SaraError (DataFrame newCols)
 addColumn expr (DataFrame dfMap) =
     let
         colName = T.pack (symbolVal (Proxy :: Proxy (Fst newCol)))
-        numRows = if Map.null dfMap then 0 else V.length (snd . head . Map.toList $ dfMap)
-        newColumnValues = V.fromList [ toDFValue (evaluateExpr expr dfMap idx) | idx <- [0 .. numRows - 1] ]
-        updatedDfMap = Map.insert colName newColumnValues dfMap
+        numRows = case Map.toList dfMap of
+            [] -> 0
+            (_, col) : _ -> V.length col
+        newColumnValues = V.fromList <$> traverse (\idx -> toDFValue <$> evaluateExpr expr dfMap idx) [0 .. numRows - 1]
     in
-        DataFrame updatedDfMap
+        case newColumnValues of
+            Right vals -> Right $ DataFrame (Map.insert colName vals dfMap)
+            Left err -> Left err
 
 
 -- | A type family that calculates the schema of a `DataFrame` after a `melt` operation.
@@ -127,17 +133,15 @@ melt df =
 -- The schema of the `DataFrame` is updated accordingly.
 applyColumn :: forall col oldType newType cols newCols.
               (HasColumn col cols, KnownColumns cols, CanBeDFValue oldType, CanBeDFValue newType, TypeOf col cols ~ oldType, newCols ~ UpdateColumn col newType cols, KnownColumns newCols)
-              => Proxy col -> (oldType -> newType) -> Stream (Of (DataFrame cols)) IO () -> Stream (Of (DataFrame newCols)) IO ()
+              => Proxy col -> (oldType -> newType) -> Stream (Of (DataFrame cols)) IO () -> Stream (Of (Either SaraError (DataFrame newCols))) IO ()
 applyColumn colProxy f =
-    S.map (\df -> 
-    let
-        colName = T.pack (symbolVal colProxy)
-        dfMap = getDataFrameMap df
-        oldColumn = dfMap Map.! colName
-        newColumn = V.map (toDFValue . f . fromDFValueUnsafe) oldColumn
-        newDfMap = Map.insert colName newColumn dfMap
-    in
-        DataFrame newDfMap
+    S.mapM (\df -> do
+        let colName = T.pack (symbolVal colProxy)
+        let dfMap = getDataFrameMap df
+        let oldColumn = dfMap Map.! colName
+        let newColumn = V.map (\val -> fromRight NA (toDFValue . f <$> fromDFValue val)) oldColumn
+        let newDfMap = Map.insert colName newColumn dfMap
+        return $ Right $ DataFrame newDfMap
     )
 
 
@@ -148,26 +152,19 @@ mutate :: forall newColName newColType cols newCols.
          => Proxy newColName
          -> Expr cols newColType
          -> DataFrame cols
-         -> DataFrame newCols
-mutate newColProxy expr (DataFrame dfMap) =
-    let
-        newColName = T.pack (symbolVal newColProxy)
-        numRows = if Map.null dfMap then 0 else V.length (snd . head . Map.toList $ dfMap)
-        newColumnValues = V.fromList [ toDFValue (evaluateExpr expr dfMap idx) | idx <- [0 .. numRows - 1] ]
-        updatedDfMap = Map.insert newColName newColumnValues dfMap
-    in
-        DataFrame updatedDfMap
+         -> Either SaraError (DataFrame newCols)
+mutate newColProxy expr df = addColumn @'(newColName, newColType) expr df
 
 -- | Filters rows from a DataFrame based on a type-safe predicate.
 filterRows :: forall cols.
              KnownColumns cols
              => FilterPredicate cols
              -> Stream (Of (DataFrame cols)) IO ()
-             -> Stream (Of (DataFrame cols)) IO ()
-filterRows predicate = S.mapMaybeM (\df -> do
+             -> Stream (Of (Either SaraError (DataFrame cols))) IO ()
+filterRows predicate = S.mapM (\df -> do
     let dfMap = getDataFrameMap df
     let rows = toRows df
-    let filteredRows = [row | (row, idx) <- zip rows [0..], fromMaybe False (evaluate predicate dfMap idx)]
+    let filteredRows = [row | (row, idx) <- zip rows [0..], fromRight False (evaluate predicate dfMap idx)]
     if null filteredRows
-        then return Nothing
-        else return (Just (fromRows filteredRows)))
+        then return $ Right $ DataFrame Map.empty
+        else return $ Right $ fromRows filteredRows)

@@ -42,6 +42,8 @@ import qualified Streaming.Prelude as S
 import Data.Maybe (mapMaybe)
 import Sara.DataFrame.Types (type (:++:))
 
+import Data.Either (partitionEithers)
+
 -- | A typeclass for aggregatable types.
 class Aggregatable a where
     -- | The result type of the aggregation.
@@ -61,8 +63,6 @@ instance Aggregatable T.Text where
     type Aggregated T.Text = Int
     aggregate = length
 
-
-
 -- | Sums the values of a column in a grouped `DataFrame`.
 sumAgg :: forall (col :: Symbol) (groupCols :: [(Symbol, Type)]) (originalCols :: [(Symbol, Type)])
        . ( HasColumn col originalCols
@@ -79,12 +79,15 @@ sumAgg groupedDfIO = do
     let newRows = Map.foldrWithKey (\key (DataFrame df) acc ->
             let
                 colName = T.pack $ symbolVal (Proxy @col)
-                vals = case Map.lookup colName df of
-                    Just vec -> mapMaybe (fromDFValue :: DFValue -> Maybe (TypeOf col originalCols)) (V.toList vec)
-                    Nothing -> []
-                aggVal = (aggregate :: [TypeOf col originalCols] -> Aggregated (TypeOf col originalCols)) vals
+                valsEither = case Map.lookup colName df of
+                    Just vec -> traverse (fromDFValue @(TypeOf col originalCols)) (V.toList vec)
+                    Nothing -> Right []
             in
-                (Map.insert (colName <> T.pack "_sum") (toDFValue aggVal) (let (TypeLevelRow r) = key in r)) : acc
+                case valsEither of
+                    Right vals ->
+                        let aggVal = (aggregate :: [TypeOf col originalCols] -> Aggregated (TypeOf col originalCols)) vals
+                        in (Map.insert (colName <> T.pack "_sum") (toDFValue aggVal) (let (TypeLevelRow r) = key in r)) : acc
+                    Left _ -> acc -- Or handle error appropriately
             ) [] groupedDf
     return $ fromRows newRows
 
@@ -107,13 +110,16 @@ meanAgg groupedDfIO = do
     newRows groupedDf = Map.foldrWithKey (\key (DataFrame df) acc ->
         let
             colName = T.pack $ symbolVal (Proxy @col)
-            vals = case Map.lookup colName df of
-                Just vec -> mapMaybe (fromDFValue :: DFValue -> Maybe (TypeOf col originalCols)) (V.toList vec)
-                Nothing -> []
-            aggVal = (aggregate :: [TypeOf col originalCols] -> Aggregated (TypeOf col originalCols)) vals
-            countVal = fromIntegral $ length vals
+            valsEither = case Map.lookup colName df of
+                Just vec -> traverse (fromDFValue @(TypeOf col originalCols)) (V.toList vec)
+                Nothing -> Right []
         in
-            (Map.insert (colName <> T.pack "_mean") (toDFValue (aggVal / countVal)) (let (TypeLevelRow r) = key in r)) : acc
+            case valsEither of
+                Right vals ->
+                    let aggVal = (aggregate :: [TypeOf col originalCols] -> Aggregated (TypeOf col originalCols)) vals
+                        countVal = fromIntegral $ length vals
+                    in (Map.insert (colName <> T.pack "_mean") (toDFValue (aggVal / countVal)) (let (TypeLevelRow r) = key in r)) : acc
+                Left _ -> acc -- Or handle error appropriately
         ) [] groupedDf
 
 -- | Counts the values in a single group.

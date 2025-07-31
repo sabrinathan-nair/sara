@@ -66,12 +66,14 @@ import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
 import Data.Vector (Vector)
 import Data.Time.Format (parseTimeM, defaultTimeLocale, formatTime)
-import Text.Read (readMaybe)
+import Text.Read (readEither)
 import Data.Proxy (Proxy(..))
 import GHC.TypeLits (symbolVal, Symbol, ErrorMessage(Text, (:<>:), ShowType), KnownSymbol, TypeError, CmpSymbol)
 import Data.Kind (Type, Constraint)
 import Data.Typeable (TypeRep, Typeable, typeRep)
 import Data.Maybe (fromMaybe)
+import Sara.Error (SaraError(..))
+import Control.Monad.Fail (fail)
 import qualified Data.Vector as V
 import Data.Scientific (toRealFloat)
 import GHC.Generics (Generic)
@@ -203,17 +205,17 @@ instance FromJSON DFValue where
             Nothing ->
                 case parseTimeM True defaultTimeLocale "%Y-%m-%d" (T.unpack s) :: Maybe Day of
                     Just d -> pure (DateValue d)
-                    Nothing -> case readMaybe (T.unpack s) :: Maybe Int of
-                        Just i -> pure (IntValue i)
-                        Nothing -> case readMaybe (T.unpack s) :: Maybe Double of
-                            Just d -> pure (DoubleValue d)
-                            Nothing -> case T.toLower s of
+                    Nothing -> case readEither (T.unpack s) :: Either String Int of
+                        Right i -> pure (IntValue i)
+                        Left _ -> case readEither (T.unpack s) :: Either String Double of
+                            Right d -> pure (DoubleValue d)
+                            Left _ -> case T.toLower s of
                                 "true" -> pure (BoolValue True)
                                 "false" -> pure (BoolValue False)
                                 _ -> pure (TextValue s)
     parseJSON (A.Bool b) = pure (BoolValue b)
     parseJSON A.Null = pure NA
-    parseJSON _ = fail "Unsupported JSON value type for DFValue"
+    parseJSON _ = Control.Monad.Fail.fail "Unsupported JSON value type for DFValue"
 
 -- | A column in a DataFrame, represented as a 'Vector' of 'DFValue's.
 -- Using 'Vector' provides efficient storage and operations.
@@ -325,46 +327,48 @@ data JoinType = InnerJoin | LeftJoin | RightJoin | OuterJoin
 -- | A type class for values that can be converted to and from DFValue.
 class (Typeable a) => CanBeDFValue a where
     toDFValue :: a -> DFValue
-    fromDFValue :: DFValue -> Maybe a
+    fromDFValue :: DFValue -> Either SaraError a
 
 instance CanBeDFValue Int where
     toDFValue = IntValue
-    fromDFValue (IntValue i) = Just i
-    fromDFValue _ = Nothing
+    fromDFValue (IntValue i) = Right i
+    fromDFValue other = Left $ TypeMismatch "Int" (T.pack $ show other)
 
 instance CanBeDFValue Double where
     toDFValue = DoubleValue
-    fromDFValue (DoubleValue d) = Just d
-    fromDFValue _ = Nothing
+    fromDFValue (DoubleValue d) = Right d
+    fromDFValue other = Left $ TypeMismatch "Double" (T.pack $ show other)
 
 instance CanBeDFValue T.Text where
     toDFValue = TextValue
-    fromDFValue (TextValue t) = Just t
-    fromDFValue _ = Nothing
+    fromDFValue (TextValue t) = Right t
+    fromDFValue other = Left $ TypeMismatch "Text" (T.pack $ show other)
 
 instance CanBeDFValue Day where
     toDFValue = DateValue
-    fromDFValue (DateValue d) = Just d
-    fromDFValue _ = Nothing
+    fromDFValue (DateValue d) = Right d
+    fromDFValue other = Left $ TypeMismatch "Day" (T.pack $ show other)
 
 instance CanBeDFValue UTCTime where
     toDFValue = TimestampValue
-    fromDFValue (TimestampValue t) = Just t
-    fromDFValue _ = Nothing
+    fromDFValue (TimestampValue t) = Right t
+    fromDFValue other = Left $ TypeMismatch "UTCTime" (T.pack $ show other)
 
 instance CanBeDFValue Bool where
     toDFValue = BoolValue
-    fromDFValue (BoolValue b) = Just b
-    fromDFValue _ = Nothing
+    fromDFValue (BoolValue b) = Right b
+    fromDFValue other = Left $ TypeMismatch "Bool" (T.pack $ show other)
 
 instance CanBeDFValue a => CanBeDFValue (Maybe a) where
     toDFValue Nothing = NA
     toDFValue (Just a) = toDFValue a
-    fromDFValue NA = Just Nothing
-    fromDFValue x = Just <$> fromDFValue x
+    fromDFValue NA = Right Nothing
+    fromDFValue x = case fromDFValue x of
+        Right val -> Right (Just val)
+        Left err -> Left err
 
-fromDFValueUnsafe :: CanBeDFValue a => DFValue -> a
-fromDFValueUnsafe dfValue = fromMaybe (error "fromDFValueUnsafe: NA or type mismatch") (fromDFValue dfValue)
+fromDFValueUnsafe :: forall a. CanBeDFValue a => DFValue -> Either SaraError a
+fromDFValueUnsafe = fromDFValue
 
 -- | Converts a 'DataFrame' into a list of 'Row's.
 -- Each 'Row' is a 'Map' where keys are column names and values are the corresponding 'DFValue's for that row.
@@ -374,8 +378,9 @@ toRows (DataFrame dfMap) =
         then []
         else
             let
-                -- Assuming all columns have the same number of rows
-                numRows = V.length (snd . head . Map.toList $ dfMap)
+                numRows = case Map.toList dfMap of
+                    [] -> 0
+                    (_, col) : _ -> V.length col
                 columnNames' = Map.keys dfMap
             in
                 [ Map.fromList [ (colName, (dfMap Map.! colName) V.! rowIndex) | colName <- columnNames' ]

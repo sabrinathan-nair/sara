@@ -26,6 +26,8 @@ import Data.Kind (Type)
 import Streaming (Stream, Of)
 import qualified Streaming.Prelude as S
 import Control.Monad.IO.Class (liftIO)
+import Sara.Error (SaraError(..))
+
 
 -- | A helper typeclass for creating the output row of a join operation.
 class CreateOutputRow (cols :: [(Symbol, Type)]) where
@@ -51,7 +53,7 @@ joinDF :: forall (onCols :: [Symbol]) (cols1 :: [(Symbol, Type)]) (cols2 :: [(Sy
          , All CanBeDFValue (GetColumnTypes cols2)
          , All CanBeDFValue (GetColumnTypes colsOut)
          , CreateOutputRow colsOut
-         ) => Stream (Of (DataFrame cols1)) IO () -> Stream (Of (DataFrame cols2)) IO () -> Stream (Of (DataFrame colsOut)) IO ()
+         ) => Stream (Of (DataFrame cols1)) IO () -> Stream (Of (DataFrame cols2)) IO () -> Stream (Of (Either SaraError (DataFrame colsOut))) IO ()
 joinDF df1Stream df2Stream = do
     -- Read the second stream into memory for efficient lookups
     df2sList <- liftIO $ S.toList_ df2Stream
@@ -69,5 +71,5 @@ joinDF df1Stream df2Stream = do
                 Just matchingRows2 -> do
                     S.for (S.each matchingRows2) $ \r2 -> do
                         let joinedRow = createOutputRow (Proxy @colsOut) r1 r2
-                        S.yield (fromRows @colsOut [joinedRow])
+                        S.yield (Right (fromRows @colsOut [joinedRow]))
                 Nothing -> return ()

@@ -45,6 +45,7 @@ import GHC.Generics (Generic, Rep)
 import Sara.DataFrame.Types (DFValue(..), DataFrame(..), KnownColumns(..), toRows)
 import Sara.DataFrame.Static (readCsv)
 import Sara.DataFrame.Internal (HasSchema, Schema, recordToDFValueList, GToFields)
+import Sara.Error (SaraError(..))
 
 import Streaming (Stream, Of)
 import qualified Streaming.Prelude as S
@@ -52,21 +53,20 @@ import Control.Monad.IO.Class (liftIO)
 
 -- | Reads a CSV file in a streaming fashion.
 -- It returns a `Stream` of `DataFrame`s, where each `DataFrame` contains a single row.
-readCsvStreaming :: forall record cols. (FromNamedRecord record, HasSchema record, cols ~ Schema record, KnownColumns cols, Generic record, GToFields (Rep record)) => Proxy record -> FilePath -> Stream (Of (DataFrame cols)) IO ()
+readCsvStreaming :: forall record cols. (FromNamedRecord record, HasSchema record, cols ~ Schema record, KnownColumns cols, Generic record, GToFields (Rep record)) => Proxy record -> FilePath -> IO (Either SaraError (Stream (Of (DataFrame cols)) IO ()))
 readCsvStreaming _ filePath = do
-    let expectedColNames = V.fromList $ columnNames (Proxy @cols)
     contents <- liftIO $ BL.readFile filePath
-    case C.decodeByName contents :: Either String (C.Header, V.Vector record) of
-        Left err -> liftIO $ ioError $ userError $ "CSV parsing error: " ++ err
-        Right (header, records) -> do
-            let actualHeader = V.map TE.decodeUtf8 header
-            if actualHeader /= expectedColNames
-                then liftIO $ ioError $ userError $ "CSV header mismatch. Expected: " ++ show expectedColNames ++ ", Got: " ++ show actualHeader
-                else do
-                    S.for (S.each (V.toList records)) $ \record -> do
-                        let rowMap = Map.fromList $ V.toList $ V.zip actualHeader (V.fromList (recordToDFValueList record))
-                        let df = DataFrame (Map.map V.singleton rowMap)
-                        S.yield df
+    return $ case C.decodeByName contents :: Either String (C.Header, V.Vector record) of
+        Left err -> Left $ ParsingError (T.pack err)
+        Right (header, records) ->
+            let expectedColNames = V.fromList $ columnNames (Proxy @cols)
+                actualHeader = V.map TE.decodeUtf8 header
+            in if actualHeader /= expectedColNames
+                then Left $ IOError (T.pack $ "CSV header mismatch. Expected: " ++ show expectedColNames ++ ", Got: " ++ show actualHeader)
+                else Right $ S.for (S.each (V.toList records)) $ \record -> do
+                    let rowMap = Map.fromList $ V.toList $ V.zip actualHeader (V.fromList (recordToDFValueList record))
+                    let df = DataFrame (Map.map V.singleton rowMap)
+                    S.yield df
 
 
 -- | Converts a `DFValue` to a `ByteString` for writing to a CSV file.
@@ -103,21 +103,21 @@ writeCSV filePath (DataFrame dfMap) = do
 -- The JSON file should be an array of objects, where each object represents a row.
 -- The keys of the objects should match the column names of the `DataFrame`.
 -- The function validates that the column names and types in the JSON file match the `DataFrame`'s schema.
-readJSON :: forall cols. KnownColumns cols => Proxy cols -> FilePath -> IO (DataFrame cols)
+readJSON :: forall cols. KnownColumns cols => Proxy cols -> FilePath -> IO (Either SaraError (DataFrame cols))
 readJSON p filePath = do
     let expectedColNames = columnNames p
 
     jsonData <- BL.readFile filePath
     case A.eitherDecode jsonData :: Either String [Map T.Text DFValue] of
-        Left err -> error $ "JSON parsing error: " ++ err
+        Left err -> return $ Left $ ParsingError (T.pack err)
         Right rows -> do
             if null rows
-                then return $ DataFrame Map.empty
+                then return $ Right $ DataFrame Map.empty
                 else do
                     let actualColumnNames = Map.keys (head rows)
                     -- Validate column names
                     if V.fromList expectedColNames /= V.fromList actualColumnNames
-                        then error $ "JSON header mismatch. Expected: " ++ show expectedColNames ++ ", Got: " ++ show actualColumnNames
+                        then return $ Left $ IOError (T.pack $ "JSON header mismatch. Expected: " ++ show expectedColNames ++ ", Got: " ++ show actualColumnNames)
                         else do
                             let initialColumnsMap = Map.fromList $ V.toList $ V.map (, V.empty) (V.fromList actualColumnNames)
                                 finalColumnsMap = V.foldl' (\accMap row ->
@@ -127,20 +127,20 @@ readJSON p filePath = do
                                         ) accMap
                                     ) initialColumnsMap (V.fromList rows) -- Convert rows to Vector for foldl'
 
-                            return $ DataFrame finalColumnsMap
+                            return $ Right $ DataFrame finalColumnsMap
 
 -- | Reads a JSON file in a streaming fashion.
 -- NOTE: This is a temporary non-streaming implementation due to issues with streaming JSON libraries.
 -- It reads the entire file into memory before processing.
-readJSONStreaming :: forall cols. KnownColumns cols => Proxy cols -> FilePath -> Stream (Of (DataFrame cols)) IO ()
+readJSONStreaming :: forall cols. KnownColumns cols => Proxy cols -> FilePath -> IO (Either SaraError (Stream (Of (DataFrame cols)) IO ()))
 readJSONStreaming _ filePath = do
     jsonData <- liftIO $ BL.readFile filePath
     case A.eitherDecode jsonData :: Either String [Map T.Text DFValue] of
-        Left err -> liftIO $ ioError $ userError $ "JSON parsing error: " ++ err
-        Right rows -> do
-            S.for (S.each rows) $ \row -> do
-                let rowMap = Map.map V.singleton row
-                S.yield (DataFrame rowMap)
+        Left err -> return $ Left $ ParsingError (T.pack err)
+        Right rows -> return $ Right $ S.for (S.each rows) $ \row -> do
+            let rowMap = Map.map V.singleton row
+            S.yield (DataFrame rowMap)
+
 
 -- | Writes a `DataFrame` to a JSON file.
 -- The output is an array of objects, where each object represents a row.

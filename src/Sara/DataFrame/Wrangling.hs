@@ -46,6 +46,9 @@ import Data.Proxy (Proxy(..))
 import Data.Kind (Type)
 import Streaming (Stream, Of)
 import qualified Streaming.Prelude as S
+import Sara.Error (SaraError(..))
+
+import Data.Either (fromRight)
 
 -- | A typeclass for converting a type-level list of `Symbol`s to a list of `T.Text` values.
 class AllKnownSymbol (xs :: [Symbol]) where
@@ -59,14 +62,17 @@ instance (KnownSymbol x, AllKnownSymbol xs) => AllKnownSymbol (x ': xs) where
     symbolsToTexts _ = T.pack (symbolVal (Proxy @x)) : symbolsToTexts (Proxy @xs)
 
 -- | Filters rows from a `DataFrame` based on a type-safe `FilterPredicate`.
-filterRows :: forall cols. KnownColumns cols => FilterPredicate cols -> Stream (Of (DataFrame cols)) IO () -> Stream (Of (DataFrame cols)) IO ()
+filterRows :: forall cols. KnownColumns cols => FilterPredicate cols -> Stream (Of (DataFrame cols)) IO () -> Stream (Of (Either SaraError (DataFrame cols))) IO ()
 filterRows p =
-    S.mapMaybeM (\df -> do
+    S.mapM (\df -> do
         let rows = toRows df
-        let filteredRows = [row | row <- rows, fromMaybe False (evaluate p (getDataFrameMap df) (fromJust (V.elemIndex row (V.fromList rows))))]
+        let evalPredicate row = fromRight False $ do
+                idx <- maybe (Left (GenericError (T.pack "Row not found"))) Right (V.elemIndex row (V.fromList rows))
+                evaluate p (getDataFrameMap df) idx
+        let filteredRows = [row | row <- rows, evalPredicate row]
         if null filteredRows
-            then return Nothing
-            else return $ Just (fromRows filteredRows)
+            then return $ Right $ DataFrame Map.empty -- Return an empty DataFrame if no rows match
+            else return $ Right $ fromRows filteredRows
         )
 
 -- | Sorts a `DataFrame` based on a list of type-safe `SortCriterion`s.
@@ -78,7 +84,12 @@ sortDataFrame sortCriteria df =
         -- Helper function to compare two DFValues of a specific type.
         -- It uses fromDFValue to safely extract the underlying type and then compares them.
         compareRows :: forall a. (Ord a, CanBeDFValue a) => Proxy a -> DFValue -> DFValue -> Ordering
-        compareRows _ val1 val2 = compare (fromDFValue @a val1) (fromDFValue @a val2)
+        compareRows _ val1 val2 = 
+            case (fromDFValue @a val1, fromDFValue @a val2) of
+                (Right v1, Right v2) -> compare v1 v2
+                (Left _, Right _) -> LT
+                (Right _, Left _) -> GT
+                (Left _, Left _) -> EQ
 
         -- Helper function to compare two rows based on the sort criteria.
         compareRows' :: Row -> Row -> Ordering
@@ -205,7 +216,7 @@ fillNA replacementValue (DataFrame dfMap) =
 -- Only rows where the boolean column is `True` are kept.
 filterByBoolColumn :: forall (boolCol :: Symbol) (cols :: [(Symbol, Type)]).
                      (HasColumn boolCol cols, KnownColumns cols, TypeOf boolCol cols ~ Bool)
-                     => Proxy boolCol -> Stream (Of (DataFrame cols)) IO () -> Stream (Of (DataFrame cols)) IO ()
+                     => Proxy boolCol -> Stream (Of (DataFrame cols)) IO () -> Stream (Of (Either SaraError (DataFrame cols))) IO ()
 filterByBoolColumn p =
     filterRows (FilterPredicate (ExprPredicate (Col p)))
 

@@ -32,17 +32,17 @@ import Sara.DataFrame.Types (DataFrame(..), ConcatAxis(..), KnownColumns)
 -- [fromList [("age",IntValue 25),("name",TextValue "Alice")],fromList [("age",IntValue 30),("name",TextValue "Bob")]]
 concatDF :: KnownColumns cols => ConcatAxis -> [DataFrame cols] -> DataFrame cols
 concatDF _ [] = DataFrame Map.empty
-concatDF ConcatRows dfs =
+concatDF ConcatRows (firstDf:restDfs) =
     let
+        (DataFrame firstDfMap) = firstDf
         -- Assuming all DataFrames have the same columns for row-wise concat
         -- We'll take the columns from the first DataFrame as the reference
-        (DataFrame firstDfMap) = head dfs
         columnNames = Map.keys firstDfMap
 
         -- Aggregate all columns from all DataFrames
         concatenatedColumns = Map.fromList $ map (\colName ->
             let
-                allColValues = V.concat [ col | (DataFrame dfMap) <- dfs, Just col <- [Map.lookup colName dfMap] ]
+                allColValues = V.concat [ col | (DataFrame dfMap) <- (firstDf:restDfs), Just col <- [Map.lookup colName dfMap] ]
             in
                 (colName, allColValues)
             ) columnNames

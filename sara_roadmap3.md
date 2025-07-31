@@ -66,3 +66,25 @@ This document outlines the next steps to elevate Sara to a production-ready stat
     *   **`sumAgg`:** Prove that this function is only ever called on a column whose type is numeric.
     *   **`readCsvStreaming`:** Prove that the output DataFrame's schema *exactly* matches the type-level schema provided, preventing runtime errors from malformed CSVs.
 3.  **Refine our types** to be more specific and expressive, allowing us to prove more complex properties.
+
+## Phase 5: Addressing Partial Functions and Robustness
+
+**Objective:** To eliminate the use of partial functions and ensure robust handling of potential runtime failures, particularly concerning data parsing and manipulation.
+
+**Granular Steps:**
+
+1.  **Eliminate Partial `head` Usage:** (Completed)
+    *   **Identified all instances** of `head` in the codebase.
+    *   **Replaced `head` with safe alternatives** such as pattern matching, `Data.List.NonEmpty` (if applicable), `Data.Maybe.listToMaybe`, or explicit error handling (`Either`, `Maybe`).
+    *   **Ensured all code paths** handle the case of empty lists gracefully.
+
+2.  **Robust `readMaybe` Handling:** (Completed)
+    *   **Identified all instances** of `readMaybe`.
+    *   **Replaced implicit `Nothing` handling** with explicit `Maybe` or `Either` pattern matching.
+    *   **Propagated parsing errors** up the call stack or converted them into meaningful `DFValue` representations (e.g., `NA`) where appropriate.
+    *   **Used `Text.Read.readEither`** for more informative error messages during parsing.
+
+3.  **Comprehensive Error Handling Strategy:** (In Progress)
+    *   **Defined a custom `SaraError` data type** to standardize error reporting.
+    *   **Began refactoring existing error handling** (e.g., `error` calls) to use `SaraError`.
+    *   **Currently resolving type mismatches** in the test suite due to changes in function signatures.

@@ -20,35 +20,36 @@ import Data.Typeable (TypeRep, typeRep)
 import Control.Monad (forM)
 
 import Sara.DataFrame.Types
+import Sara.Error (SaraError(..))
 
 
 -- | Converts a `SQLData` value to a `DFValue`, validating against an expected `TypeRep`.
-sqlDataToDFValue :: TypeRep -> SQLData -> Either String DFValue
+sqlDataToDFValue :: TypeRep -> SQLData -> Either SaraError DFValue
 sqlDataToDFValue expectedType sqlData =
     case sqlData of
         SQLInteger i
             | expectedType == typeRep (Proxy @Int) -> Right $ IntValue (fromIntegral i)
             | expectedType == typeRep (Proxy @Double) -> Right $ DoubleValue (fromIntegral i)
-            | otherwise -> Left $ "Type mismatch: Expected " ++ show expectedType ++ ", got SQLInteger " ++ show i
+            | otherwise -> Left $ TypeMismatch (T.pack $ show expectedType) (T.pack $ "SQLInteger " ++ show i)
         SQLFloat d
             | expectedType == typeRep (Proxy @Double) -> Right $ DoubleValue d
-            | otherwise -> Left $ "Type mismatch: Expected " ++ show expectedType ++ ", got SQLFloat " ++ show d
+            | otherwise -> Left $ TypeMismatch (T.pack $ show expectedType) (T.pack $ "SQLFloat " ++ show d)
         SQLText t
             | expectedType == typeRep (Proxy @T.Text) -> Right $ TextValue t
             | expectedType == typeRep (Proxy @Bool) ->
                 case T.toLower t of
                     "true" -> Right $ BoolValue True
                     "false" -> Right $ BoolValue False
-                    _ -> Left $ "Type mismatch: Expected Bool, got SQLText " ++ show t
-            | otherwise -> Left $ "Type mismatch: Expected " ++ show expectedType ++ ", got SQLText " ++ show t
-        SQLBlob _ -> Left "Unsupported SQL type: BLOB"
+                    _ -> Left $ TypeMismatch (T.pack "Bool") (T.pack $ "SQLText " ++ show t)
+            | otherwise -> Left $ TypeMismatch (T.pack $ show expectedType) (T.pack $ "SQLText " ++ show t)
+        SQLBlob _ -> Left $ GenericError (T.pack "Unsupported SQL type: BLOB")
         SQLNull -> Right NA
 
 -- | Reads data from a SQLite database into a `DataFrame`.
 -- The `cols` type parameter specifies the schema of the resulting `DataFrame`.
 -- The function validates that the number of columns in the query result matches the schema.
 -- It also validates that the types of the values in the query result match the schema.
-readSQL :: forall cols. KnownColumns cols => Proxy cols -> FilePath -> Query -> IO (Either String (DataFrame cols))
+readSQL :: forall cols. KnownColumns cols => Proxy cols -> FilePath -> Query -> IO (Either SaraError (DataFrame cols))
 readSQL p dbPath sqlQuery = do
     conn <- open dbPath
     rows <- query_ conn sqlQuery :: IO [[SQLData]]
@@ -58,17 +59,16 @@ readSQL p dbPath sqlQuery = do
         colCount = length expectedColNames
         expectedColTypes = columnTypes p
 
-    if null rows
-        then return $ Right $ DataFrame Map.empty
-        else do
-            let firstRow = head rows
+    case rows of
+        [] -> return $ Right $ DataFrame Map.empty
+        (firstRow:_) -> do
             if length firstRow /= colCount
-                then return $ Left $ "SQL query result column count mismatch. Expected " ++ show colCount ++ ", got " ++ show (length firstRow)
+                then return $ Left $ GenericError (T.pack $ "SQL query result column count mismatch. Expected " ++ show colCount ++ ", got " ++ show (length firstRow))
                 else do
-                    let processedRowsResult :: Either String [[DFValue]]
+                    let processedRowsResult :: Either SaraError [[DFValue]]
                         processedRowsResult = forM rows $ \row ->
                             if length row /= colCount
-                                then Left $ "Inconsistent column count in SQL result. Expected " ++ show colCount ++ ", got " ++ show (length row)
+                                then Left $ GenericError (T.pack $ "Inconsistent column count in SQL result. Expected " ++ show colCount ++ ", got " ++ show (length row))
                                 else forM (zip expectedColTypes row) $ uncurry sqlDataToDFValue
 
                     case processedRowsResult of
@@ -79,5 +79,6 @@ readSQL p dbPath sqlQuery = do
                             return $ Right $ DataFrame finalColumnsMap
 
 transpose :: [[a]] -> [[a]]
+transpose [] = []
 transpose ([]:_) = []
-transpose x = map head x : transpose (map tail x)
+transpose ((x:xs):xss) = (x : [h | (h:_) <- xss]) : transpose (xs : [t | (_:t) <- xss])

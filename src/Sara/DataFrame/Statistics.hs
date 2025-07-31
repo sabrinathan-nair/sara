@@ -117,7 +117,11 @@ modeV vec =
            let grouped = group (V.toList nonNAValues)
                -- Sort by length (frequency) in descending order
                sortedGroups = sortBy (comparing (negate . length)) grouped
-           in head (head sortedGroups)
+                      in case sortedGroups of
+               [] -> NA
+               (firstGroup:_) -> case firstGroup of
+                   [] -> NA
+                   (modeVal:_) -> modeVal
 
 -- | Calculates the variance of a vector of `DFValue`s.
 -- Non-numeric values are ignored.

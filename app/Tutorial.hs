@@ -39,13 +39,22 @@ $(inferCsvSchema "Departments" "departments.csv")
 -- This function is not currently used in the main application.
 tutorial :: IO ()
 tutorial = do
-    let employeesStream = readCsvStreaming (Proxy @EmployeesRecord) "employees.csv"
-    let dfStream = S.map id employeesStream
+    readResult <- readCsvStreaming (Proxy @EmployeesRecord) "employees.csv"
 
-    let dfWithBoolColStream = S.map (mutate (Proxy :: Proxy "IsSalaryHigh") (col (Proxy @"EmployeesSalary") >. lit 70000)) dfStream
-
-    let filteredStream = filterByBoolColumn (Proxy :: Proxy "IsSalaryHigh") dfWithBoolColStream
-    S.mapM_ print filteredStream
+    case readResult of
+        Left err -> putStrLn $ "Error reading CSV: " ++ show err
+        Right dfStream -> do
+            S.mapM_ (\df -> do
+                let mutatedDfEither = mutate (Proxy :: Proxy "IsSalaryHigh") (col (Proxy @"EmployeesSalary") >. lit 70000) df
+                case mutatedDfEither of
+                    Left err -> putStrLn $ "Error mutating: " ++ show err
+                    Right mutatedDf -> do
+                        let filteredDfEither = filterByBoolColumn (Proxy :: Proxy "IsSalaryHigh") (S.yield mutatedDf)
+                        S.mapM_ (\e -> case e of
+                            Left err -> putStrLn $ "Error filtering: " ++ show err
+                            Right filteredDf -> print filteredDf
+                            ) filteredDfEither
+                ) dfStream
 
 main :: IO ()
 main = tutorial
