@@ -7,7 +7,7 @@ This document outlines statistical functions commonly available in the Pandas li
 
 
 
-| `describe()` (Summary Statistics) | Generates descriptive statistics that summarize the central tendency, dispersion, and shape of a dataset's distribution, excluding `NaN` values. Provides count, mean, std, min, 25%, 50%, 75%, max. | A convenience function that combines several existing (or planned) basic statistics into a single, easy-to-read output. This would involve orchestrating calls to `countV`, `meanV`, `stdV`, `minV`, `maxV`, and the new `quantile` function. |
+
 
 **Note:** `quantile()` and `percentile()` functions have been implemented in Sara.
 

@@ -32,14 +32,16 @@ module Sara.DataFrame.Statistics (
     -- * Correlation Calculation
     correlate,
     -- * Covariance Calculation
-    covariance
+    covariance,
+    -- * Summary Statistics
+    summaryStatistics
 ) where
 
 import Sara.DataFrame.Types
 import qualified Data.Vector as V
 import qualified Data.Map.Strict as Map
 import qualified Data.Text as T
-import Data.List (sort, group, sortBy)
+import Data.List (sort, group, sortBy, foldl')
 import Data.Ord (comparing)
 import GHC.TypeLits (Symbol, KnownSymbol, symbolVal)
 import Data.Proxy (Proxy(..))
@@ -358,3 +360,71 @@ covariance p1 p2 df = do
 
                covarianceVal = V.sum (V.zipWith (\x y -> (x - meanX) * (y - meanY)) xVals yVals) / fromIntegral (len - 1)
            in Right covarianceVal
+
+-- | Generates descriptive statistics for numeric columns in a DataFrame.
+-- For each numeric column, it calculates count, mean, standard deviation, min, 25th percentile (Q1), median (50th percentile), 75th percentile (Q3), and max.
+-- Non-numeric columns are ignored.
+-- Returns a Map where keys are statistic names (e.g., "count", "mean"), and values are Maps from column names to their calculated statistic.
+summaryStatistics :: forall cols.
+                     ( KnownColumns cols
+                     ) => DataFrame cols -> Map.Map T.Text (Map.Map T.Text DFValue)
+summaryStatistics df = 
+    let dfMap = getDataFrameMap df
+
+        -- Helper to get numeric values from a column vector
+        getNumericVals :: T.Text -> V.Vector Double
+        getNumericVals colName = V.mapMaybe toNumeric (dfMap Map.! colName)
+
+        -- Calculate statistics for a single numeric column
+        calculateColumnStats :: T.Text -> Map.Map T.Text DFValue
+        calculateColumnStats colName =
+            let numericVals = getNumericVals colName
+                len = V.length numericVals
+            in if len == 0
+               then Map.fromList [
+                   ("count", IntValue 0),
+                   ("mean", NA),
+                   ("std", NA),
+                   ("min", NA),
+                   ("25%", NA),
+                   ("50%", NA),
+                   ("75%", NA),
+                   ("max", NA)
+                   ]
+               else
+                   let sortedVals = sort (V.toList numericVals)
+                       -- Inline quantile calculation for 25%, 50%, 75%
+                       calcQuantile :: Double -> DFValue
+                       calcQuantile q =
+                           let index = fromIntegral (len - 1) * q
+                               idxFloor = floor index
+                               idxCeil = ceiling index
+                           in if idxFloor == idxCeil
+                              then DoubleValue (sortedVals !! idxFloor)
+                              else
+                                  let v1 = sortedVals !! idxFloor
+                                      v2 = sortedVals !! idxCeil
+                                      interpolated = v1 + (v2 - v1) * (index - fromIntegral idxFloor)
+                                  in DoubleValue interpolated
+                   in Map.fromList [
+                       ("count", IntValue len),
+                       ("mean", meanV (V.map DoubleValue numericVals)),
+                       ("std", stdV (V.map DoubleValue numericVals)),
+                       ("min", minV (V.map DoubleValue numericVals)),
+                       ("25%", calcQuantile 0.25),
+                       ("50%", calcQuantile 0.50),
+                       ("75%", calcQuantile 0.75),
+                       ("max", maxV (V.map DoubleValue numericVals))
+                       ]
+
+        -- Filter for numeric columns and calculate their statistics
+        numericColumnStats = Map.fromList $ map (\colName -> (colName, calculateColumnStats colName)) $ filter (\cn -> Map.member cn dfMap && not (V.null (V.mapMaybe toNumeric (dfMap Map.! cn)))) (Map.keys dfMap)
+
+        -- Restructure the map: StatisticName -> (ColumnName -> Value)
+        restructuredMap = foldl' (\acc (colName, statsMap) ->
+            foldl' (\acc' (statName, statVal) ->
+                Map.insertWith Map.union statName (Map.singleton colName statVal) acc'
+            ) acc (Map.toList statsMap)
+            ) Map.empty (Map.toList numericColumnStats)
+
+    in restructuredMap

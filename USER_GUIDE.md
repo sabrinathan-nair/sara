@@ -698,7 +698,103 @@ Analysis Complete.
 
 This example demonstrates how to use `covariance` to understand how two numeric variables in your DataFrame vary together.
 
+### How to Get Summary Statistics
+
+Summary statistics provide a quick overview of the central tendency, dispersion, and shape of a dataset's distribution. Sara's `summaryStatistics` function calculates common descriptive statistics for all numeric columns in your DataFrame.
+
+The output is a `Map` where the top-level keys are the statistic names (e.g., "count", "mean", "std", "min", "25%", "50%", "75%", "max"), and the values are another `Map` from column names to their calculated statistic.
+
+Let's use a DataFrame with sales data:
+
+`salesDataDF`:
+```
+Product   Price  Quantity
+Laptop    1200   5
+Mouse     25     20
+Keyboard  75     10
+Monitor   300    3
+Webcam    50     15
+```
+
+To get summary statistics for the numeric columns ('Price' and 'Quantity'):
+
+```haskell
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE OverloadedStrings #-}
+
+import Sara.DataFrame
+import Sara.DataFrame.Static (C)
+import Sara.DataFrame.Statistics (summaryStatistics)
+import Data.Proxy (Proxy(..))
+import qualified Data.Map.Strict as Map
+import qualified Data.Text as T
+
+main :: IO ()
+main = do
+  let salesRows = [
+          Map.fromList [("Product", TextValue "Laptop"), ("Price", IntValue 1200), ("Quantity", IntValue 5)],
+          Map.fromList [("Product", TextValue "Mouse"), ("Price", IntValue 25), ("Quantity", IntValue 20)],
+          Map.fromList [("Product", TextValue "Keyboard"), ("Price", IntValue 75), ("Quantity", IntValue 10)],
+          Map.fromList [("Product", TextValue "Monitor"), ("Price", IntValue 300), ("Quantity", IntValue 3)],
+          Map.fromList [("Product", TextValue "Webcam"), ("Price", IntValue 50), ("Quantity", IntValue 15)]
+          ]
+  let salesDataDF = fromRows @'[ '("Product", T.Text), '("Price", Int), '("Quantity", Int)] salesRows
+
+  putStrLn "\nOriginal Sales Data DataFrame:"
+  print salesDataDF
+
+  let stats = summaryStatistics salesDataDF
+
+  putStrLn "\nSummary Statistics:"
+  Map.traverseWithKey (\statName colStats -> do
+    putStrLn $ T.unpack statName ++ ":"
+    Map.traverseWithKey (\colName statVal ->
+      putStrLn $ "  " ++ T.unpack colName ++ ": " ++ show statVal
+    ) colStats
+  ) stats
+
+  putStrLn "\nAnalysis Complete."
+```
+
+**Expected Output (conceptual):**
+```
+Original Sales Data DataFrame:
+...
+
+Summary Statistics:
+25%:
+  Price: DoubleValue 50.0
+  Quantity: DoubleValue 5.0
+50%:
+  Price: DoubleValue 75.0
+  Quantity: DoubleValue 10.0
+75%:
+  Price: DoubleValue 300.0
+  Quantity: DoubleValue 15.0
+count:
+  Price: IntValue 5
+  Quantity: IntValue 5
+max:
+  Price: DoubleValue 1200.0
+  Quantity: DoubleValue 20.0
+mean:
+  Price: DoubleValue 330.0
+  Quantity: DoubleValue 10.6
+min:
+  Price: DoubleValue 25.0
+  Quantity: DoubleValue 3.0
+std:
+  Price: DoubleValue 509.95...
+  Quantity: DoubleValue 6.73...
+
+Analysis Complete.
+```
+
+This example demonstrates how to use `summaryStatistics` to quickly get a comprehensive overview of your numeric data.
+
 ## 4. IDE Configuration for Haskell Development
+
 
 
 
