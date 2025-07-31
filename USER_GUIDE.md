@@ -1,0 +1,510 @@
+# Sara User Guide
+
+Welcome to Sara! This guide is designed to help you understand and use Sara for your data manipulation tasks, even if you're new to Haskell or data processing.
+
+## 1. Sara Explained: For a 5-Year-Old
+
+Imagine you have a big box of LEGOs, but instead of random bricks, each LEGO piece is a piece of information, like a name, an age, or a city.
+
+Sara is like a super-smart LEGO sorter and builder.
+
+*   **DataFrames (Your LEGO Creations):** In Sara, we don't call them LEGO creations; we call them "DataFrames." A DataFrame is just an organized table of information, like a spreadsheet. Each column in your table has a specific type of LEGO brick (e.g., all names are text LEGOs, all ages are number LEGOs).
+
+*   **Type Safety (No Mismatched LEGOs!):** This is Sara's superpower! Imagine your LEGO sorter *knows* that a square red brick can only connect to another square red brick, and a round blue brick only to a round blue brick. If you try to connect a square red brick to a round blue brick, the sorter immediately says, "Nope! That won't fit!"
+
+    In Sara, this means:
+    *   If you have a column of "ages" (which are numbers), Sara won't let you accidentally try to do math on a "name" column (which is text).
+    *   If you ask for a column called "City" but you accidentally typed "Cty," Sara will tell you *before* you even run your program that "Cty" doesn't exist.
+
+    This "no mismatched LEGOs" rule means your data programs are much less likely to break unexpectedly when you run them. Sara catches many mistakes *before* they happen!
+
+*   **Streaming (Building with Endless LEGOs):** What if you have so many LEGOs that they don't all fit on your table at once? Sara can handle this! It's like Sara can build with LEGOs as they come out of an endless conveyor belt, without needing to see all of them at once. This is super useful for really, really big datasets.
+
+## 2. Task-Oriented Guides
+
+This section will provide step-by-step instructions for common data manipulation tasks.
+
+### How to Load Data (e.g., from CSV, JSON)
+
+Loading data into Sara is the first step to performing any analysis. Sara can read data from various sources, such as CSV (Comma Separated Values) and JSON (JavaScript Object Notation) files.
+
+#### Loading from a CSV File
+
+To load data from a CSV file, you typically use a function like `readCsv`. Let's say you have a file named `people.csv` with the following content:
+
+```csv
+Name,Age,City
+Alice,30,New York
+Bob,24,London
+Charlie,35,Paris
+```
+
+You can load this into a Sara DataFrame like this:
+
+```haskell
+-- Assuming 'readCsv' is available in your Sara environment
+-- and 'people.csv' is in the correct path.
+myDataFrame <- readCsv "people.csv"
+```
+
+After running this, `myDataFrame` will hold your data, and Sara will have automatically inferred the types for each column (e.g., `Name` as Text, `Age` as Int, `City` as Text).
+
+#### Loading from a JSON File
+
+Similarly, to load data from a JSON file, you would use a function like `readJson`. If you have a file named `people.json` with content like this:
+
+```json
+[
+  {"Name": "Alice", "Age": 30, "City": "New York"},
+  {"Name": "Bob", "Age": 24, "City": "London"},
+  {"Name": "Charlie", "Age": 35, "City": "Paris"}
+]
+```
+
+You can load it into a Sara DataFrame:
+
+```haskell
+-- Assuming 'readJson' is available in your Sara environment
+-- and 'people.json' is in the correct path.
+myDataFrame <- readJson "people.json"
+```
+
+Sara will again infer the schema based on the JSON structure.
+
+### How to Filter Rows
+
+Filtering rows in a DataFrame allows you to select only the data that meets certain conditions. This is like picking out only the red LEGO bricks from your big box.
+
+Sara's type safety ensures that you can only apply filters that make sense for the data type of the column. For example, you can't check if a 'Name' (Text) is greater than 10.
+
+Let's use our `myDataFrame` from the previous section:
+
+```haskell
+-- myDataFrame:
+-- Name    Age  City
+-- Alice   30   New York
+-- Bob     24   London
+-- Charlie 35   Paris
+```
+
+#### Filtering by a Numeric Column
+
+To filter rows where the 'Age' is greater than 25:
+
+```haskell
+import Sara.DataFrame.Predicate ((.>), (.>=), (.<), (.<=), (.==), (.!=))
+import Sara.DataFrame.Wrangling (filterRows)
+import Sara.DataFrame.Static (C) -- For column references
+
+-- Filter for people older than 25
+olderPeopleDF <- myDataFrame & filterRows (C "Age" .> 25)
+-- Result:
+-- Name    Age  City
+-- Alice   30   New York
+-- Charlie 35   Paris
+```
+
+Here:
+*   `C "Age"` refers to the 'Age' column.
+*   `.>` is the "greater than" operator for columns. Sara provides similar operators like `.>=` (greater than or equal), `.<` (less than), `.<=` (less than or equal), `.==` (equal), and `.!=` (not equal).
+
+#### Filtering by a Text Column
+
+To filter rows where the 'City' is 'New York':
+
+```haskell
+-- Filter for people living in New York
+nyResidentsDF <- myDataFrame & filterRows (C "City" .== "New York")
+-- Result:
+-- Name    Age  City
+-- Alice   30   New York
+```
+
+#### Combining Filters
+
+You can combine multiple conditions using logical operators like `&&.` (AND) and `||.` (OR):
+
+```haskell
+-- Filter for people older than 25 AND living in New York
+filteredDF <- myDataFrame & filterRows ((C "Age" .> 25) &&. (C "City" .== "New York"))
+-- Result:
+-- Name    Age  City
+-- Alice   30   New York
+
+-- Filter for people younger than 30 OR living in London
+anotherFilteredDF <- myDataFrame & filterRows ((C "Age" .< 30) ||. (C "City" .== "London"))
+-- Result:
+-- Name    Age  City
+-- Bob     24   London
+```
+
+### How to Select and Drop Columns
+
+Selecting and dropping columns allows you to focus on specific parts of your DataFrame, much like picking out only the blue and green LEGO bricks, or removing all the yellow ones.
+
+Let's continue with our `myDataFrame`:
+
+```haskell
+-- myDataFrame:
+-- Name    Age  City
+-- Alice   30   New York
+-- Bob     24   London
+-- Charlie 35   Paris
+```
+
+#### Selecting Columns
+
+To select only the 'Name' and 'Age' columns:
+
+```haskell
+import Sara.DataFrame.Wrangling (selectColumns)
+import Sara.DataFrame.Static (C) -- For column references
+
+selectedDF <- myDataFrame & selectColumns (C "Name" :*: C "Age" :*: HNil)
+-- Result:
+-- Name    Age
+-- Alice   30
+-- Bob     24
+-- Charlie 35
+```
+
+Here:
+*   `selectColumns` is the function used to pick specific columns.
+*   `C "Name" :*: C "Age" :*: HNil` is how you list the columns you want to select. `HNil` marks the end of the list.
+
+#### Dropping Columns
+
+To remove the 'City' column from your DataFrame:
+
+```haskell
+import Sara.DataFrame.Wrangling (dropColumns)
+import Sara.DataFrame.Static (C) -- For column references
+
+droppedDF <- myDataFrame & dropColumns (C "City" :*: HNil)
+-- Result:
+-- Name    Age
+-- Alice   30
+-- Bob     24
+-- Charlie 35
+```
+
+Here:
+*   `dropColumns` is the function used to remove specific columns.
+*   `C "City" :*: HNil` lists the columns you want to drop.
+
+### How to Join DataFrames
+
+Joining DataFrames allows you to combine two DataFrames based on common columns, much like merging two separate lists of LEGOs that share some common identifier.
+
+Let's imagine we have two DataFrames:
+
+`employeesDF`:
+```
+Name    EmployeeID  Department
+Alice   101         HR
+Bob     102         Engineering
+Charlie 103         Marketing
+```
+
+`salariesDF`:
+```
+EmployeeID  Salary
+101         70000
+102         90000
+103         80000
+```
+
+We want to combine these two DataFrames to see each employee's department and salary.
+
+#### Inner Join
+
+An inner join returns only the rows where there is a match in *both* DataFrames based on the specified common column(s). In our LEGO analogy, it's like only keeping the LEGO pieces that have a matching connector on both sides.
+
+```haskell
+import Sara.DataFrame.Join (joinDF, JoinType(InnerJoin))
+import Sara.DataFrame.Static (C)
+
+-- Join employeesDF and salariesDF on the 'EmployeeID' column
+joinedDF <- joinDF InnerJoin (C "EmployeeID") employeesDF salariesDF
+-- Result:
+-- Name    EmployeeID  Department  Salary
+-- Alice   101         HR          70000
+-- Bob     102         Engineering 90000
+-- Charlie 103         Marketing   80000
+```
+
+Here:
+*   `joinDF` is the function for joining DataFrames.
+*   `InnerJoin` specifies the type of join.
+*   `C "EmployeeID"` indicates the common column to join on.
+
+#### Other Join Types
+
+Sara typically supports other standard SQL join types like `LeftJoin`, `RightJoin`, and `FullJoin`. The usage would be similar, just by changing the `JoinType` argument.
+
+### How to Aggregate Data (e.g., sum, average)
+
+Aggregating data means performing calculations on groups of rows to produce a single summary value, like finding the total sum of a column, the average, or counting items. This is like counting how many red LEGO bricks you have, or finding the average height of all your LEGO towers.
+
+Let's use a DataFrame with sales data:
+
+`salesDF`:
+```
+Region    Product   Sales
+East      A         100
+East      B         150
+West      A         200
+West      C         50
+East      A         120
+```
+
+#### Sum Aggregation
+
+To find the total sales for all products:
+
+```haskell
+import Sara.DataFrame.Aggregate (sumAgg)
+import Sara.DataFrame.Static (C)
+
+totalSales <- salesDF & sumAgg (C "Sales")
+-- Result: 620 (a single numeric value)
+```
+
+To find the total sales per region (group by 'Region'):
+
+```haskell
+import Sara.DataFrame.Aggregate (groupBy, sumAgg)
+import Sara.DataFrame.Static (C)
+
+salesByRegion <- salesDF & groupBy (C "Region") (sumAgg (C "Sales"))
+-- Result (conceptual DataFrame):
+-- Region  TotalSales
+-- East    370
+-- West    250
+```
+
+#### Average Aggregation
+
+To find the average sales for all products:
+
+```haskell
+import Sara.DataFrame.Aggregate (meanAgg)
+import Sara.DataFrame.Static (C)
+
+averageSales <- salesDF & meanAgg (C "Sales")
+-- Result: 124.0 (a single numeric value)
+```
+
+To find the average sales per product:
+
+```haskell
+import Sara.DataFrame.Aggregate (groupBy, meanAgg)
+import Sara.DataFrame.Static (C)
+
+averageSalesByProduct <- salesDF & groupBy (C "Product") (meanAgg (C "Sales"))
+-- Result (conceptual DataFrame):
+-- Product  AverageSales
+-- A        140.0
+-- B        150.0
+-- C        50.0
+```
+
+#### Count Aggregation
+
+To count the number of sales records:
+
+```haskell
+import Sara.DataFrame.Aggregate (countAgg)
+
+recordCount <- salesDF & countAgg
+-- Result: 5 (a single numeric value)
+```
+
+To count the number of products sold per region:
+
+```haskell
+import Sara.DataFrame.Aggregate (groupBy, countAgg)
+import Sara.DataFrame.Static (C)
+
+productCountByRegion <- salesDF & groupBy (C "Region") countAgg
+-- Result (conceptual DataFrame):
+-- Region  Count
+-- East    3
+-- West    2
+```
+
+## 4. IDE Configuration for Haskell Development
+
+Developing with Sara, like any Haskell project, greatly benefits from a well-configured Integrated Development Environment (IDE) or text editor. The key to a good Haskell development experience across most editors is the **Haskell Language Server (HLS)**. HLS provides features like:
+
+*   **Code Completion:** Suggestions for functions, types, and variables.
+*   **Type Information:** Hover over code to see its inferred type.
+*   **Error and Warning Diagnostics:** Real-time feedback on compilation issues.
+*   **Code Formatting:** Integration with tools like `ormolu` or `stylish-haskell`.
+*   **Refactoring Tools:** Basic refactoring capabilities.
+
+HLS works by integrating with your build system (Cabal or Stack) to understand your project.
+
+Here's how to set up some popular IDEs/editors for Haskell development, which will in turn provide excellent support for Sara:
+
+### Visual Studio Code (VS Code)
+
+VS Code is a popular choice due to its rich extension ecosystem.
+
+1.  **Install VS Code:** If you don't have it, download and install it from [code.visualstudio.com](https://code.visualstudio.com/).
+2.  **Install Haskell Extension:** Open VS Code, go to the Extensions view (Ctrl+Shift+X or Cmd+Shift+X), and search for "Haskell". Install the official "Haskell" extension by Haskell.
+3.  **Install HLS:** The Haskell VS Code extension will usually prompt you to install `haskell-language-server` (HLS) if it's not found. Follow the prompts. You can also install it manually via `ghcup`:
+    ```bash
+    ghcup install hls
+    ghcup set hls
+    ```
+4.  **Open Sara Project:** Open the root directory of your Sara project (`numerology-hs`) in VS Code. HLS should automatically detect your Cabal project and start providing language features.
+
+### Vim / Neovim
+
+For Vim and Neovim users, `coc.nvim` (Conquer of Completion) is a popular choice for integrating Language Server Protocol (LSP) features.
+
+1.  **Install `coc.nvim`:** Follow the installation instructions for `coc.nvim` (e.g., using `Plug 'neoclide/coc.nvim', {'branch': 'release'}`).
+2.  **Install `coc-tsserver` (for JavaScript/TypeScript, if needed) and `coc-json`:**
+    ```vim
+    :CocInstall coc-tsserver coc-json
+    ```
+3.  **Install HLS:** Ensure `haskell-language-server` is installed via `ghcup` (see VS Code instructions above).
+4.  **Configure `coc-settings.json`:** Add a language server configuration for Haskell. You can open `coc-settings.json` with `:CocConfig` and add something like:
+    ```json
+    {
+      "languageserver": {
+        "haskell": {
+          "command": "haskell-language-server-wrapper",
+          "args": [ "--lsp" ],
+          "rootPatterns": [
+            "*.cabal",
+            "stack.yaml",
+            "cabal.project",
+            ".git/"
+          ],
+          "filetypes": [ "haskell", "lhaskell" ]
+        }
+      }
+    }
+    ```
+    This tells `coc.nvim` to use `haskell-language-server-wrapper` for Haskell files.
+
+### Emacs
+
+Emacs users can leverage `lsp-mode` for LSP integration.
+
+1.  **Install `lsp-mode`:** Use `package-install` to install `lsp-mode` and `dap-mode`.
+2.  **Install HLS:** Ensure `haskell-language-server` is installed via `ghcup`.
+3.  **Configure `init.el`:** Add the following to your Emacs configuration:
+    ```emacs-lisp
+    (require 'lsp-mode)
+    (add-hook 'haskell-mode-hook #'lsp)
+    (setq lsp-haskell-server-path "haskell-language-server-wrapper")
+    (setq lsp-haskell-server-args '("--lsp"))
+    ```
+    You might also want to install `haskell-mode` for basic Haskell editing features.
+
+### JetBrains IntelliJ (with Haskell Plugin)
+
+JetBrains IDEs offer robust support through plugins.
+
+1.  **Install IntelliJ IDEA (Ultimate Edition recommended for full features):** Download from [jetbrains.com/idea/](https://www.jetbrains.com/idea/).
+2.  **Install Haskell Plugin:** Go to `File > Settings/Preferences > Plugins`, search for "Haskell", and install the "Haskell" plugin.
+3.  **Configure Plugin:** The plugin will guide you through setting up GHC, Cabal, and HLS. Ensure HLS is installed via `ghcup` as described above.
+
+### Sublime Text
+
+Sublime Text can use LSP features via the `LSP` package.
+
+1.  **Install Package Control:** If you don't have it, install Package Control for Sublime Text.
+2.  **Install `LSP` Package:** Open the Command Palette (Ctrl+Shift+P or Cmd+Shift+P), select `Package Control: Install Package`, and search for "LSP".
+3.  **Install `LSP-haskell` Package:** After installing `LSP`, install `LSP-haskell` through Package Control.
+4.  **Install HLS:** Ensure `haskell-language-server` is installed via `ghcup`.
+5.  **Configure `LSP-haskell`:** You might need to configure `LSP-haskell` settings (e.g., `Preferences > Package Settings > LSP > LSP-haskell > Settings`) to point to your HLS executable if it's not found automatically.
+
+### Atom (Deprecated) and Other Editors
+
+While Atom was once popular, it is now deprecated. For other editors, the general approach remains the same:
+
+1.  **Install an LSP client plugin/package** for your editor (if it doesn't have native LSP support).
+2.  **Ensure `haskell-language-server` (HLS) is installed** and accessible in your system's PATH.
+3.  **Configure the LSP client** to use `haskell-language-server-wrapper` as the command for Haskell files.
+
+By following these steps, you should be able to get a productive development environment for Sara and other Haskell projects in your preferred editor.
+
+## 3. Interactive Examples
+
+This section provides runnable code snippets that combine various Sara operations. You can copy and paste these into your Haskell environment (e.g., a `.hs` file or a GHCi session) to experiment.
+
+#### Example: Analyze Employee Data
+
+Let's imagine we have a CSV file named `employees.csv` with the following content:
+
+```csv
+Name,Department,Salary,YearsExperience
+Alice,HR,70000,5
+Bob,Engineering,90000,8
+Charlie,Marketing,80000,6
+David,HR,60000,3
+Eve,Engineering,95000,10
+```
+
+We want to perform the following analysis:
+1.  Load the `employees.csv` file.
+2.  Filter for employees in the 'Engineering' department.
+3.  Select only the 'Name' and 'Salary' columns.
+4.  Calculate the average salary for the filtered employees.
+
+```haskell
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE OverloadedStrings #-}
+
+import Sara.DataFrame
+import Sara.DataFrame.IO (readCsv)
+import Sara.DataFrame.Predicate ((.==))
+import Sara.DataFrame.Wrangling (filterRows, selectColumns)
+import Sara.DataFrame.Aggregate (meanAgg)
+import Sara.DataFrame.Static (C, HNil, (:*:))
+
+main :: IO ()
+main = do
+  -- 1. Load the employees.csv file
+  employeesDF <- readCsv "employees.csv"
+
+  putStrLn "\nOriginal DataFrame:"
+  print employeesDF -- Assuming a print instance for DataFrame
+
+  -- 2. Filter for employees in the 'Engineering' department
+  engineeringDF <- employeesDF & filterRows (C "Department" .== "Engineering")
+
+  putStrLn "\nEngineering Department Employees:"
+  print engineeringDF
+
+  -- 3. Select only the 'Name' and 'Salary' columns
+  namesAndSalariesDF <- engineeringDF & selectColumns (C "Name" :*: C "Salary" :*: HNil)
+
+  putStrLn "\nNames and Salaries (Engineering):"
+  print namesAndSalariesDF
+
+  -- 4. Calculate the average salary for the filtered employees
+  averageEngSalary <- engineeringDF & meanAgg (C "Salary")
+
+  putStrLn $ "\nAverage Engineering Salary: " ++ show averageEngSalary
+
+  putStrLn "\nAnalysis Complete."
+```
+
+**To run this example:**
+
+1.  Save the code above as a Haskell file (e.g., `AnalyzeEmployees.hs`).
+2.  Make sure you have an `employees.csv` file in the same directory as your Haskell file, with the content provided above.
+3.  Compile and run using Cabal or Stack (assuming Sara is installed and configured):
+    ```bash
+    cabal run AnalyzeEmployees.hs
+    # or if using stack
+    stack runghc AnalyzeEmployees.hs
+    ```
+
+This example demonstrates how Sara's type-safe operations guide you through data manipulation, catching potential errors at compile time.
