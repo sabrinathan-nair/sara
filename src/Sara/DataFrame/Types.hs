@@ -71,7 +71,7 @@ import Data.Proxy (Proxy(..))
 import GHC.TypeLits (symbolVal, Symbol, ErrorMessage(Text, (:<>:), ShowType), KnownSymbol, TypeError, CmpSymbol)
 import Data.Kind (Type, Constraint)
 import Data.Typeable (TypeRep, Typeable, typeRep)
-import Data.Maybe (fromMaybe)
+
 import Sara.Error (SaraError(..))
 import Control.Monad.Fail (fail)
 import qualified Data.Vector as V

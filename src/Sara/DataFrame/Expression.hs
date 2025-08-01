@@ -45,7 +45,7 @@ import qualified Data.Vector as V
 
 
 import Sara.Error (SaraError(..))
-import Control.Applicative (liftA2)
+
 
 -- | A type-safe expression GADT for `DataFrame` operations.
 -- The @cols@ parameter is the schema of the `DataFrame`, and @a@ is the return type of the expression.

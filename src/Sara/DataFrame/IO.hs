@@ -9,9 +9,6 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE TupleSections #-}
 
--- | This module provides functions for reading from and writing to common
--- data formats like CSV and JSON. It ensures that the data conforms to the
--- type-level schema of the `DataFrame`.
 module Sara.DataFrame.IO (
     -- * CSV Functions
     readCsv,
@@ -23,6 +20,10 @@ module Sara.DataFrame.IO (
     writeJSON,
     writeJSONStreaming
 ) where
+
+
+
+
 
 import qualified Data.ByteString.Lazy as BL
 import qualified Data.Csv as C
@@ -44,7 +45,7 @@ import GHC.Generics (Generic, Rep)
 
 import Sara.DataFrame.Types (DFValue(..), DataFrame(..), KnownColumns(..), toRows)
 import Sara.DataFrame.Static (readCsv)
-import Sara.DataFrame.Internal (HasSchema, Schema, recordToDFValueList, GToFields)
+import Sara.DataFrame.Internal (HasSchema, Schema, recordToDFValueList, GToFields, HasTypeName, getTypeName)
 import Sara.Error (SaraError(..))
 
 import Streaming (Stream, Of)
@@ -53,7 +54,7 @@ import Control.Monad.IO.Class (liftIO)
 
 -- | Reads a CSV file in a streaming fashion.
 -- It returns a `Stream` of `DataFrame`s, where each `DataFrame` contains a single row.
-readCsvStreaming :: forall record cols. (FromNamedRecord record, HasSchema record, cols ~ Schema record, KnownColumns cols, Generic record, GToFields (Rep record)) => Proxy record -> FilePath -> IO (Either SaraError (Stream (Of (DataFrame cols)) IO ()))
+readCsvStreaming :: forall record proxy cols. (FromNamedRecord record, HasSchema record, cols ~ Schema record, KnownColumns cols, Generic record, GToFields (Rep record), HasTypeName record) => proxy record -> FilePath -> IO (Either SaraError (Stream (Of (DataFrame cols)) IO ()))
 readCsvStreaming _ filePath = do
     contents <- liftIO $ BL.readFile filePath
     return $ case C.decodeByName contents :: Either String (C.Header, V.Vector record) of
@@ -61,10 +62,12 @@ readCsvStreaming _ filePath = do
         Right (header, records) ->
             let expectedColNames = V.fromList $ columnNames (Proxy @cols)
                 actualHeader = V.map TE.decodeUtf8 header
-            in if actualHeader /= expectedColNames
-                then Left $ IOError (T.pack $ "CSV header mismatch. Expected: " ++ show expectedColNames ++ ", Got: " ++ show actualHeader)
+                typeName = T.pack $ getTypeName (Proxy @record)
+                unprefixedExpectedColNames = V.map (T.drop (T.length typeName)) expectedColNames
+            in if actualHeader /= unprefixedExpectedColNames
+                then Left $ IOError (T.pack $ "CSV header mismatch. Expected: " ++ show unprefixedExpectedColNames ++ ", Got: " ++ show actualHeader)
                 else Right $ S.for (S.each (V.toList records)) $ \record -> do
-                    let rowMap = Map.fromList $ V.toList $ V.zip actualHeader (V.fromList (recordToDFValueList record))
+                    let rowMap = Map.fromList $ V.toList $ V.zip expectedColNames (V.fromList (recordToDFValueList record))
                     let df = DataFrame (Map.map V.singleton rowMap)
                     S.yield df
 

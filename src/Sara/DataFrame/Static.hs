@@ -137,14 +137,35 @@ inferCsvSchema typeName filePath = do
                     let recordName = mkName (typeName ++ "Record")
                     recordDec <- dataD (cxt []) recordName [] Nothing 
                                     [recC recordName (zipWith (\h t -> varBangType (mkName (T.unpack h)) (bangType (bang noSourceUnpackedness noSourceStrictness) (pure t))) normalizedPrefixedHeaders inferredTypes)]
-                                    [derivClause (Just StockStrategy) [pure (ConT (mkName "Show")), pure (ConT (mkName "Generic"))], derivClause (Just AnyclassStrategy) [pure (ConT (mkName "Data.Csv.FromNamedRecord"))]]
+                                    [derivClause (Just StockStrategy) [pure (ConT (mkName "Show")), pure (ConT (mkName "Generic"))]]
+
+                    fromNamedRecordInstance <- instanceD (cxt [])
+                        (pure (AppT (ConT (mkName "Data.Csv.FromNamedRecord")) (ConT recordName)))
+                        [funD (mkName "parseNamedRecord") [
+                            clause [varP (mkName "m")]
+                                (normalB (doE (
+                                    (map (\(header, normalizedHeader) ->
+                                        bindS (varP (mkName (T.unpack normalizedHeader)))
+                                              (appE (appE (varE (mkName "C..:")) (varE (mkName "m"))) (appE (varE (mkName "BC.pack")) (litE (stringL (T.unpack header)))))
+                                    ) (zip headers normalizedPrefixedHeaders)) ++
+                                    [noBindS (appE (varE (mkName "return")) (recConE recordName (map (\h -> fieldExp (mkName (T.unpack h)) (varE (mkName (T.unpack h)))) normalizedPrefixedHeaders)))]
+                                ))) []
+                            ]
+                        ]
 
                     -- Generate HasSchema instance
                     hasSchemaInstance <- instanceD (cxt []) (pure (AppT (ConT (mkName "Sara.DataFrame.Internal.HasSchema")) (ConT recordName))) [
                         pure $ TySynInstD (TySynEqn Nothing (AppT (ConT (mkName "Schema")) (ConT recordName)) schemaListType)
                         ]
 
-                    return [typeSyn, recordDec, hasSchemaInstance]
+                    -- Generate HasTypeName instance
+                    hasTypeNameInstance <- instanceD (cxt []) (pure (AppT (ConT (mkName "Sara.DataFrame.Internal.HasTypeName")) (ConT recordName))) [
+                        funD (mkName "getTypeName") [
+                            clause [wildP] (normalB (litE (stringL typeName))) []
+                            ]
+                        ]
+
+                    return [typeSyn, recordDec, hasSchemaInstance, fromNamedRecordInstance, hasTypeNameInstance]
 
 -- | Reads a CSV file into a `Vector` of records.
 -- It normalizes the header fields to be valid Haskell identifiers before decoding.

@@ -39,10 +39,10 @@ import Data.Proxy (Proxy(..))
 import Data.Kind (Type)
 import Streaming (Stream, Of(..))
 import qualified Streaming.Prelude as S
-import Data.Maybe (mapMaybe)
-import Sara.DataFrame.Types (type (:++:))
 
-import Data.Either (partitionEithers)
+
+
+
 
 -- | A typeclass for aggregatable types.
 class Aggregatable a where

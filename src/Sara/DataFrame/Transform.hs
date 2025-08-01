@@ -36,7 +36,7 @@ import Sara.DataFrame.Predicate (FilterPredicate, evaluate)
 import GHC.TypeLits
 import Data.Proxy (Proxy(..))
 import Data.Kind (Type)
-import Data.Maybe (fromMaybe, fromJust)
+
 
 import Streaming (Stream, Of)
 import qualified Streaming.Prelude as S

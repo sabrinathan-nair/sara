@@ -60,7 +60,14 @@ library
 executable sara-tutorial
   main-is:          Tutorial.hs
   hs-source-dirs:      app
-  build-depends:       base, sara, text, containers, vector, time, parallel, vector-strategies, deepseq, cassava, streaming
+  build-depends:
+        base >=4.18.0.0 && <4.19,
+        sara,
+        streaming,
+        cassava,
+        bytestring,
+        time,
+        text
   default-language:    Haskell2010
   ghc-options:         -Wall
 

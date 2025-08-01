@@ -23,7 +23,7 @@ import GHC.TypeLits
 import Data.Proxy (Proxy(..))
 import qualified Data.Text as T
 import qualified Data.Map.Strict as Map
-import qualified Data.Vector as V
+
 
 import Sara.Error (SaraError(..))
 

@@ -38,7 +38,7 @@ import qualified Data.Map.Strict as Map
 import qualified Data.Vector as V
 import Data.List (sortBy)
 import Sara.DataFrame.Types (DFValue(..), DataFrame(..), Row, toRows, fromRows, SortOrder(..), SortCriterion(..), KnownColumns(..), CanBeDFValue(..), getDataFrameMap, Column, TypeOf, HasColumn, HasColumns, isNA)
-import Data.Maybe (fromMaybe, fromJust)
+
 import Sara.DataFrame.Predicate (FilterPredicate(FilterPredicate), evaluate, RowPredicate(ExprPredicate))
 import Sara.DataFrame.Expression (Expr(Col))
 import GHC.TypeLits (Symbol, KnownSymbol, symbolVal, CmpSymbol, TypeError, ErrorMessage(..))

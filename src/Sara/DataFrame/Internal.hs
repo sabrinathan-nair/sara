@@ -8,11 +8,22 @@
 {-# LANGUAGE DefaultSignatures #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE AllowAmbiguousTypes #-}
 
 -- | This module provides internal utilities for converting between Haskell records
 -- and `DataFrame`s. It uses GHC.Generics to automatically derive the necessary
 -- conversions.
-module Sara.DataFrame.Internal where
+module Sara.DataFrame.Internal (
+    -- * Type Classes
+    HasSchema(..),
+    HasTypeName(..),
+    GToFields(..),
+    ToDataFrameRecord(..),
+    -- * Functions
+    recordToDFValueList,
+    transpose,
+    combineDataFramesPure
+) where
 
 import Data.Csv (FromNamedRecord)
 import qualified Data.Vector as V
@@ -46,6 +57,10 @@ instance (Generic a, GToFields (Rep a), FromNamedRecord a, KnownColumns (Schema 
 class HasSchema a where
   -- | The schema of the record, represented as a type-level list of `(Symbol, Type)`.
   type Schema a :: [(Symbol, Type)]
+
+-- | A typeclass for records that have a type name.
+class HasTypeName a where
+  getTypeName :: Proxy a -> String
 
 -- | A generic typeclass for converting a generic representation of a record
 -- into a list of `DFValue`s.
