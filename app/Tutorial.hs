@@ -28,16 +28,7 @@ import Data.Csv (FromNamedRecord)
 import GHC.Generics (Generic)
 
 
--- | Infer the schema for the `employees.csv` file and create a type synonym `Employees`.
--- It also creates a record type `EmployeesRecord` for parsing the CSV.
-$(inferCsvSchema "Employees" "employees.csv")
 
--- | Infer the schema for the `departments.csv` file and create a type synonym `Departments`.
--- It also creates a record type `DepartmentsRecord` for parsing the CSV.
-$(inferCsvSchema "Departments" "departments.csv")
-
--- | A tutorial demonstrating the use of the Sara library.
--- This function is not currently used in the main application.
 tutorial :: IO ()
 tutorial = do
     readResult <- readCsvStreaming (Proxy @EmployeesRecord) "employees.csv"

@@ -29,7 +29,8 @@ import Sara.DataFrame.Join (joinDF, CreateOutputRow)
 import Data.Proxy (Proxy(..))
 import Streaming (Stream, Of)
 import qualified Streaming.Prelude as S
-import Sara.DataFrame.IO (readJSONStreaming, writeJSONStreaming)
+import Sara.DataFrame.IO (readJSONStreaming, writeJSONStreaming, readCsvStreaming)
+import Sara.Schema.Definitions (EmployeesRecord)
 import Data.Either (partitionEithers)
 import Control.Monad.IO.Class (liftIO)
 import Sara.Error (SaraError(..))
@@ -234,6 +235,16 @@ main = hspec $ do
             case (aggMap Map.! "Category_count") V.!? 1 of
                 Just (IntValue i) -> i `shouldBe` 2
                 _ -> expectationFailure "Expected IntValue for countB"
+
+    describe "CSV Streaming" $ do
+        it "handles empty CSV file" $ do
+            withSystemTempFile "empty.csv" $ \filePath handle -> do
+                BL.hPutStr handle ""
+                hClose handle
+                readResult <- readCsvStreaming (Proxy @EmployeesRecord) filePath
+                case readResult of
+                    Left (ParsingError err) -> err `shouldBe` "parse error (not enough input) at \"\""
+                    _ -> expectationFailure "Expected ParsingError for empty CSV file"
 
     describe "JSON Streaming" $ do
         let testDataFrame = fromRows @'[ '("name", T.Text), '("age", Int)] [

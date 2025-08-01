@@ -24,6 +24,7 @@ library
                      , Sara.DataFrame.Internal
                      , Sara.DataFrame.Apply
                      , Sara.Error
+                     , Sara.Schema.Definitions
   hs-source-dirs:      src
   build-depends:       base >=4.14 && <5
                      , text
@@ -102,6 +103,7 @@ test-suite sara-test
     , Sara.DataFrame.Apply
     , Sara.DataFrame.Join
     , Sara.Error
+    , Sara.Schema.Definitions
 
 benchmark sara-benchmark
   type:                exitcode-stdio-1.0
