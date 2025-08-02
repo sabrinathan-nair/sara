@@ -5,7 +5,10 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE DeriveGeneric #-}
 
-module Sara.Schema.Definitions where
+module Sara.Schema.Definitions (
+    EmployeesRecord,
+    DepartmentsRecord
+) where
 
 import Sara.DataFrame.Static (inferCsvSchema)
 import Data.Text (Text)

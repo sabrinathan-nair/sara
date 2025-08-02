@@ -2,6 +2,7 @@
 -- from CSV files. This allows for creating `DataFrame`s with compile-time guarantees
 -- about column names and types.
 {-# LANGUAGE DoAndIfThenElse #-}
+{-# LANGUAGE DeriveAnyClass #-}
 module Sara.DataFrame.Static (
     -- * Template Haskell Functions
     tableTypes,
@@ -54,9 +55,9 @@ tableTypes name filePath = do
             let fields = zipWith (\h t -> (mkName (T.unpack (normalizeFieldName h)), inferDFType t)) headers firstRow
             let recordName = mkName name
             record <- dataD (cxt []) recordName [] Nothing [recC recordName (map (\(n, t) -> varBangType n (bangType (bang noSourceUnpackedness noSourceStrictness) t)) fields)]
-              [ derivClause (Just StockStrategy) [pure (ConT (mkName "Show")), pure (ConT (mkName "Generic"))]
-              , derivClause (Just AnyclassStrategy) [pure (ConT (mkName "Data.Csv.FromNamedRecord"))]
-              ]
+              [derivClause (Just StockStrategy) [pure (ConT (mkName "Show")), pure (ConT (mkName "Generic"))]
+                                    , derivClause (Just AnyclassStrategy) [pure (ConT (mkName "Data.Csv.FromNamedRecord"))]
+                                    ]
             return [record]
 
 -- | Normalizes a field name to be a valid Haskell identifier.
@@ -116,7 +117,7 @@ inferDFType s = do
 inferCsvSchema :: String -> FilePath -> Q [Dec]
 inferCsvSchema typeName filePath = do
     contents <- runIO $ BL.readFile filePath
-    case C.decode C.NoHeader contents :: Either String (V.Vector (V.Vector BC.ByteString)) of
+    case C.decode NoHeader contents :: Either String (V.Vector (V.Vector BC.ByteString)) of
         Left err -> fail err
         Right records -> do
             if V.null records || V.length records < 2

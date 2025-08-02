@@ -63,9 +63,9 @@ readCsvStreaming _ filePath = do
             let expectedColNames = V.fromList $ columnNames (Proxy @cols)
                 actualHeader = V.map TE.decodeUtf8 header
                 typeName = T.pack $ getTypeName (Proxy @record)
-                unprefixedExpectedColNames = V.map (T.drop (T.length typeName)) expectedColNames
-            in if actualHeader /= unprefixedExpectedColNames
-                then Left $ IOError (T.pack $ "CSV header mismatch. Expected: " ++ show unprefixedExpectedColNames ++ ", Got: " ++ show actualHeader)
+                prefixedActualHeader = V.map (typeName <>) actualHeader
+            in if prefixedActualHeader /= expectedColNames
+                then Left $ IOError (T.pack $ "CSV header mismatch. Expected: " ++ show expectedColNames ++ ", Got: " ++ show prefixedActualHeader)
                 else Right $ S.for (S.each (V.toList records)) $ \record -> do
                     let rowMap = Map.fromList $ V.toList $ V.zip expectedColNames (V.fromList (recordToDFValueList record))
                     let df = DataFrame (Map.map V.singleton rowMap)
