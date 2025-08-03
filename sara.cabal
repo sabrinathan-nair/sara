@@ -83,6 +83,7 @@ test-suite sara-test
                      , QuickCheck
                      , constraints
                      , mtl
+                     , sqlite-simple
   default-language:    Haskell2010
   ghc-options:         -Wall
   other-modules:
@@ -105,6 +106,7 @@ test-suite sara-test
     , Sara.Schema.Definitions
     , Sara.DataFrame.Concat
     , Sara.DataFrame.CsvInstances
+    , Sara.DataFrame.SQL
 
 benchmark sara-benchmark
   type:                exitcode-stdio-1.0

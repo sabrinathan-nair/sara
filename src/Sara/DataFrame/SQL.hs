@@ -18,6 +18,7 @@ import Database.SQLite.Simple
 import Data.Proxy (Proxy(..))
 import Data.Typeable (TypeRep, typeRep)
 import Control.Monad (forM)
+import Control.Exception (try, SomeException)
 
 import Sara.DataFrame.Types
 import Sara.Error (SaraError(..))
@@ -51,32 +52,37 @@ sqlDataToDFValue expectedType sqlData =
 -- It also validates that the types of the values in the query result match the schema.
 readSQL :: forall cols. KnownColumns cols => Proxy cols -> FilePath -> Query -> IO (Either SaraError (DataFrame cols))
 readSQL p dbPath sqlQuery = do
-    conn <- open dbPath
-    rows <- query_ conn sqlQuery :: IO [[SQLData]]
-    close conn
+    result <- try (do
+        conn <- open dbPath
+        rows <- query_ conn sqlQuery :: IO [[SQLData]]
+        close conn
+        return rows) :: IO (Either SomeException [[SQLData]])
 
-    let expectedColNames = columnNames p
-        colCount = length expectedColNames
-        expectedColTypes = columnTypes p
+    case result of
+        Left e -> return $ Left $ GenericError (T.pack $ show e)
+        Right rows -> do
+            let expectedColNames = columnNames p
+                colCount = length expectedColNames
+                expectedColTypes = columnTypes p
 
-    case rows of
-        [] -> return $ Right $ DataFrame Map.empty
-        (firstRow:_) -> do
-            if length firstRow /= colCount
-                then return $ Left $ GenericError (T.pack $ "SQL query result column count mismatch. Expected " ++ show colCount ++ ", got " ++ show (length firstRow))
-                else do
-                    let processedRowsResult :: Either SaraError [[DFValue]]
-                        processedRowsResult = forM rows $ \row ->
-                            if length row /= colCount
-                                then Left $ GenericError (T.pack $ "Inconsistent column count in SQL result. Expected " ++ show colCount ++ ", got " ++ show (length row))
-                                else forM (zip expectedColTypes row) $ uncurry sqlDataToDFValue
+            case rows of
+                [] -> return $ Right $ DataFrame Map.empty
+                (firstRow:_) -> do
+                    if length firstRow /= colCount
+                        then return $ Left $ GenericError (T.pack $ "SQL query result column count mismatch. Expected " ++ show colCount ++ ", got " ++ show (length firstRow))
+                        else do
+                            let processedRowsResult :: Either SaraError [[DFValue]]
+                                processedRowsResult = forM rows $ \row ->
+                                    if length row /= colCount
+                                        then Left $ GenericError (T.pack $ "Inconsistent column count in SQL result. Expected " ++ show colCount ++ ", got " ++ show (length row))
+                                        else forM (zip expectedColTypes row) $ uncurry sqlDataToDFValue
 
-                    case processedRowsResult of
-                        Left err -> return $ Left err
-                        Right processedRows -> do
-                            let columns = transpose processedRows
-                            let finalColumnsMap = Map.fromList $ zip expectedColNames (map V.fromList columns)
-                            return $ Right $ DataFrame finalColumnsMap
+                            case processedRowsResult of
+                                Left err -> return $ Left err
+                                Right processedRows -> do
+                                    let columns = transpose processedRows
+                                    let finalColumnsMap = Map.fromList $ zip expectedColNames (map V.fromList columns)
+                                    return $ Right $ DataFrame finalColumnsMap
 
 transpose :: [[a]] -> [[a]]
 transpose [] = []

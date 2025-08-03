@@ -27,10 +27,13 @@ import Sara.DataFrame.Expression
 import Sara.DataFrame.Predicate hiding ((===))
 import Sara.DataFrame.Join (joinDF, CreateOutputRow)
 import Sara.DataFrame.Concat (concatDF)
+import Sara.DataFrame.Missing (fillna, ffill, bfill, dropna, isna, notna, DropAxis(..))
 import Data.Proxy (Proxy(..))
 import Streaming (Stream, Of)
 import qualified Streaming.Prelude as S
 import Sara.DataFrame.IO (readJSONStreaming, writeJSONStreaming, readCsvStreaming)
+import Sara.DataFrame.SQL (readSQL)
+import Database.SQLite.Simple
 import Sara.Schema.Definitions (EmployeesRecord)
 import Data.Either (partitionEithers)
 import Control.Monad.IO.Class (liftIO)
@@ -419,6 +422,225 @@ main = hspec $ do
             let dfY = fromRows @'[ '("colA", Int), '("colB", T.Text)] [Map.fromList [("colA", IntValue 2), ("colB", TextValue "y")]]
             let resultDf = concatDF (Proxy @'[ '("colA", Int), '("colB", T.Text)]) ConcatColumns [dfX, dfY]
             toRows resultDf `shouldBe` [Map.fromList [("colA", IntValue 2), ("colB", TextValue "y")]]
+
+    describe "SQL Integration" $ do
+        let withTempDb :: (FilePath -> IO a) -> IO a
+            withTempDb action = withSystemTempFile "test.db" $ \filePath handle -> do
+                hClose handle -- Close the handle immediately, as sqlite opens it itself
+                action filePath
+
+        it "reads data from a simple SQL table" $ do
+            withTempDb $ \dbPath -> do
+                conn <- open dbPath
+                execute_ conn "CREATE TABLE users (id INTEGER, name TEXT, age INTEGER)"
+                execute_ conn "INSERT INTO users (id, name, age) VALUES (1, 'Alice', 30)"
+                execute_ conn "INSERT INTO users (id, name, age) VALUES (2, 'Bob', 25)"
+                close conn
+
+                let expectedSchema = Proxy @'[ '("id", Int), '("name", T.Text), '("age", Int)]
+                resultEither <- readSQL expectedSchema dbPath "SELECT id, name, age FROM users"
+                case resultEither of
+                    Left err -> expectationFailure $ show err
+                    Right df -> do
+                        let expectedRows = [
+                                Map.fromList [("id", IntValue 1), ("name", TextValue "Alice"), ("age", IntValue 30)],
+                                Map.fromList [("id", IntValue 2), ("name", TextValue "Bob"), ("age", IntValue 25)]
+                                ]
+                        toRows df `shouldBe` expectedRows
+
+        it "reads data from an empty SQL table" $ do
+            withTempDb $ \dbPath -> do
+                conn <- open dbPath
+                execute_ conn "CREATE TABLE empty_table (col1 INTEGER, col2 TEXT)"
+                close conn
+
+                let expectedSchema = Proxy @'[ '("col1", Int), '("col2", T.Text)]
+                resultEither <- readSQL expectedSchema dbPath "SELECT col1, col2 FROM empty_table"
+                case resultEither of
+                    Left err -> expectationFailure $ show err
+                    Right df -> isEmpty df `shouldBe` True
+
+        it "reads data with different types including Bool and NA" $ do
+            withTempDb $ \dbPath -> do
+                conn <- open dbPath
+                execute_ conn "CREATE TABLE mixed_types (id INTEGER, name TEXT, active BOOLEAN, value REAL, description TEXT)"
+                execute_ conn "INSERT INTO mixed_types (id, name, active, value, description) VALUES (1, 'Test1', 'true', 1.23, NULL)"
+                execute_ conn "INSERT INTO mixed_types (id, name, active, value, description) VALUES (2, 'Test2', 'false', 4.56, 'some text')"
+                close conn
+
+                let expectedSchema = Proxy @'[ '("id", Int), '("name", T.Text), '("active", Bool), '("value", Double), '("description", T.Text)]
+                resultEither <- readSQL expectedSchema dbPath "SELECT id, name, active, value, description FROM mixed_types"
+                case resultEither of
+                    Left err -> expectationFailure $ show err
+                    Right df -> do
+                        let expectedRows = [
+                                Map.fromList [("id", IntValue 1), ("name", TextValue "Test1"), ("active", BoolValue True), ("value", DoubleValue 1.23), ("description", NA)],
+                                Map.fromList [("id", IntValue 2), ("name", TextValue "Test2"), ("active", BoolValue False), ("value", DoubleValue 4.56), ("description", TextValue "some text")]]
+                        toRows df `shouldBe` expectedRows
+
+        it "handles non-existent database file (no such table)" $ do
+            let expectedSchema = Proxy @'[ '("id", Int)]
+            resultEither <- readSQL expectedSchema "non_existent_temp.db" "SELECT id FROM users"
+            case resultEither of
+                Left (GenericError err) -> T.unpack err `shouldContain` "no such table"
+                _ -> expectationFailure "Expected GenericError for non-existent table in new DB"
+
+        it "handles column count mismatch" $ do
+            withTempDb $ \dbPath -> do
+                conn <- open dbPath
+                execute_ conn "CREATE TABLE test_table (col1 INTEGER, col2 TEXT)"
+                execute_ conn "INSERT INTO test_table (col1, col2) VALUES (1, 'a')"
+                close conn
+
+                let expectedSchema = Proxy @'[ '("col1", Int)] -- Expecting only one column
+                resultEither <- readSQL expectedSchema dbPath "SELECT col1, col2 FROM test_table"
+                case resultEither of
+                    Left (GenericError err) -> T.unpack err `shouldContain` "column count mismatch"
+                    _ -> expectationFailure "Expected GenericError for column count mismatch"
+
+        it "handles type mismatch" $ do
+            withTempDb $ \dbPath -> do
+                conn <- open dbPath
+                execute_ conn "CREATE TABLE test_table (col1 INTEGER)"
+                execute_ conn "INSERT INTO test_table (col1) VALUES ('not_an_int')"
+                close conn
+
+                let expectedSchema = Proxy @'[ '("col1", Int)]
+                resultEither <- readSQL expectedSchema dbPath "SELECT col1 FROM test_table"
+                case resultEither of
+                    Left (TypeMismatch expected actual) -> do
+                        expected `shouldBe` "Int"
+                        T.unpack actual `shouldContain` "not_an_int"
+                    _ -> expectationFailure "Expected TypeMismatch for type mismatch"
+
+        it "handles unsupported SQL type (BLOB)" $ do
+            withTempDb $ \dbPath -> do
+                conn <- open dbPath
+                execute_ conn "CREATE TABLE test_table (col1 BLOB)"
+                execute_ conn "INSERT INTO test_table (col1) VALUES (X'010203')"
+                close conn
+
+                let expectedSchema = Proxy @'[ '("col1", Int)] -- Type doesn't matter, it's about the BLOB
+                resultEither <- readSQL expectedSchema dbPath "SELECT col1 FROM test_table"
+                case resultEither of
+                    Left (GenericError err) -> err `shouldBe` "Unsupported SQL type: BLOB"
+                    _ -> expectationFailure "Expected GenericError for unsupported BLOB type"
+
+    describe "Missing Data Handling" $ do
+        let dfWithNAs = fromRows @'[ '("colA", Int), '("colB", T.Text), '("colC", Double)] [
+                Map.fromList [("colA", IntValue 1), ("colB", TextValue "a"), ("colC", DoubleValue 1.1)],
+                Map.fromList [("colA", NA), ("colB", TextValue "b"), ("colC", NA)],
+                Map.fromList [("colA", IntValue 3), ("colB", NA), ("colC", DoubleValue 3.3)],
+                Map.fromList [("colA", NA), ("colB", NA), ("colC", NA)]
+                ]
+        let dfNoNAs = fromRows @'[ '("colA", Int)] [
+                Map.fromList [("colA", IntValue 1)],
+                Map.fromList [("colA", IntValue 2)]
+                ]
+        let emptyDf = DataFrame Map.empty
+
+        it "fills NA values in a specific column" $ do
+            let filledDf = fillna dfWithNAs (Proxy @Int) (Just "colA") (99 :: Int)
+            let expectedRows = [
+                    Map.fromList [("colA", IntValue 1), ("colB", TextValue "a"), ("colC", DoubleValue 1.1)],
+                    Map.fromList [("colA", IntValue 99), ("colB", TextValue "b"), ("colC", NA)],
+                    Map.fromList [("colA", IntValue 3), ("colB", NA), ("colC", DoubleValue 3.3)],
+                    Map.fromList [("colA", IntValue 99), ("colB", NA), ("colC", NA)]
+                    ]
+            toRows filledDf `shouldBe` expectedRows
+
+        it "fills NA values in all columns" $ do
+            let filledDf = fillna dfWithNAs (Proxy @Int) Nothing (0 :: Int)
+            let expectedRows = [
+                    Map.fromList [("colA", IntValue 1), ("colB", TextValue "a"), ("colC", DoubleValue 1.1)],
+                    Map.fromList [("colA", IntValue 0), ("colB", TextValue "b"), ("colC", IntValue 0)],
+                    Map.fromList [("colA", IntValue 3), ("colB", IntValue 0), ("colC", DoubleValue 3.3)],
+                    Map.fromList [("colA", IntValue 0), ("colB", IntValue 0), ("colC", IntValue 0)]
+                    ]
+            toRows filledDf `shouldBe` expectedRows
+
+        it "does nothing if no NAs are present" $ do
+            let filledDf = fillna dfNoNAs (Proxy @Int) Nothing (99 :: Int)
+            filledDf `shouldBe` dfNoNAs
+
+        it "handles empty DataFrame for fillna" $ do
+            let filledDf = fillna (emptyDf :: DataFrame '[]) (Proxy @Int) Nothing (99 :: Int)
+            filledDf `shouldBe` (emptyDf :: DataFrame '[])
+
+        it "performs ffill (forward fill)" $ do
+            let df = fromRows @'[ '("colA", Int)] [
+                    Map.fromList [("colA", IntValue 1)],
+                    Map.fromList [("colA", NA)],
+                    Map.fromList [("colA", IntValue 3)],
+                    Map.fromList [("colA", NA)]
+                    ]
+            let filledDf = ffill df
+            let expectedRows = [
+                    Map.fromList [("colA", IntValue 1)],
+                    Map.fromList [("colA", IntValue 1)],
+                    Map.fromList [("colA", IntValue 3)],
+                    Map.fromList [("colA", IntValue 3)]
+                    ]
+            toRows filledDf `shouldBe` expectedRows
+
+        it "performs bfill (backward fill)" $ do
+            let df = fromRows @'[ '("colA", Int)] [
+                    Map.fromList [("colA", NA)],
+                    Map.fromList [("colA", IntValue 2)],
+                    Map.fromList [("colA", NA)],
+                    Map.fromList [("colA", IntValue 4)]
+                    ]
+            let filledDf = bfill df
+            let expectedRows = [
+                    Map.fromList [("colA", IntValue 2)],
+                    Map.fromList [("colA", IntValue 2)],
+                    Map.fromList [("colA", IntValue 4)],
+                    Map.fromList [("colA", IntValue 4)]
+                    ]
+            toRows filledDf `shouldBe` expectedRows
+
+        it "drops rows with any NA values" $ do
+            let droppedDf = dropna dfWithNAs DropRows Nothing
+            let expectedRows = [
+                    Map.fromList [("colA", IntValue 1), ("colB", TextValue "a"), ("colC", DoubleValue 1.1)]
+                    ]
+            toRows droppedDf `shouldBe` expectedRows
+
+        it "drops rows based on threshold" $ do
+            let droppedDf = dropna dfWithNAs DropRows (Just 2) -- Requires at least 2 non-NA values
+            let expectedRows = [
+                    Map.fromList [("colA", IntValue 1), ("colB", TextValue "a"), ("colC", DoubleValue 1.1)],
+                    Map.fromList [("colA", IntValue 3), ("colB", NA), ("colC", DoubleValue 3.3)]
+                    ]
+            toRows droppedDf `shouldBe` expectedRows
+
+        it "drops columns with any NA values" $ do
+            let droppedDf = dropna dfWithNAs DropColumns Nothing
+            toRows droppedDf `shouldBe` []
+
+        it "drops columns based on threshold" $ do
+            let droppedDf = dropna dfWithNAs DropColumns (Just 3) -- Requires at least 3 non-NA values
+            toRows droppedDf `shouldBe` []
+
+        it "returns isna DataFrame" $ do
+            let isnaDf = isna dfWithNAs
+            let expectedRows = [
+                    Map.fromList [("colA", BoolValue False), ("colB", BoolValue False), ("colC", BoolValue False)],
+                    Map.fromList [("colA", BoolValue True), ("colB", BoolValue False), ("colC", BoolValue True)],
+                    Map.fromList [("colA", BoolValue False), ("colB", BoolValue True), ("colC", BoolValue False)],
+                    Map.fromList [("colA", BoolValue True), ("colB", BoolValue True), ("colC", BoolValue True)]
+                    ]
+            toRows isnaDf `shouldBe` expectedRows
+
+        it "returns notna DataFrame" $ do
+            let notnaDf = notna dfWithNAs
+            let expectedRows = [
+                    Map.fromList [("colA", BoolValue True), ("colB", BoolValue True), ("colC", BoolValue True)],
+                    Map.fromList [("colA", BoolValue False), ("colB", BoolValue True), ("colC", BoolValue False)],
+                    Map.fromList [("colA", BoolValue True), ("colB", BoolValue False), ("colC", BoolValue True)],
+                    Map.fromList [("colA", BoolValue False), ("colB", BoolValue False), ("colC", BoolValue False)]
+                    ]
+            toRows notnaDf `shouldBe` expectedRows
 
     describe "Granular QuickCheck Properties" $ do
         prop "filterRows with a tautology predicate is identity" (prop_filterRows_tautology @'[ '("Name", T.Text), '("Age", Int), '("Salary", Double)])
