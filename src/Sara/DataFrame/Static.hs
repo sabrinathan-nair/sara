@@ -2,7 +2,6 @@
 -- from CSV files. This allows for creating `DataFrame`s with compile-time guarantees
 -- about column names and types.
 {-# LANGUAGE DoAndIfThenElse #-}
-{-# LANGUAGE DeriveAnyClass #-}
 module Sara.DataFrame.Static (
     -- * Template Haskell Functions
     tableTypes,
@@ -27,8 +26,7 @@ import Text.Read (readEither)
 import Data.Maybe (isJust)
 import Data.Either (isRight)
 import Sara.DataFrame.Internal ()
-import Sara.DataFrame.Instances ()
-
+import Sara.DataFrame.CsvInstances ()
 
 -- | A Template Haskell function that generates a record type from a CSV file.
 -- The first row of the CSV file is used to determine the field names.
@@ -114,8 +112,8 @@ inferDFType s = do
 -- > type PeopleSchema = '[ "name" ::: T.Text, "age" ::: Int ]
 -- > data PeopleSchemaRecord = PeopleSchemaRecord { peopleSchemaname :: T.Text, peopleSchemaage :: Int } ...
 -- > instance HasSchema PeopleSchemaRecord where type Schema PeopleSchemaRecord = PeopleSchema
-inferCsvSchema :: String -> FilePath -> Q [Dec]
-inferCsvSchema typeName filePath = do
+inferCsvSchema :: String -> Bool -> FilePath -> Q [Dec]
+inferCsvSchema typeName withPrefix filePath = do
     contents <- runIO $ BL.readFile filePath
     case C.decode NoHeader contents :: Either String (V.Vector (V.Vector BC.ByteString)) of
         Left err -> fail err
@@ -129,27 +127,26 @@ inferCsvSchema typeName filePath = do
                             V.toList $ V.map (\row -> TE.decodeUtf8 (row V.! colIdx)) dataRows
                     
                     inferredTypes <- mapM inferColumnTypeFromSamples columnSamples
-                    let prefixedHeaders = map (T.pack typeName <>) headers
-                    let normalizedPrefixedHeaders = map normalizeFieldName prefixedHeaders
-                    let schemaListType = foldr (\(h, t) acc -> PromotedConsT `AppT` (PromotedTupleT 2 `AppT` LitT (StrTyLit (T.unpack h)) `AppT` t) `AppT` acc) PromotedNilT (zip prefixedHeaders inferredTypes)
+                    let finalHeaders = if withPrefix then map (T.pack typeName <>) headers else headers
+                    let normalizedFinalHeaders = map normalizeFieldName finalHeaders
+                    let schemaListType = foldr (\(h, t) acc -> PromotedConsT `AppT` (PromotedTupleT 2 `AppT` LitT (StrTyLit (T.unpack h)) `AppT` t) `AppT` acc) PromotedNilT (zip finalHeaders inferredTypes)
                     let typeSyn = TySynD (mkName typeName) [] schemaListType
 
                     -- Generate a concrete record type for CSV parsing
                     let recordName = mkName (typeName ++ "Record")
                     recordDec <- dataD (cxt []) recordName [] Nothing 
-                                    [recC recordName (zipWith (\h t -> varBangType (mkName (T.unpack h)) (bangType (bang noSourceUnpackedness noSourceStrictness) (pure t))) normalizedPrefixedHeaders inferredTypes)]
+                                    [recC recordName (zipWith (\h t -> varBangType (mkName (T.unpack h)) (bangType (bang noSourceUnpackedness noSourceStrictness) (pure t))) normalizedFinalHeaders inferredTypes)]
                                     [derivClause (Just StockStrategy) [pure (ConT (mkName "Show")), pure (ConT (mkName "Generic"))]]
 
                     fromNamedRecordInstance <- instanceD (cxt [])
                         (pure (AppT (ConT (mkName "Data.Csv.FromNamedRecord")) (ConT recordName)))
                         [funD (mkName "parseNamedRecord") [
                             clause [varP (mkName "m")]
-                                (normalB (doE (
-                                    (map (\(header, normalizedHeader) ->
+                                (normalB (doE (zipWith (\header normalizedHeader ->
                                         bindS (varP (mkName (T.unpack normalizedHeader)))
                                               (appE (appE (varE (mkName "C..:")) (varE (mkName "m"))) (appE (varE (mkName "BC.pack")) (litE (stringL (T.unpack header)))))
-                                    ) (zip headers normalizedPrefixedHeaders)) ++
-                                    [noBindS (appE (varE (mkName "return")) (recConE recordName (map (\h -> fieldExp (mkName (T.unpack h)) (varE (mkName (T.unpack h)))) normalizedPrefixedHeaders)))]
+                                    ) headers normalizedFinalHeaders ++
+                                    [noBindS (appE (varE (mkName "return")) (recConE recordName (map (\h -> fieldExp (mkName (T.unpack h)) (varE (mkName (T.unpack h)))) normalizedFinalHeaders)))]
                                 ))) []
                             ]
                         ]

@@ -20,11 +20,11 @@ library
                      , Sara.DataFrame.Types
                      , Sara.DataFrame.Wrangling
                      , Sara.REPL
-                     , Sara.DataFrame.Instances
                      , Sara.DataFrame.Internal
                      , Sara.DataFrame.Apply
                      , Sara.Error
                      , Sara.Schema.Definitions
+                     , Sara.DataFrame.CsvInstances
   hs-source-dirs:      src
   build-depends:       base >=4.14 && <5
                      , text
@@ -97,7 +97,6 @@ test-suite sara-test
     , Sara.DataFrame.Wrangling
     , Sara.DataFrame.Expression
     , Sara.DataFrame.Predicate
-    , Sara.DataFrame.Instances
     , Sara.DataFrame.Static
     , Sara.DataFrame.Internal
     , Sara.DataFrame.Apply

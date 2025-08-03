@@ -79,7 +79,7 @@ addColumn expr (DataFrame dfMap) =
         numRows = case Map.toList dfMap of
             [] -> 0
             (_, col) : _ -> V.length col
-        newColumnValues = V.fromList <$> traverse (\idx -> toDFValue <$> evaluateExpr expr dfMap idx) [0 .. numRows - 1]
+        newColumnValues = V.fromList <$> traverse (fmap toDFValue . evaluateExpr expr dfMap) [0 .. numRows - 1]
     in
         case newColumnValues of
             Right vals -> Right $ DataFrame (Map.insert colName vals dfMap)
@@ -139,7 +139,7 @@ applyColumn colProxy f =
         let colName = T.pack (symbolVal colProxy)
         let dfMap = getDataFrameMap df
         let oldColumn = dfMap Map.! colName
-        let newColumn = V.map (\val -> fromRight NA (toDFValue . f <$> fromDFValue val)) oldColumn
+        let newColumn = V.map (\val -> either (const NA) (toDFValue . f) (fromDFValue val)) oldColumn
         let newDfMap = Map.insert colName newColumn dfMap
         return $ Right $ DataFrame newDfMap
     )
@@ -153,7 +153,7 @@ mutate :: forall newColName newColType cols newCols.
          -> Expr cols newColType
          -> DataFrame cols
          -> Either SaraError (DataFrame newCols)
-mutate newColProxy expr df = addColumn @'(newColName, newColType) expr df
+mutate _ = addColumn @'(newColName, newColType)
 
 -- | Filters rows from a DataFrame based on a type-safe predicate.
 filterRows :: forall cols.

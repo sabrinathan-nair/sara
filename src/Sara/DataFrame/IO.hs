@@ -8,6 +8,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE TupleSections #-}
+{-# OPTIONS_GHC -Wno-orphans #-}
 
 module Sara.DataFrame.IO (
     -- * CSV Functions
@@ -45,31 +46,61 @@ import GHC.Generics (Generic, Rep)
 
 import Sara.DataFrame.Types (DFValue(..), DataFrame(..), KnownColumns(..), toRows)
 import Sara.DataFrame.Static (readCsv)
-import Sara.DataFrame.Internal (HasSchema, Schema, recordToDFValueList, GToFields, HasTypeName, getTypeName)
+import Sara.DataFrame.Internal (HasSchema, Schema, recordToDFValueList, GToFields)
 import Sara.Error (SaraError(..))
 
 import Streaming (Stream, Of)
 import qualified Streaming.Prelude as S
-import Control.Monad.IO.Class (liftIO)
+import Control.Exception (try, IOException)
+import Control.Applicative ((<|>))
+import Sara.DataFrame.CsvInstances ()
+
+
+
+
+
+
+
+-- | Parses a `DFValue` from a CSV field.
+-- It tries to parse the field in the following order:
+--
+-- 1.  `NA` (if the field is "NA" or empty)
+-- 2.  `IntValue`
+-- 3.  `DoubleValue`
+-- 4.  `BoolValue`
+-- 5.  `DateValue`
+-- 6.  `TimestampValue`
+-- 7.  `TextValue` (as a fallback)
+instance C.FromField DFValue where
+    parseField s
+        | s == "NA" || s == "" = return NA
+        | otherwise = 
+            (IntValue <$> C.parseField s) <|> 
+            (DoubleValue <$> C.parseField s) <|> 
+            (BoolValue <$> C.parseField s) <|> 
+            (DateValue <$> C.parseField s) <|> 
+            (TimestampValue <$> C.parseField s) <|> 
+            (TextValue <$> (TE.decodeUtf8 <$> C.parseField s))
 
 -- | Reads a CSV file in a streaming fashion.
 -- It returns a `Stream` of `DataFrame`s, where each `DataFrame` contains a single row.
-readCsvStreaming :: forall record proxy cols. (FromNamedRecord record, HasSchema record, cols ~ Schema record, KnownColumns cols, Generic record, GToFields (Rep record), HasTypeName record) => proxy record -> FilePath -> IO (Either SaraError (Stream (Of (DataFrame cols)) IO ()))
+readCsvStreaming :: forall record proxy cols. (FromNamedRecord record, HasSchema record, cols ~ Schema record, KnownColumns cols, Generic record, GToFields (Rep record)) => proxy record -> FilePath -> IO (Either SaraError (Stream (Of (DataFrame cols)) IO ()))
 readCsvStreaming _ filePath = do
-    contents <- liftIO $ BL.readFile filePath
-    return $ case C.decodeByName contents :: Either String (C.Header, V.Vector record) of
-        Left err -> Left $ ParsingError (T.pack err)
-        Right (header, records) ->
-            let expectedColNames = V.fromList $ columnNames (Proxy @cols)
-                actualHeader = V.map TE.decodeUtf8 header
-                typeName = T.pack $ getTypeName (Proxy @record)
-                prefixedActualHeader = V.map (typeName <>) actualHeader
-            in if prefixedActualHeader /= expectedColNames
-                then Left $ IOError (T.pack $ "CSV header mismatch. Expected: " ++ show expectedColNames ++ ", Got: " ++ show prefixedActualHeader)
-                else Right $ S.for (S.each (V.toList records)) $ \record -> do
-                    let rowMap = Map.fromList $ V.toList $ V.zip expectedColNames (V.fromList (recordToDFValueList record))
-                    let df = DataFrame (Map.map V.singleton rowMap)
-                    S.yield df
+    eContents <- try (BL.readFile filePath) :: IO (Either IOException BL.ByteString)
+    case eContents of
+        Left e -> return $ Left $ IOError (T.pack $ show e)
+        Right contents -> return $ case C.decodeByName contents :: Either String (C.Header, V.Vector record) of
+            Left err -> Left $ ParsingError (T.pack err)
+            Right (header, records) ->
+                let expectedColNames = V.fromList $ columnNames (Proxy @cols)
+                    actualHeader = V.map TE.decodeUtf8 header
+                in if actualHeader /= expectedColNames
+                    then Left $ IOError (T.pack $ "CSV header mismatch. Expected: " ++ show expectedColNames ++ ", Got: " ++ show actualHeader)
+                    else Right $ S.for (S.each (V.toList records)) $ \record -> do
+                        let rowMap = Map.fromList $ V.toList $ V.zip expectedColNames (V.fromList (recordToDFValueList record))
+                        let df = DataFrame (Map.map V.singleton rowMap)
+                        S.yield df
+
 
 
 -- | Converts a `DFValue` to a `ByteString` for writing to a CSV file.
@@ -137,12 +168,14 @@ readJSON p filePath = do
 -- It reads the entire file into memory before processing.
 readJSONStreaming :: forall cols. KnownColumns cols => Proxy cols -> FilePath -> IO (Either SaraError (Stream (Of (DataFrame cols)) IO ()))
 readJSONStreaming _ filePath = do
-    jsonData <- liftIO $ BL.readFile filePath
-    case A.eitherDecode jsonData :: Either String [Map T.Text DFValue] of
-        Left err -> return $ Left $ ParsingError (T.pack err)
-        Right rows -> return $ Right $ S.for (S.each rows) $ \row -> do
-            let rowMap = Map.map V.singleton row
-            S.yield (DataFrame rowMap)
+    eJsonData <- try (BL.readFile filePath) :: IO (Either IOException BL.ByteString)
+    case eJsonData of
+        Left e -> return $ Left $ IOError (T.pack $ show e)
+        Right jsonData -> case A.eitherDecode jsonData :: Either String [Map T.Text DFValue] of
+            Left err -> return $ Left $ ParsingError (T.pack err)
+            Right rows -> return $ Right $ S.for (S.each rows) $ \row -> do
+                let rowMap = Map.map V.singleton row
+                S.yield (DataFrame rowMap)
 
 
 -- | Writes a `DataFrame` to a JSON file.

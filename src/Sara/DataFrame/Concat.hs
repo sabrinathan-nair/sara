@@ -42,7 +42,7 @@ concatDF ConcatRows (firstDf:restDfs) =
         -- Aggregate all columns from all DataFrames
         concatenatedColumns = Map.fromList $ map (\colName ->
             let
-                allColValues = V.concat [ col | (DataFrame dfMap) <- (firstDf:restDfs), Just col <- [Map.lookup colName dfMap] ]
+                allColValues = V.concat [ col | (DataFrame dfMap) <- firstDf:restDfs, Just col <- [Map.lookup colName dfMap] ]
             in
                 (colName, allColValues)
             ) columnNames

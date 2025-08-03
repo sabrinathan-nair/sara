@@ -9,6 +9,7 @@ NC='\033[0m' # No Color
 TEST_FILES=(
     "test/ShouldNotCompile/UpdateNonExistentColumn.hs"
     "test/ShouldNotCompile/SortNonOrdColumn.hs"
+    "test/ShouldNotCompile/MutateShouldFail.hs"
 )
 
 for TEST_FILE in "${TEST_FILES[@]}"; do

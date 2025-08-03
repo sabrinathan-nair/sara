@@ -10,9 +10,6 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GADTs #-}
-{-# LANGUAGE ViewPatterns #-}
-{-# LANGUAGE BangPatterns #-}
-{-# LANGUAGE LambdaCase #-}
 
 -- | This module provides functions for grouping and aggregating data in a DataFrame.
 -- It allows for type-safe operations like `groupBy`, `sumAgg`, `meanAgg`, and `countAgg`.
@@ -39,10 +36,6 @@ import Data.Proxy (Proxy(..))
 import Data.Kind (Type)
 import Streaming (Stream, Of(..))
 import qualified Streaming.Prelude as S
-
-
-
-
 
 -- | A typeclass for aggregatable types.
 class Aggregatable a where
@@ -86,7 +79,7 @@ sumAgg groupedDfIO = do
                 case valsEither of
                     Right vals ->
                         let aggVal = (aggregate :: [TypeOf col originalCols] -> Aggregated (TypeOf col originalCols)) vals
-                        in (Map.insert (colName <> T.pack "_sum") (toDFValue aggVal) (let (TypeLevelRow r) = key in r)) : acc
+                        in Map.insert (colName <> T.pack "_sum") (toDFValue aggVal) (let (TypeLevelRow r) = key in r) : acc
                     Left _ -> acc -- Or handle error appropriately
             ) [] groupedDf
     return $ fromRows newRows
@@ -103,11 +96,9 @@ meanAgg :: forall (col :: Symbol) (groupCols :: [(Symbol, Type)]) (originalCols 
           , CanBeDFValue (Aggregated (TypeOf col originalCols))
           , KnownColumns (groupCols :++: '[ '(col, Aggregated (TypeOf col originalCols))])
           ) => IO (GroupedDataFrame groupCols originalCols) -> IO (DataFrame (groupCols :++: '[ '(col, Aggregated (TypeOf col originalCols))]))
-meanAgg groupedDfIO = do
-    groupedDf <- groupedDfIO
-    return $ fromRows (newRows groupedDf)
+meanAgg groupedDfIO = fromRows . newRows <$> groupedDfIO
   where
-    newRows groupedDf = Map.foldrWithKey (\key (DataFrame df) acc ->
+    newRows = Map.foldrWithKey (\key (DataFrame df) acc ->
         let
             colName = T.pack $ symbolVal (Proxy @col)
             valsEither = case Map.lookup colName df of
@@ -118,9 +109,9 @@ meanAgg groupedDfIO = do
                 Right vals ->
                     let aggVal = (aggregate :: [TypeOf col originalCols] -> Aggregated (TypeOf col originalCols)) vals
                         countVal = fromIntegral $ length vals
-                    in (Map.insert (colName <> T.pack "_mean") (toDFValue (aggVal / countVal)) (let (TypeLevelRow r) = key in r)) : acc
+                    in Map.insert (colName <> T.pack "_mean") (toDFValue (aggVal / countVal)) (let (TypeLevelRow r) = key in r) : acc
                 Left _ -> acc -- Or handle error appropriately
-        ) [] groupedDf
+        ) []
 
 -- | Counts the values in a single group.
 countGroup :: forall (col :: Symbol) (groupCols :: [(Symbol, Type)]) (originalCols :: [(Symbol, Type)])
@@ -137,11 +128,9 @@ countGroup groupedDf = fromRows newRows
         let
             colName = T.pack $ symbolVal (Proxy @col)
             -- Just count the number of elements in the vector for that column
-            countVal = case Map.lookup colName df of
-                Just vec -> V.length vec
-                Nothing -> 0
+            countVal = maybe 0 V.length (Map.lookup colName df)
         in
-            (Map.insert (colName <> T.pack "_count") (toDFValue countVal) (let (TypeLevelRow r) = key in r)) : acc
+            Map.insert (colName <> T.pack "_count") (toDFValue countVal) (let (TypeLevelRow r) = key in r) : acc
         ) [] groupedDf
 
 -- | Counts the values of a column in a grouped `DataFrame`.
@@ -153,9 +142,7 @@ countAgg :: forall (col :: Symbol) (groupCols :: [(Symbol, Type)]) (originalCols
            , CanBeDFValue (TypeOf col originalCols)
            , KnownColumns (groupCols :++: '[ '(col, Int)])
            ) => IO (GroupedDataFrame groupCols originalCols) -> IO (DataFrame (groupCols :++: '[ '(col, Int)]))
-countAgg groupedDfIO = do
-    groupedDf <- groupedDfIO
-    return $ countGroup @col groupedDf
+countAgg groupedDfIO = countGroup @col <$> groupedDfIO
 
 -- | A `GroupedDataFrame` is the result of a `groupBy` operation.
 -- It's a map where keys are `TypeLevelRow`s representing the unique values of grouping columns,

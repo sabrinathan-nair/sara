@@ -14,7 +14,6 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE AllowAmbiguousTypes #-}
-{-# LANGUAGE TupleSections #-}
 
 module Sara.DataFrame.Types (
     DFValue(..),
@@ -83,6 +82,7 @@ import Test.QuickCheck
 import Data.Time.Calendar (fromGregorian)
 import Data.Time.Clock (UTCTime(..), secondsToDiffTime)
 
+
 -- | A type class for generating arbitrary DFValues of a specific type.
 class ArbitraryDFValueType a where
     arbitraryDFValue :: Gen DFValue
@@ -94,7 +94,7 @@ instance ArbitraryDFValueType Double where
     arbitraryDFValue = DoubleValue <$> arbitrary
 
 instance ArbitraryDFValueType T.Text where
-    arbitraryDFValue = TextValue <$> (T.pack <$> listOf (elements ['a'..'z']))
+    arbitraryDFValue = TextValue . T.pack <$> listOf (elements ['a'..'z'])
 
 instance ArbitraryDFValueType Day where
     arbitraryDFValue = DateValue <$> arbitraryDay
@@ -110,7 +110,7 @@ instance Arbitrary DFValue where
     arbitrary = oneof [
         IntValue <$> arbitrary,
         DoubleValue <$> arbitrary,
-        TextValue <$> (T.pack <$> listOf (elements ['a'..'z'])),
+        TextValue . T.pack <$> listOf (elements ['a'..'z']),
         DateValue <$> arbitraryDay,
         TimestampValue <$> arbitraryUTCTime,
         BoolValue <$> arbitrary,
@@ -118,7 +118,7 @@ instance Arbitrary DFValue where
         ]
 
 arbitraryDay :: Gen Day
-arbitraryDay = fromGregorian <$> arbitrary <*> (choose (1,12)) <*> (choose (1,28))
+arbitraryDay = fromGregorian <$> arbitrary <*> choose (1,12) <*> choose (1,28)
 
 arbitraryUTCTime :: Gen UTCTime
 arbitraryUTCTime = UTCTime <$> arbitraryDay <*> (secondsToDiffTime <$> choose (0, 86400))

@@ -139,6 +139,8 @@ main = hspec $ do
                         Just (IntValue i) -> i `shouldBe` 35
                         _ -> expectationFailure "Expected IntValue for AgePlusFive"
 
+        
+
     describe "Type-Safe joinDF" $ do
         let createJoinTestDataFrame1 :: IO (DataFrame '[ '("ID", Int), '("Name", T.Text), '("Age", Int)])
             createJoinTestDataFrame1 = do
@@ -246,6 +248,21 @@ main = hspec $ do
                     Left (ParsingError err) -> err `shouldBe` "parse error (not enough input) at \"\""
                     _ -> expectationFailure "Expected ParsingError for empty CSV file"
 
+        it "handles non-existent CSV file" $ do
+            readResult <- readCsvStreaming (Proxy @EmployeesRecord) "non_existent.csv"
+            case readResult of
+                Left (IOError err) -> T.unpack err `shouldContain` "non_existent.csv"
+                _ -> expectationFailure "Expected IOError for non-existent CSV file"
+
+        it "handles malformed CSV file" $ do
+            withSystemTempFile "malformed.csv" $ \filePath handle -> do
+                BL.hPutStr handle "col1,col2\nval1\n"
+                hClose handle
+                readResult <- readCsvStreaming (Proxy @EmployeesRecord) filePath
+                case readResult of
+                    Left (ParsingError err) -> T.unpack err `shouldContain` "conversion error: no field named \"EmployeeID\""
+                    _ -> expectationFailure "Expected ParsingError for malformed CSV file"
+
     describe "JSON Streaming" $ do
         let testDataFrame = fromRows @'[ '("name", T.Text), '("age", Int)] [
                 Map.fromList [("name", TextValue "Alice"), ("age", IntValue 30)],
@@ -265,6 +282,21 @@ main = hspec $ do
                         case readDfEither of
                             Left err -> expectationFailure $ show err
                             Right readDf -> readDf `shouldBe` testDataFrame
+
+        it "handles non-existent JSON file" $ do
+            readResult <- readJSONStreaming (Proxy @'[ '("name", T.Text), '("age", Int)]) "non_existent.json"
+            case readResult of
+                Left (IOError err) -> T.unpack err `shouldContain` "non_existent.json"
+                _ -> expectationFailure "Expected IOError for non-existent JSON file"
+
+        it "handles malformed JSON file" $ do
+            withSystemTempFile "malformed.json" $ \filePath handle -> do
+                BL.hPutStr handle "[{" -- Malformed JSON
+                hClose handle
+                readResult <- readJSONStreaming (Proxy @'[ '("name", T.Text), '("age", Int)]) filePath
+                case readResult of
+                    Left (ParsingError err) -> T.unpack err `shouldContain` "Unexpected end-of-input, expecting record key literal or }"
+                    _ -> expectationFailure "Expected ParsingError for malformed JSON file"
 
     describe "QuickCheck Properties" $ do
         prop "fromRows . toRows is identity" (prop_fromRows_toRows_identity @'[ '("Name", T.Text), '("Age", Int), '("Salary", Double)])
