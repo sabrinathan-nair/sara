@@ -56,6 +56,10 @@ instance Aggregatable T.Text where
     type Aggregated T.Text = Int
     aggregate = length
 
+-- Helper to extract non-NA values from a Column
+getNonNAValues :: forall a. CanBeDFValue a => Column -> [a]
+getNonNAValues col = [ val | dfVal <- V.toList col, Right val <- [fromDFValue dfVal], dfVal /= NA ]
+
 -- | Sums the values of a column in a grouped `DataFrame`.
 sumAgg :: forall (col :: Symbol) (groupCols :: [(Symbol, Type)]) (originalCols :: [(Symbol, Type)])
        . ( HasColumn col originalCols
@@ -72,15 +76,13 @@ sumAgg groupedDfIO = do
     let newRows = Map.foldrWithKey (\key (DataFrame df) acc ->
             let
                 colName = T.pack $ symbolVal (Proxy @col)
-                valsEither = case Map.lookup colName df of
-                    Just vec -> traverse (fromDFValue @(TypeOf col originalCols)) (V.toList vec)
-                    Nothing -> Right []
+                vals = getNonNAValues (df Map.! colName) :: [TypeOf col originalCols]
             in
-                case valsEither of
-                    Right vals ->
+                if null vals
+                    then Map.insert (colName <> T.pack "_sum") (toDFValue (0.0 :: Double)) (let (TypeLevelRow r) = key in r) : acc -- Return 0.0 if no non-NA values
+                    else
                         let aggVal = (aggregate :: [TypeOf col originalCols] -> Aggregated (TypeOf col originalCols)) vals
                         in Map.insert (colName <> T.pack "_sum") (toDFValue aggVal) (let (TypeLevelRow r) = key in r) : acc
-                    Left _ -> acc -- Or handle error appropriately
             ) [] groupedDf
     return $ fromRows newRows
 
@@ -96,22 +98,21 @@ meanAgg :: forall (col :: Symbol) (groupCols :: [(Symbol, Type)]) (originalCols 
           , CanBeDFValue (Aggregated (TypeOf col originalCols))
           , KnownColumns (groupCols :++: '[ '(col, Aggregated (TypeOf col originalCols))])
           ) => IO (GroupedDataFrame groupCols originalCols) -> IO (DataFrame (groupCols :++: '[ '(col, Aggregated (TypeOf col originalCols))]))
-meanAgg groupedDfIO = fromRows . newRows <$> groupedDfIO
-  where
-    newRows = Map.foldrWithKey (\key (DataFrame df) acc ->
-        let
-            colName = T.pack $ symbolVal (Proxy @col)
-            valsEither = case Map.lookup colName df of
-                Just vec -> traverse (fromDFValue @(TypeOf col originalCols)) (V.toList vec)
-                Nothing -> Right []
-        in
-            case valsEither of
-                Right vals ->
-                    let aggVal = (aggregate :: [TypeOf col originalCols] -> Aggregated (TypeOf col originalCols)) vals
-                        countVal = fromIntegral $ length vals
-                    in Map.insert (colName <> T.pack "_mean") (toDFValue (aggVal / countVal)) (let (TypeLevelRow r) = key in r) : acc
-                Left _ -> acc -- Or handle error appropriately
-        ) []
+meanAgg groupedDfIO = do
+    groupedDf <- groupedDfIO
+    let newRows = Map.foldrWithKey (\key (DataFrame df) acc ->
+            let
+                colName = T.pack $ symbolVal (Proxy @col)
+                vals = getNonNAValues (df Map.! colName) :: [TypeOf col originalCols]
+            in
+                if null vals
+                    then Map.insert (colName <> T.pack "_mean") (toDFValue (0.0 :: Double)) (let (TypeLevelRow r) = key in r) : acc -- Return 0.0 if no non-NA values
+                    else
+                        let aggVal = (aggregate :: [TypeOf col originalCols] -> Aggregated (TypeOf col originalCols)) vals
+                            countVal = fromIntegral $ length vals
+                        in Map.insert (colName <> T.pack "_mean") (toDFValue (aggVal / countVal)) (let (TypeLevelRow r) = key in r) : acc
+            ) [] groupedDf
+    return $ fromRows newRows
 
 -- | Counts the values in a single group.
 countGroup :: forall (col :: Symbol) (groupCols :: [(Symbol, Type)]) (originalCols :: [(Symbol, Type)])
@@ -121,17 +122,18 @@ countGroup :: forall (col :: Symbol) (groupCols :: [(Symbol, Type)]) (originalCo
              , KnownColumns originalCols
              , CanBeDFValue (TypeOf col originalCols)
              , KnownColumns (groupCols :++: '[ '(col, Int)])
-             ) => GroupedDataFrame groupCols originalCols -> DataFrame (groupCols :++: '[ '(col, Int)])
-countGroup groupedDf = fromRows newRows
-  where
-    newRows = Map.foldrWithKey (\key (DataFrame df) acc ->
-        let
-            colName = T.pack $ symbolVal (Proxy @col)
-            -- Just count the number of elements in the vector for that column
-            countVal = maybe 0 V.length (Map.lookup colName df)
-        in
-            Map.insert (colName <> T.pack "_count") (toDFValue countVal) (let (TypeLevelRow r) = key in r) : acc
-        ) [] groupedDf
+             ) => IO (GroupedDataFrame groupCols originalCols) -> IO (DataFrame (groupCols :++: '[ '(col, Int)]))
+countGroup groupedDfIO = do
+    groupedDf <- groupedDfIO
+    let newRows = Map.foldrWithKey (\key (DataFrame df) acc ->
+            let
+                colName = T.pack $ symbolVal (Proxy @col)
+                -- Count only non-NA values
+                countVal = length $ filter (/= NA) (V.toList (df Map.! colName))
+            in
+                Map.insert (colName <> T.pack "_count") (toDFValue countVal) (let (TypeLevelRow r) = key in r) : acc
+            ) [] groupedDf
+    return $ fromRows newRows
 
 -- | Counts the values of a column in a grouped `DataFrame`.
 countAgg :: forall (col :: Symbol) (groupCols :: [(Symbol, Type)]) (originalCols :: [(Symbol, Type)])
@@ -142,7 +144,7 @@ countAgg :: forall (col :: Symbol) (groupCols :: [(Symbol, Type)]) (originalCols
            , CanBeDFValue (TypeOf col originalCols)
            , KnownColumns (groupCols :++: '[ '(col, Int)])
            ) => IO (GroupedDataFrame groupCols originalCols) -> IO (DataFrame (groupCols :++: '[ '(col, Int)]))
-countAgg groupedDfIO = countGroup @col <$> groupedDfIO
+countAgg = countGroup @col @groupCols @originalCols
 
 -- | A `GroupedDataFrame` is the result of a `groupBy` operation.
 -- It's a map where keys are `TypeLevelRow`s representing the unique values of grouping columns,
