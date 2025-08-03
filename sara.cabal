@@ -103,6 +103,8 @@ test-suite sara-test
     , Sara.DataFrame.Join
     , Sara.Error
     , Sara.Schema.Definitions
+    , Sara.DataFrame.Concat
+    , Sara.DataFrame.CsvInstances
 
 benchmark sara-benchmark
   type:                exitcode-stdio-1.0

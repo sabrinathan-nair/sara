@@ -26,6 +26,7 @@ import Sara.DataFrame.Aggregate
 import Sara.DataFrame.Expression
 import Sara.DataFrame.Predicate hiding ((===))
 import Sara.DataFrame.Join (joinDF, CreateOutputRow)
+import Sara.DataFrame.Concat (concatDF)
 import Data.Proxy (Proxy(..))
 import Streaming (Stream, Of)
 import qualified Streaming.Prelude as S
@@ -291,7 +292,7 @@ main = hspec $ do
 
         it "handles malformed JSON file" $ do
             withSystemTempFile "malformed.json" $ \filePath handle -> do
-                BL.hPutStr handle "[{" -- Malformed JSON
+                BL.hPutStr handle "[{"
                 hClose handle
                 readResult <- readJSONStreaming (Proxy @'[ '("name", T.Text), '("age", Int)]) filePath
                 case readResult of
@@ -300,6 +301,124 @@ main = hspec $ do
 
     describe "QuickCheck Properties" $ do
         prop "fromRows . toRows is identity" (prop_fromRows_toRows_identity @'[ '("Name", T.Text), '("Age", Int), '("Salary", Double)])
+
+    describe "Expression Evaluation" $ do
+        let testDataFrameMap = Map.fromList [
+                ("colA", V.fromList [IntValue 10, IntValue 20, IntValue 30]),
+                ("colB", V.fromList [IntValue 2, IntValue 4, IntValue 6]),
+                ("colC", V.fromList [TextValue "hello", TextValue "world", TextValue "haskell"]),
+                ("colD", V.fromList [DoubleValue 10.0, DoubleValue 20.0, DoubleValue 30.0]),
+                ("colE", V.fromList [DoubleValue 0.0, DoubleValue 1.0, DoubleValue 2.0]),
+                ("colF", V.fromList [BoolValue True, BoolValue False, BoolValue True])
+                ]
+
+        it "evaluates Lit correctly" $ do
+            evaluateExpr (lit (5 :: Int)) testDataFrameMap 0 `shouldBe` Right 5
+            evaluateExpr (lit ("test" :: T.Text)) testDataFrameMap 0 `shouldBe` Right "test"
+
+        it "evaluates Col correctly" $ do
+            evaluateExpr (col (Proxy @"colA") :: Expr '[ '("colA", Int)] Int) testDataFrameMap 0 `shouldBe` Right 10
+            evaluateExpr (col (Proxy @"colC") :: Expr '[ '("colC", T.Text)] T.Text) testDataFrameMap 1 `shouldBe` Right "world"
+
+        it "handles ColumnNotFound error" $ do
+            -- To test ColumnNotFound at runtime, we create an Expr that refers to a column
+            -- that is part of the *type-level* schema, but then provide a dfMap that *lacks* that column.
+            let missingColMap = Map.fromList [
+                    ("colA", V.fromList [IntValue 10])
+                    ]
+            evaluateExpr (col (Proxy @"colB") :: Expr '[ '("colA", Int), '("colB", Int)] Int) missingColMap 0 `shouldBe` Left (ColumnNotFound "colB")
+
+        it "evaluates Add correctly" $ do
+            evaluateExpr (lit (5 :: Int) +.+ lit (3 :: Int)) testDataFrameMap 0 `shouldBe` Right 8
+            evaluateExpr (col (Proxy @"colA") +.+ lit (5 :: Int) :: Expr '[ '("colA", Int)] Int) testDataFrameMap 0 `shouldBe` Right 15
+
+        it "evaluates Subtract correctly" $ do
+            evaluateExpr (lit (5 :: Int) -.- lit (3 :: Int)) testDataFrameMap 0 `shouldBe` Right 2
+            evaluateExpr (col (Proxy @"colA") -.- lit (5 :: Int) :: Expr '[ '("colA", Int)] Int) testDataFrameMap 0 `shouldBe` Right 5
+
+        it "evaluates Multiply correctly" $ do
+            evaluateExpr (lit (5 :: Int) *.* lit (3 :: Int)) testDataFrameMap 0 `shouldBe` Right 15
+            evaluateExpr (col (Proxy @"colA") *.* lit (2 :: Int) :: Expr '[ '("colA", Int)] Int) testDataFrameMap 0 `shouldBe` Right 20
+
+        it "evaluates Divide correctly" $ do
+            evaluateExpr (lit (10 :: Double) /.! lit (2 :: Double)) testDataFrameMap 0 `shouldBe` Right 5.0
+            evaluateExpr (col (Proxy @"colD") /.! lit (2 :: Double) :: Expr '[ '("colD", Double)] Double) testDataFrameMap 0 `shouldBe` Right 5.0
+
+        it "evaluates GreaterThan correctly" $ do
+            evaluateExpr (lit (10 :: Int) >. lit (5 :: Int)) testDataFrameMap 0 `shouldBe` Right True
+            evaluateExpr (lit (5 :: Int) >. lit (10 :: Int)) testDataFrameMap 0 `shouldBe` Right False
+            evaluateExpr (col (Proxy @"colA") >. lit (5 :: Int) :: Expr '[ '("colA", Int)] Bool) testDataFrameMap 0 `shouldBe` Right True
+
+        it "evaluates LessThan correctly" $ do
+            evaluateExpr (lit (5 :: Int) <. lit (10 :: Int)) testDataFrameMap 0 `shouldBe` Right True
+            evaluateExpr (lit (10 :: Int) <. lit (5 :: Int)) testDataFrameMap 0 `shouldBe` Right False
+            evaluateExpr (col (Proxy @"colA") <. lit (5 :: Int) :: Expr '[ '("colA", Int)] Bool) testDataFrameMap 0 `shouldBe` Right False
+
+        it "evaluates EqualTo correctly" $ do
+            evaluateExpr (lit (5 :: Int) ===. lit (5 :: Int)) testDataFrameMap 0 `shouldBe` Right True
+            evaluateExpr (lit (5 :: Int) ===. lit (10 :: Int)) testDataFrameMap 0 `shouldBe` Right False
+            evaluateExpr (col (Proxy @"colA") ===. lit (10 :: Int) :: Expr '[ '("colA", Int)] Bool) testDataFrameMap 0 `shouldBe` Right True
+
+        it "evaluates GreaterThanOrEqualTo correctly" $ do
+            evaluateExpr (lit (10 :: Int) >=. lit (10 :: Int)) testDataFrameMap 0 `shouldBe` Right True
+            evaluateExpr (lit (5 :: Int) >=. lit (10 :: Int)) testDataFrameMap 0 `shouldBe` Right False
+
+        it "evaluates And correctly" $ do
+            evaluateExpr (lit True &&. lit True) testDataFrameMap 0 `shouldBe` Right True
+            evaluateExpr (lit True &&. lit False) testDataFrameMap 0 `shouldBe` Right False
+            evaluateExpr (col (Proxy @"colF") &&. lit True :: Expr '[ '("colF", Bool)] Bool) testDataFrameMap 1 `shouldBe` Right False
+
+        it "evaluates Or correctly" $ do
+            evaluateExpr (lit True ||. lit False) testDataFrameMap 0 `shouldBe` Right True
+            evaluateExpr (lit False ||. lit False) testDataFrameMap 0 `shouldBe` Right False
+            evaluateExpr (col (Proxy @"colF") ||. lit False :: Expr '[ '("colF", Bool)] Bool) testDataFrameMap 1 `shouldBe` Right False
+
+        it "evaluates ApplyFn correctly" $ do
+            evaluateExpr (ApplyFn (+1) (lit (5 :: Int))) testDataFrameMap 0 `shouldBe` Right 6
+            evaluateExpr (ApplyFn T.reverse (lit ("olleh" :: T.Text))) testDataFrameMap 0 `shouldBe` Right "hello"
+
+    describe "DataFrame Concatenation" $ do
+        let df1 = fromRows @'[ '("colA", Int), '("colB", T.Text)] [
+                Map.fromList [("colA", IntValue 1), ("colB", TextValue "a")]
+                ]
+        let df2 = fromRows @'[ '("colA", Int), '("colB", T.Text)] [
+                Map.fromList [("colA", IntValue 2), ("colB", TextValue "b")]
+                ]
+        let emptyDf = DataFrame Map.empty
+
+        it "concatenates two non-empty DataFrames by rows" $ do
+            let resultDf = concatDF (Proxy @'[ '("colA", Int), '("colB", T.Text)]) ConcatRows [df1, df2]
+            toRows resultDf `shouldBe` [
+                Map.fromList [("colA", IntValue 1), ("colB", TextValue "a")],
+                Map.fromList [("colA", IntValue 2), ("colB", TextValue "b")]
+                ]
+
+        it "concatenates an empty DataFrame with a non-empty one by rows" $ do
+            let resultDf = concatDF (Proxy @'[ '("colA", Int), '("colB", T.Text)]) ConcatRows [emptyDf, df1]
+            toRows resultDf `shouldBe` toRows df1
+
+        it "concatenates a non-empty DataFrame with an empty one by rows" $ do
+            let resultDf = concatDF (Proxy @'[ '("colA", Int), '("colB", T.Text)]) ConcatRows [df1, emptyDf]
+            toRows resultDf `shouldBe` toRows df1
+
+        it "concatenates multiple empty DataFrames by rows" $ do
+            let resultDf = concatDF (Proxy @'[ '("colA", Int), '("colB", T.Text)]) ConcatRows [emptyDf, emptyDf]
+            isEmpty resultDf `shouldBe` True
+
+        it "concatenates two non-empty DataFrames by columns (identical schemas)" $ do
+            let dfA = fromRows @'[ '("colA", Int), '("colB", T.Text)] [Map.fromList [("colA", IntValue 1), ("colB", TextValue "x")]]
+            let dfB = fromRows @'[ '("colA", Int), '("colB", T.Text)] [Map.fromList [("colA", IntValue 2), ("colB", TextValue "y")]]
+            let resultDf = concatDF (Proxy @'[ '("colA", Int), '("colB", T.Text)]) ConcatColumns [dfA, dfB]
+            -- Note: For ConcatColumns with identical schemas, the behavior is effectively a union of columns.
+            -- If column names overlap, the later DataFrame's values for that column will overwrite earlier ones.
+            -- This test verifies that behavior for identical schemas.
+            toRows resultDf `shouldBe` [Map.fromList [("colA", IntValue 2), ("colB", TextValue "y")]]
+
+        it "handles overlapping columns in ConcatColumns (last one wins, identical schemas)" $ do
+            let dfX = fromRows @'[ '("colA", Int), '("colB", T.Text)] [Map.fromList [("colA", IntValue 1), ("colB", TextValue "x")]]
+            let dfY = fromRows @'[ '("colA", Int), '("colB", T.Text)] [Map.fromList [("colA", IntValue 2), ("colB", TextValue "y")]]
+            let resultDf = concatDF (Proxy @'[ '("colA", Int), '("colB", T.Text)]) ConcatColumns [dfX, dfY]
+            toRows resultDf `shouldBe` [Map.fromList [("colA", IntValue 2), ("colB", TextValue "y")]]
 
     describe "Granular QuickCheck Properties" $ do
         prop "filterRows with a tautology predicate is identity" (prop_filterRows_tautology @'[ '("Name", T.Text), '("Age", Int), '("Salary", Double)])
@@ -529,30 +648,3 @@ prop_joinDF_correct_ids df1 df2 = ioProperty $ do
             let df2IDs = Set.fromList $ map (fromRight' . fromDFValue @Int . (Map.! "ID")) (toRows df2)
             let expectedIDs = Set.intersection df1IDs df2IDs
             return $ joinedIDs === expectedIDs
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

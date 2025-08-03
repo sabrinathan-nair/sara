@@ -1,6 +1,7 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE TypeApplications #-}
 
 -- | This module provides functions for concatenating DataFrames.
 module Sara.DataFrame.Concat (
@@ -9,7 +10,11 @@ module Sara.DataFrame.Concat (
 
 import qualified Data.Map.Strict as Map
 import qualified Data.Vector as V
-import Sara.DataFrame.Types (DataFrame(..), ConcatAxis(..), KnownColumns)
+import Sara.DataFrame.Types (DataFrame(..), ConcatAxis(..), KnownColumns, columnSchema)
+import Data.Proxy (Proxy(..))
+
+isEmpty :: DataFrame cols -> Bool
+isEmpty (DataFrame dfMap) = Map.null dfMap
 
 -- | Concatenates a list of `DataFrame`s along a specified `ConcatAxis`.
 --
@@ -30,30 +35,29 @@ import Sara.DataFrame.Types (DataFrame(..), ConcatAxis(..), KnownColumns)
 -- >>> let df3 = concatDF ConcatRows [df1, df2]
 -- >>> toRows df3
 -- [fromList [("age",IntValue 25),("name",TextValue "Alice")],fromList [("age",IntValue 30),("name",TextValue "Bob")]]
-concatDF :: KnownColumns cols => ConcatAxis -> [DataFrame cols] -> DataFrame cols
-concatDF _ [] = DataFrame Map.empty
-concatDF ConcatRows (firstDf:restDfs) =
-    let
-        (DataFrame firstDfMap) = firstDf
-        -- Assuming all DataFrames have the same columns for row-wise concat
-        -- We'll take the columns from the first DataFrame as the reference
-        columnNames = Map.keys firstDfMap
 
-        -- Aggregate all columns from all DataFrames
-        concatenatedColumns = Map.fromList $ map (\colName ->
+concatDF :: KnownColumns cols => Proxy cols -> ConcatAxis -> [DataFrame cols] -> DataFrame cols
+concatDF _ _ [] = DataFrame Map.empty
+concatDF proxyCols ConcatRows dfs =
+    if all isEmpty dfs
+        then DataFrame Map.empty
+        else
             let
-                allColValues = V.concat [ col | (DataFrame dfMap) <- firstDf:restDfs, Just col <- [Map.lookup colName dfMap] ]
+                columnNames = map fst (columnSchema proxyCols)
+                concatenatedColumns = Map.fromList $ map (\colName ->
+                    let
+                        allColValues = V.concat [ col | (DataFrame dfMap) <- dfs, Just col <- [Map.lookup colName dfMap] ]
+                    in
+                        (colName, allColValues)
+                    ) columnNames
             in
-                (colName, allColValues)
-            ) columnNames
-    in
-        DataFrame concatenatedColumns
+                DataFrame concatenatedColumns
 
-concatDF ConcatColumns dfs =
+concatDF _ ConcatColumns dfs =
     let
         -- For column-wise concat, we simply union the maps of columns
         -- If there are overlapping column names, the columns from DataFrames
         -- later in the list will overwrite earlier ones.
-        mergedDfMap = foldl Map.union Map.empty [dfMap | (DataFrame dfMap) <- dfs]
+        mergedDfMap = foldr (Map.unionWith (\_ new -> new)) Map.empty [dfMap | (DataFrame dfMap) <- dfs]
     in
         DataFrame mergedDfMap
