@@ -17,6 +17,8 @@ import Streaming (Stream, Of)
 import qualified Streaming.Prelude as S
 import Control.Monad.IO.Class (liftIO)
 import qualified Data.Vector as V
+import Data.Either (either)
+import Sara.Error (SaraError)
 
 createTestDataFrame :: IO (DataFrame '[ '("Name", T.Text), '("Age", Int), '("Salary", Double)])
 createTestDataFrame = do
@@ -37,9 +39,13 @@ combineDataFrames (DataFrame dfMap1) (DataFrame dfMap2) =
     return $ DataFrame $ Map.unionWith (V.++) dfMap1 dfMap2
 
 -- Helper function to convert a Stream of single-row DataFrames back to a single DataFrame
-streamToDf :: KnownColumns cols => Stream (Of (DataFrame cols)) IO () -> IO (DataFrame cols)
+streamToDf :: KnownColumns cols => Stream (Of (Either SaraError (DataFrame cols))) IO () -> IO (DataFrame cols)
 streamToDf stream =
-    S.foldM_ combineDataFrames (return (DataFrame Map.empty)) return stream
+    S.foldM_ (
+        \acc eitherDf -> case eitherDf of
+            Left err -> error $ show err -- In a benchmark, we can afford to crash on error
+            Right df -> combineDataFrames acc df
+    ) (return (DataFrame Map.empty)) return stream
 
 main :: IO ()
 main = defaultMain [

@@ -38,7 +38,6 @@ library
                      , aeson
                      , template-haskell
                      , parallel
-                     , vector-strategies
                      , deepseq
                      , process
                      , filepath
@@ -48,7 +47,6 @@ library
                      , constraints
                      , streaming
                      , streaming-bytestring
-                     , cassava-streams
                      , transformers
                      , json-stream
                      , QuickCheck
@@ -76,7 +74,7 @@ test-suite sara-test
   type:                exitcode-stdio-1.0
   main-is:             TestSuite.hs
   hs-source-dirs:      test, src
-  build-depends:       base, hspec, text, containers, time, sara, vector, template-haskell, cassava, bytestring, aeson, scientific, unordered-containers, parallel, deepseq, vector-strategies, criterion                     , streaming
+  build-depends:       base, hspec, text, containers, time, sara, vector, template-haskell, cassava, bytestring, aeson, scientific, unordered-containers, parallel, deepseq, criterion                     , streaming
                      , transformers
                      , json-stream
                      , temporary
