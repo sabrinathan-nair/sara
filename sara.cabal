@@ -106,6 +106,7 @@ test-suite sara-test
     , Sara.DataFrame.Concat
     , Sara.DataFrame.CsvInstances
     , Sara.DataFrame.SQL
+    , Sara.DataFrame.Wrangling
 
 
 
