@@ -26,7 +26,7 @@ library
                      , Sara.Schema.Definitions
                      , Sara.DataFrame.CsvInstances
   hs-source-dirs:      src
-  build-depends:       base >=4.14 && <5
+  build-depends:       base >=4.21.0.0 && <4.22
                      , text
                      , containers
                      , time
@@ -60,7 +60,7 @@ executable sara-tutorial
   main-is:          Tutorial.hs
   hs-source-dirs:      app
   build-depends:
-        base >=4.18.0.0 && <4.19,
+        base >=4.21.0.0 && <4.22,
         sara,
         streaming,
         cassava,
@@ -74,7 +74,7 @@ test-suite sara-test
   type:                exitcode-stdio-1.0
   main-is:             TestSuite.hs
   hs-source-dirs:      test, src
-  build-depends:       base, hspec, text, containers, time, sara, vector, template-haskell, cassava, bytestring, aeson, scientific, unordered-containers, parallel, deepseq, criterion                     , streaming
+  build-depends:       base >=4.21.0.0 && <4.22, hspec, text, containers, time, sara, vector, template-haskell, cassava, bytestring, aeson, scientific, unordered-containers, parallel, deepseq, criterion                     , streaming
                      , transformers
                      , json-stream
                      , temporary
