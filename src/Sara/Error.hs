@@ -12,6 +12,8 @@ import qualified Data.Text as T
 data SaraError =
     -- | A parsing error, with a descriptive message.
     ParsingError T.Text |
+    -- | An arithmetic error, with a descriptive message.
+    ArithmeticError T.Text |
     -- | A column not found error, with the column name.
     ColumnNotFound T.Text |
     -- | A type mismatch error, with the expected and actual types.
@@ -30,6 +32,7 @@ data SaraError =
 
 instance Show SaraError where
     show (ParsingError msg) = "Parsing Error: " ++ T.unpack msg
+    show (ArithmeticError msg) = "Arithmetic Error: " ++ T.unpack msg
     show (ColumnNotFound col) = "Column Not Found: " ++ T.unpack col
     show (TypeMismatch expected actual) = "Type Mismatch: Expected " ++ T.unpack expected ++ ", but got " ++ T.unpack actual
     show (IOError msg) = "IO Error: " ++ T.unpack msg

@@ -95,7 +95,6 @@ test-suite sara-test
     , Sara.DataFrame.TimeSeries
     , Sara.DataFrame.Transform
     , Sara.DataFrame.Types
-    , Sara.DataFrame.Wrangling
     , Sara.DataFrame.Expression
     , Sara.DataFrame.Predicate
     , Sara.DataFrame.Static
@@ -107,6 +106,8 @@ test-suite sara-test
     , Sara.DataFrame.Concat
     , Sara.DataFrame.CsvInstances
     , Sara.DataFrame.SQL
+
+
 
 benchmark sara-benchmark
   type:                exitcode-stdio-1.0

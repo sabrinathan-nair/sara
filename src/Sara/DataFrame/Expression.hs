@@ -43,7 +43,7 @@ import qualified Data.Vector as V
 
 
 
-import Sara.Error (SaraError(..))
+import Sara.Error (SaraError(ColumnNotFound, ArithmeticError))
 
 
 -- | A type-safe expression GADT for `DataFrame` operations.
@@ -64,7 +64,7 @@ data Expr (cols :: [(Symbol, Type)]) a where
     -- | Multiplies two numeric expressions.
     Multiply :: (Num a, CanBeDFValue a) => Expr cols a -> Expr cols a -> Expr cols a
     -- | Divides two numeric expressions.
-    Divide :: (Fractional a, CanBeDFValue a) => Expr cols a -> Expr cols a -> Expr cols a
+    Divide :: (Fractional a, Eq a, CanBeDFValue a) => Expr cols a -> Expr cols a -> Expr cols a
 
     -- | Checks if two expressions are equal.
     EqualTo :: (Eq a, CanBeDFValue a) => Expr cols a -> Expr cols a -> Expr cols Bool
@@ -95,7 +95,12 @@ evaluateExpr (Col p) dfMap idx =
 evaluateExpr (Add e1 e2) dfMap idx = liftA2 (+) (evaluateExpr e1 dfMap idx) (evaluateExpr e2 dfMap idx)
 evaluateExpr (Subtract e1 e2) dfMap idx = liftA2 (-) (evaluateExpr e1 dfMap idx) (evaluateExpr e2 dfMap idx)
 evaluateExpr (Multiply e1 e2) dfMap idx = liftA2 (*) (evaluateExpr e1 dfMap idx) (evaluateExpr e2 dfMap idx)
-evaluateExpr (Divide e1 e2) dfMap idx = liftA2 (/) (evaluateExpr e1 dfMap idx) (evaluateExpr e2 dfMap idx)
+evaluateExpr (Divide e1 e2) dfMap idx = do
+    val1 <- evaluateExpr e1 dfMap idx
+    val2 <- evaluateExpr e2 dfMap idx
+    if val2 == 0.0
+        then Left $ ArithmeticError (T.pack "Division by zero")
+        else Right (val1 / val2)
 evaluateExpr (EqualTo e1 e2) dfMap idx = liftA2 (==) (evaluateExpr e1 dfMap idx) (evaluateExpr e2 dfMap idx)
 evaluateExpr (GreaterThan e1 e2) dfMap idx = liftA2 (>) (evaluateExpr e1 dfMap idx) (evaluateExpr e2 dfMap idx)
 evaluateExpr (LessThan e1 e2) dfMap idx = liftA2 (<) (evaluateExpr e1 dfMap idx) (evaluateExpr e2 dfMap idx)
@@ -127,7 +132,7 @@ col = Col
 (*.*) = Multiply
 
 -- | Infix operator for dividing two numeric expressions.
-(/.!) :: (Fractional a, CanBeDFValue a) => Expr cols a -> Expr cols a -> Expr cols a
+(/.!) :: (Fractional a, Eq a, CanBeDFValue a) => Expr cols a -> Expr cols a -> Expr cols a
 (/.!) = Divide
 
 -- | Infix operator for checking equality between two expressions.
