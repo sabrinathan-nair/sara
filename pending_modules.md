@@ -11,4 +11,3 @@ This document lists modules in the Sara project that require further unit test c
 - `Sara.DataFrame.Statistics.hs`: Needs tests for various statistical calculations, including edge cases (empty data, identical values, NA values).
 - `Sara.DataFrame.Strings.hs`: Needs tests for string manipulation functions, including edge cases (empty strings, special characters).
 - `Sara.DataFrame.TimeSeries.hs`: Needs tests for time series operations, including edge cases (empty series, single-point series, irregular intervals).
-- `Sara.DataFrame.Types.hs`: Needs tests for type conversions, `DFValue` handling, and DataFrame creation from rows/columns.
