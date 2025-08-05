@@ -133,15 +133,15 @@ melt df =
 -- The schema of the `DataFrame` is updated accordingly.
 applyColumn :: forall col oldType newType cols newCols.
               (HasColumn col cols, KnownColumns cols, CanBeDFValue oldType, CanBeDFValue newType, TypeOf col cols ~ oldType, newCols ~ UpdateColumn col newType cols, KnownColumns newCols)
-              => Proxy col -> (oldType -> newType) -> Stream (Of (DataFrame cols)) IO () -> Stream (Of (Either SaraError (DataFrame newCols))) IO ()
+              => Proxy col -> (oldType -> newType) -> Stream (Of (DataFrame cols)) IO () -> Stream (Of (DataFrame newCols)) IO ()
 applyColumn colProxy f =
-    S.mapM (\df -> do
+    S.map (\df ->
         let colName = T.pack (symbolVal colProxy)
-        let dfMap = getDataFrameMap df
-        let oldColumn = dfMap Map.! colName
-        let newColumn = V.map (\val -> either (const NA) (toDFValue . f) (fromDFValue val)) oldColumn
-        let newDfMap = Map.insert colName newColumn dfMap
-        return $ Right $ DataFrame newDfMap
+            dfMap = getDataFrameMap df
+            oldColumn = dfMap Map.! colName
+            newColumn = V.map (\val -> either (const NA) (toDFValue . f) (fromDFValue val)) oldColumn
+            newDfMap = Map.insert colName newColumn dfMap
+        in DataFrame newDfMap
     )
 
 

@@ -49,6 +49,7 @@ import qualified Streaming.Prelude as S
 import Sara.Error (SaraError(..))
 
 import Data.Either (fromRight)
+import Data.Maybe (fromJust)
 
 -- | A typeclass for converting a type-level list of `Symbol`s to a list of `T.Text` values.
 class AllKnownSymbol (xs :: [Symbol]) where
@@ -62,18 +63,13 @@ instance (KnownSymbol x, AllKnownSymbol xs) => AllKnownSymbol (x ': xs) where
     symbolsToTexts _ = T.pack (symbolVal (Proxy @x)) : symbolsToTexts (Proxy @xs)
 
 -- | Filters rows from a `DataFrame` based on a type-safe `FilterPredicate`.
-filterRows :: forall cols. KnownColumns cols => FilterPredicate cols -> Stream (Of (DataFrame cols)) IO () -> Stream (Of (Either SaraError (DataFrame cols))) IO ()
+filterRows :: forall cols. KnownColumns cols => FilterPredicate cols -> Stream (Of (DataFrame cols)) IO () -> Stream (Of (DataFrame cols)) IO ()
 filterRows p =
-    S.mapM (\df -> do
+    S.map (\df ->
         let rows = toRows df
-        let evalPredicate row = fromRight False $ do
-                idx <- maybe (Left (GenericError (T.pack "Row not found"))) Right (V.elemIndex row (V.fromList rows))
-                evaluate p (getDataFrameMap df) idx
-        let filteredRows = [row | row <- rows, evalPredicate row]
-        if null filteredRows
-            then return $ Right $ DataFrame Map.empty -- Return an empty DataFrame if no rows match
-            else return $ Right $ fromRows filteredRows
-        )
+            filteredRows = [row | row <- rows, fromRight False $ evaluate p (getDataFrameMap df) (fromJust $ V.elemIndex row (V.fromList rows))]
+        in fromRows filteredRows
+    )
 
 -- | Sorts a `DataFrame` based on a list of type-safe `SortCriterion`s.
 -- The sort criteria are applied in order, from left to right.
@@ -216,7 +212,7 @@ fillNA replacementValue (DataFrame dfMap) =
 -- Only rows where the boolean column is `True` are kept.
 filterByBoolColumn :: forall (boolCol :: Symbol) (cols :: [(Symbol, Type)]).
                      (HasColumn boolCol cols, KnownColumns cols, TypeOf boolCol cols ~ Bool)
-                     => Proxy boolCol -> Stream (Of (DataFrame cols)) IO () -> Stream (Of (Either SaraError (DataFrame cols))) IO ()
+                     => Proxy boolCol -> Stream (Of (DataFrame cols)) IO () -> Stream (Of (DataFrame cols)) IO ()
 filterByBoolColumn p =
     filterRows (FilterPredicate (ExprPredicate (Col p)))
 

@@ -53,23 +53,18 @@ joinDF :: forall (onCols :: [Symbol]) (cols1 :: [(Symbol, Type)]) (cols2 :: [(Sy
          , All CanBeDFValue (GetColumnTypes cols2)
          , All CanBeDFValue (GetColumnTypes colsOut)
          , CreateOutputRow colsOut
-         ) => Stream (Of (DataFrame cols1)) IO () -> Stream (Of (DataFrame cols2)) IO () -> Stream (Of (Either SaraError (DataFrame colsOut))) IO ()
-joinDF df1Stream df2Stream = do
-    -- Read the second stream into memory for efficient lookups
-    df2sList <- liftIO $ S.toList_ df2Stream
-    let df2Rows = concatMap toRows df2sList
-    let getJoinKey :: Row -> TypeLevelRow (SymbolsToSchema onCols cols1)
+         ) => DataFrame cols1 -> DataFrame cols2 -> DataFrame colsOut
+joinDF df1 df2 = 
+    let df1Rows = toRows df1
+        df2Rows = toRows df2
+        getJoinKey :: Row -> TypeLevelRow (SymbolsToSchema onCols cols1)
         getJoinKey = toTypeLevelRow @(SymbolsToSchema onCols cols1)
-    let df2Map = Map.fromListWith (++) $ map (\r -> (getJoinKey r, [r])) df2Rows
+        df2Map = Map.fromListWith (++) $ map (\r -> (getJoinKey r, [r])) df2Rows
 
-    -- Process the first stream
-    S.for df1Stream $ \df1 -> do
-        let df1Rows = toRows df1
-        S.for (S.each df1Rows) $ \r1 -> do
+        joinedRows = concatMap (\r1 ->
             let key = getJoinKey r1
-            case Map.lookup key df2Map of
-                Just matchingRows2 -> do
-                    S.for (S.each matchingRows2) $ \r2 -> do
-                        let joinedRow = createOutputRow (Proxy @colsOut) r1 r2
-                        S.yield (Right (fromRows @colsOut [joinedRow]))
-                Nothing -> return ()
+            in case Map.lookup key df2Map of
+                Just matchingRows2 -> map (\r2 -> createOutputRow (Proxy @colsOut) r1 r2) matchingRows2
+                Nothing -> []
+            ) df1Rows
+    in fromRows @colsOut joinedRows

@@ -40,11 +40,8 @@ tutorial = do
                 case mutatedDfEither of
                     Left err -> putStrLn $ "Error mutating: " ++ show err
                     Right mutatedDf -> do
-                        let filteredDfEither = filterByBoolColumn (Proxy :: Proxy "IsSalaryHigh") (S.yield mutatedDf)
-                        S.mapM_ (\e -> case e of
-                            Left err -> putStrLn $ "Error filtering: " ++ show err
-                            Right filteredDf -> print filteredDf
-                            ) filteredDfEither
+                        let filteredDf = filterByBoolColumn (Proxy :: Proxy "IsSalaryHigh") (S.yield mutatedDf)
+                        S.mapM_ print filteredDf
                 ) dfStream
 
 main :: IO ()

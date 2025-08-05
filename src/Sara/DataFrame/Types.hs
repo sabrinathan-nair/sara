@@ -390,12 +390,25 @@ toRows (DataFrame dfMap) =
 -- * Type-level list operations
 
 -- | Create a DataFrame from a list of rows.
-fromRows :: KnownColumns cols => [Row] -> DataFrame cols
+fromRows :: forall cols. KnownColumns cols => [Row] -> DataFrame cols
 fromRows [] = DataFrame Map.empty
-fromRows rows@(firstRow:_) =
-    let columns = Map.keys firstRow
-        colMap = Map.fromList $ map (\colName -> (colName, V.fromList $ map (Map.! colName) rows)) columns
-    in DataFrame colMap
+fromRows rows =
+    let
+        -- Get the expected column names from the type-level schema
+        expectedColNames = columnNames (Proxy @cols)
+        -- For each expected column, create a vector of its values across all rows
+        colMap = Map.fromList $ map (\colName ->
+            let
+                -- For each row, try to find the value for the current column.
+                -- If not found, use NA.
+                colValues = V.fromList $ map (\row -> Map.findWithDefault NA colName row) rows
+            in
+                (colName, colValues)
+            ) expectedColNames
+    in
+        DataFrame colMap
+
+
 
 -- | A type family to get the type of a column from a schema.
 type family TypeOf (s :: Symbol) (cols :: [(Symbol, Type)]) :: Type where
