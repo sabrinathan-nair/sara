@@ -23,10 +23,7 @@ import Control.Applicative ((<|>))
 import GHC.TypeLits
 import Data.Proxy (Proxy(..))
 import Data.Kind (Type)
-import Streaming (Stream, Of)
-import qualified Streaming.Prelude as S
-import Control.Monad.IO.Class (liftIO)
-import Sara.Error (SaraError(..))
+
 
 
 -- | A helper typeclass for creating the output row of a join operation.

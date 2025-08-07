@@ -29,7 +29,7 @@ import qualified Data.Text as T
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
 import qualified Data.Vector as V
-import Data.List (foldl')
+
 import Sara.DataFrame.Types
 import GHC.TypeLits
 import Data.Proxy (Proxy(..))
