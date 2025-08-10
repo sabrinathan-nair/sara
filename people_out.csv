@@ -1,6 +1,0 @@
-Age,City,EnrollmentDate,GPA,IsStudent,Name
-30,New York,2020-09-01,3.8,TRUE,Alice
-24,London,2021-01-15,3.2,FALSE,Bob
-35,Paris,2019-03-10,3.9,TRUE,Charlie
-28,Berlin,2022-07-20,NA,FALSE,David
-22,Tokyo,2023-02-28,3.5,TRUE,Eve
