@@ -1,0 +1,52 @@
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE RankNTypes #-}
+{-# OPTIONS_HADDOCK hide #-}
+-- | Internal safe helpers to avoid partial functions.
+module Sara.Internal.Safe
+  ( safeHead
+  , safeTail
+  , safeLast
+  , safeIndex
+  , safeMaximum
+  , safeMinimum
+  , readMaybeEither
+  ) where
+
+import Prelude hiding (head, tail, last)
+import qualified Data.Vector as V
+import Data.Maybe (listToMaybe)
+import Text.Read (readMaybe)
+import Data.Either (Either(..))
+import Data.List (foldl')
+
+safeHead :: [a] -> Maybe a
+safeHead = listToMaybe
+
+safeTail :: [a] -> Maybe [a]
+safeTail [] = Nothing
+safeTail (_:xs) = Just xs
+
+safeLast :: [a] -> Maybe a
+safeLast [] = Nothing
+safeLast xs = Just (last xs)
+
+safeIndex :: [a] -> Int -> Maybe a
+safeIndex xs i
+  | i < 0 = Nothing
+  | otherwise = case drop i xs of
+      (y:_) -> Just y
+      []    -> Nothing
+
+safeMaximum :: Ord a => [a] -> Maybe a
+safeMaximum [] = Nothing
+safeMaximum xs = Just (foldl1 max xs)
+
+safeMinimum :: Ord a => [a] -> Maybe a
+safeMinimum [] = Nothing
+safeMinimum xs = Just (foldl1 min xs)
+
+-- Parse with readMaybe and convert to Either with a message
+readMaybeEither :: Read a => String -> Either String a
+readMaybeEither s = case readMaybe s of
+  Just v -> Right v
+  Nothing -> Left ("readMaybeEither: failed to parse: " ++ show s)

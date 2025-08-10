@@ -1,0 +1,34 @@
+*** Begin Patch
+*** Update File: src/Sara/DataFrame/Wrangling.hs
+@@
+ import Data.Either (fromRight)
+-import Data.Maybe (fromJust)
++import qualified Sara.Internal.Safe as Safe
+@@
+-filterRows :: forall cols. KnownColumns cols => FilterPredicate...Of (DataFrame cols)) IO () -> Stream (Of (DataFrame cols)) IO ()
+-filterRows p =
+-    S.map (\df ->
+-        let
+-            rows = toRows df
+-            rowsWithIdx = zip [0..] rows
+-            filteredRows =
+-                [ row
+-                | (idx, row) <- rowsWithIdx
+-                , fromRight False $ evaluate p (DataFrameMap df) idx
+-                ]
+-        in fromRows filteredRows
+-    )
++filterRows :: forall cols. KnownColumns cols => FilterPredicate cols -> Stream (Of (DataFrame cols)) IO () -> Stream (Of (DataFrame cols)) IO ()
++filterRows p =
++    S.map (\df ->
++        let
++            rows = toRows df
++            rowsWithIdx = zip [0..] rows
++            filteredRows =
++                [ row
++                | (idx, row) <- rowsWithIdx
++                , fromRight False $ evaluate p (getDataFrameMap df) idx
++                ]
++        in fromRows filteredRows
++    )
+*** End Patch
