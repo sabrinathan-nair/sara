@@ -49,7 +49,6 @@ import qualified Streaming.Prelude as S
 import Sara.Error (SaraError(..))
 
 import Data.Either (fromRight)
-import Data.Maybe (fromJust)
 
 -- | A typeclass for converting a type-level list of `Symbol`s to a list of `T.Text` values.
 class AllKnownSymbol (xs :: [Symbol]) where
@@ -66,10 +65,17 @@ instance (KnownSymbol x, AllKnownSymbol xs) => AllKnownSymbol (x ': xs) where
 filterRows :: forall cols. KnownColumns cols => FilterPredicate cols -> Stream (Of (DataFrame cols)) IO () -> Stream (Of (DataFrame cols)) IO ()
 filterRows p =
     S.map (\df ->
-        let rows = toRows df
-            filteredRows = [row | row <- rows, fromRight False $ evaluate p (getDataFrameMap df) (fromJust $ V.elemIndex row (V.fromList rows))]
+        let
+            rows = toRows df
+            rowsWithIdx = zip [0..] rows
+            filteredRows = [ row
+                           | (idx, row) <- rowsWithIdx
+                           , fromRight False $ evaluate p (DataFrameMap df) idx
+                           ]
         in fromRows filteredRows
     )
+
+
 
 -- | Sorts a `DataFrame` based on a list of type-safe `SortCriterion`s.
 -- The sort criteria are applied in order, from left to right.
