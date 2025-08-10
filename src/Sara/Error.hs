@@ -2,7 +2,8 @@
 
 -- | This module defines the custom error types for the Sara library.
 module Sara.Error (
-    SaraError(..)
+    SaraError(..),
+    ValidationError(..)
 ) where
 
 import qualified Data.Text as T
@@ -29,6 +30,17 @@ data SaraError =
     -- | A generic error, with a descriptive message.
     GenericError T.Text
     deriving (Eq)
+
+data ValidationError =
+    InvalidEmail T.Text |
+    MissingField T.Text |
+    NegativeSalary Double
+    deriving (Eq)
+
+instance Show ValidationError where
+    show (InvalidEmail email) = "Invalid email: " ++ T.unpack email
+    show (MissingField field) = "Missing field: " ++ T.unpack field
+    show (NegativeSalary salary) = "Negative salary: " ++ show salary
 
 instance Show SaraError where
     show (ParsingError msg) = "Parsing Error: " ++ T.unpack msg

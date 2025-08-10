@@ -3,7 +3,10 @@
 
 module Sara.Validation.Employee (
     ValidatedEmployee(..),
-    validateEmployee
+    validateEmployee,
+    validateName,
+    validateEmail,
+    validateDepartment
 ) where
 
 import Data.Text (Text)
@@ -12,9 +15,10 @@ import Data.Time.Calendar (Day)
 import Control.Monad.Trans.Except (ExceptT(..), runExceptT)
 import Control.Monad.IO.Class (liftIO)
 import Control.Monad (when)
+import Data.Char (isAlphaNum)
 
 import Sara.Error (SaraError(..))
-import Sara.DataFrame.Types (EmployeeID, DepartmentName, Email, Salary, mkEmployeeID, mkDepartmentName, mkEmail, mkSalary)
+import Sara.Core.Types (EmployeeID, DepartmentName, Email, Salary, mkEmployeeID, mkDepartmentName, mkEmail, mkSalary)
 import Sara.Schema.Definitions (EmployeesRecord)
 
 -- | Represents a validated employee record.
@@ -47,3 +51,19 @@ validateEmployee (employeeID, name, departmentName, salary, startDate, email) =
                 , either (pure . id) (const []) salErr
                 , either (pure . id) (const []) emErr
                 ]
+
+-- | Validates a name.
+validateName :: Text -> Either SaraError Text
+validateName name
+    | T.null name = Left $ InvalidArgument "Name cannot be empty"
+    | T.length name > 50 = Left $ InvalidArgument "Name cannot be longer than 50 characters"
+    | not (T.all isAlphaNum name) = Left $ InvalidArgument "Name can only contain alphanumeric characters"
+    | otherwise = Right name
+
+-- | Validates an email address.
+validateEmail :: Text -> Either SaraError Email
+validateEmail = mkEmail
+
+-- | Validates a department name.
+validateDepartment :: Text -> Either SaraError DepartmentName
+validateDepartment = mkDepartmentName

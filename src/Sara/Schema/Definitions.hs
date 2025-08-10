@@ -18,6 +18,9 @@ import Data.Time.Calendar (Day)
 import GHC.Generics (Generic)
 import Data.Csv (FromNamedRecord)
 import Sara.DataFrame.Internal (HasSchema, Schema, HasTypeName, getTypeName)
+import Data.Aeson
 
 $(inferCsvSchema "Employees" True "employees.csv")
 $(inferCsvSchema "Departments" True "departments.csv")
+
+instance FromJSON EmployeesRecord

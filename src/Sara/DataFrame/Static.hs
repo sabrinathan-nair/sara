@@ -27,6 +27,9 @@ import Data.Maybe (isJust)
 import Data.Either (isRight)
 import Sara.DataFrame.Internal ()
 import Sara.DataFrame.CsvInstances ()
+import Sara.Error(ValidationError(..), SaraError(..))
+import Data.Bifunctor (first)
+
 
 -- | A Template Haskell function that generates a record type from a CSV file.
 -- The first row of the CSV file is used to determine the field names.
@@ -90,8 +93,8 @@ inferMostSpecificType (s:_) = inferDFType s
 inferDFType :: T.Text -> Q Language.Haskell.TH.Type
 inferDFType s = do
   let s_unpack = T.unpack s
-  if isRight (readEither s_unpack :: Either String Int) then pure (ConT (mkName "Int"))
-  else if isRight (readEither s_unpack :: Either String Double) then pure (ConT (mkName "Double"))
+  if isRight (first (const [ParsingError (T.pack "Invalid Int")]) (readEither s_unpack) :: Either [SaraError] Int) then pure (ConT (mkName "Int"))
+  else if isRight (first (const [ParsingError (T.pack "Invalid Double")]) (readEither s_unpack) :: Either [SaraError] Double) then pure (ConT (mkName "Double"))
   else if isJust (parseTimeM True defaultTimeLocale "%Y-%m-%d" s_unpack :: Maybe Day) then pure (ConT (mkName "Data.Time.Calendar.Day"))
   else if isJust (parseTimeM True defaultTimeLocale "%Y-%m-%dT%H:%M:%S%QZ" s_unpack :: Maybe UTCTime) then pure (ConT (mkName "Data.Time.Clock.UTCTime"))
   else if T.toLower s == T.pack "true" || T.toLower s == T.pack "false" then pure (ConT (mkName "Bool"))
@@ -116,7 +119,7 @@ inferCsvSchema :: String -> Bool -> FilePath -> Q [Dec]
 inferCsvSchema typeName withPrefix filePath = do
     contents <- runIO $ BL.readFile filePath
     case C.decode NoHeader contents :: Either String (V.Vector (V.Vector BC.ByteString)) of
-        Left err -> fail err
+        Left err -> fail . show $ ParsingError (T.pack err)
         Right records -> do
             if V.null records || V.length records < 2
                 then fail "CSV file must have at least a header and one data row for schema inference."
@@ -167,17 +170,17 @@ inferCsvSchema typeName withPrefix filePath = do
 
 -- | Reads a CSV file into a `Vector` of records.
 -- It normalizes the header fields to be valid Haskell identifiers before decoding.
-readCsv :: (FromNamedRecord a) => FilePath -> IO (Either String (V.Vector a))
+readCsv :: (FromNamedRecord a) => FilePath -> IO (Either [SaraError] (V.Vector a))
 readCsv filePath = do
     contents <- BL.readFile filePath
     let (headerLine, dataLines) = BL.break (== 10) contents -- 10 is newline character
 
     -- Decode the header line into individual ByteString fields
     case C.decode NoHeader headerLine of
-        Left err -> return $ Left err
+        Left err -> return $ Left [ParsingError (T.pack err)]
         Right records ->
             if V.null records
-                then return $ Left "Empty header line"
+                then return $ Left [ParsingError (T.pack "Empty header line")]
                 else do
                     let rawHeaderFields = V.head records -- rawHeaderFields is V.Vector ByteString
                     -- Normalize each header field
@@ -189,4 +192,4 @@ readCsv filePath = do
 
                     -- Reconstruct the full CSV content with the normalized header
                     let newContents = normalizedHeaderLine `BL.append` BL.singleton 10 `BL.append` dataLines
-                    return $ snd <$> decodeByName newContents
+                    return $ first (pure . ParsingError . T.pack) (snd <$> decodeByName newContents)

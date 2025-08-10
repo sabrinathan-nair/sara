@@ -71,7 +71,7 @@ import GHC.TypeLits (symbolVal, Symbol, ErrorMessage(Text, (:<>:), ShowType), Kn
 import Data.Kind (Type, Constraint)
 import Data.Typeable (TypeRep, Typeable, typeRep)
 
-import Sara.Error (SaraError(..))
+import Sara.Error (SaraError(..), ValidationError(..))
 import Control.Monad.Fail (fail)
 import qualified Data.Vector as V
 import Data.Scientific (toRealFloat)
@@ -81,6 +81,8 @@ import Data.Aeson as A
 import Test.QuickCheck
 import Data.Time.Calendar (fromGregorian)
 import Data.Time.Clock (UTCTime(..), secondsToDiffTime)
+import Data.Bifunctor (first)
+
 
 
 -- | A type class for generating arbitrary DFValues of a specific type.
@@ -205,9 +207,9 @@ instance FromJSON DFValue where
             Nothing ->
                 case parseTimeM True defaultTimeLocale "%Y-%m-%d" (T.unpack s) :: Maybe Day of
                     Just d -> pure (DateValue d)
-                    Nothing -> case readEither (T.unpack s) :: Either String Int of
+                    Nothing -> case first (const [ParsingError "Invalid Int"]) (readEither (T.unpack s)) :: Either [SaraError] Int of
                         Right i -> pure (IntValue i)
-                        Left _ -> case readEither (T.unpack s) :: Either String Double of
+                        Left _ -> case first (const [ParsingError "Invalid Double"]) (readEither (T.unpack s)) :: Either [SaraError] Double of
                             Right d -> pure (DoubleValue d)
                             Left _ -> case T.toLower s of
                                 "true" -> pure (BoolValue True)

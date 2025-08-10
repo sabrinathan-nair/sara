@@ -240,13 +240,13 @@ main = hspec $ do
                 hClose handle
                 readResult <- readCsvStreaming (Proxy @EmployeesRecord) filePath
                 case readResult of
-                    Left (ParsingError err) -> err `shouldBe` "parse error (not enough input) at \"\""
+                    Left [ParsingError err] -> err `shouldBe` "parse error (not enough input) at \"\""
                     _ -> expectationFailure "Expected ParsingError for empty CSV file"
 
         it "handles non-existent CSV file" $ do
             readResult <- readCsvStreaming (Proxy @EmployeesRecord) "non_existent.csv"
             case readResult of
-                Left (IOError err) -> T.unpack err `shouldContain` "non_existent.csv"
+                Left [IOError err] -> T.unpack err `shouldContain` "non_existent.csv"
                 _ -> expectationFailure "Expected IOError for non-existent CSV file"
 
         it "handles malformed CSV file" $ do
@@ -255,7 +255,7 @@ main = hspec $ do
                 hClose handle
                 readResult <- readCsvStreaming (Proxy @EmployeesRecord) filePath
                 case readResult of
-                    Left (ParsingError err) -> T.unpack err `shouldContain` "conversion error: no field named \"EmployeeID\""
+                    Left [ParsingError err] -> T.unpack err `shouldContain` "conversion error: no field named \"EmployeeID\""
                     _ -> expectationFailure "Expected ParsingError for malformed CSV file"
 
     describe "JSON Streaming" $ do
@@ -279,7 +279,7 @@ main = hspec $ do
         it "handles non-existent JSON file" $ do
             readResult <- readJSONStreaming (Proxy @'[ '("name", T.Text), '("age", Int)]) "non_existent.json"
             case readResult of
-                Left (IOError err) -> T.unpack err `shouldContain` "non_existent.json"
+                Left [IOError err] -> T.unpack err `shouldContain` "non_existent.json"
                 _ -> expectationFailure "Expected IOError for non-existent JSON file"
 
         it "handles malformed JSON file" $ do
@@ -288,7 +288,7 @@ main = hspec $ do
                 hClose handle
                 readResult <- readJSONStreaming (Proxy @'[ '("name", T.Text), '("age", Int)]) filePath
                 case readResult of
-                    Left (ParsingError err) -> T.unpack err `shouldContain` "Unexpected end-of-input, expecting record key literal or }"
+                    Left [ParsingError err] -> T.unpack err `shouldContain` "Unexpected end-of-input, expecting record key literal or }"
                     _ -> expectationFailure "Expected ParsingError for malformed JSON file"
 
     describe "DFValue JSON Serialization/Deserialization" $ do

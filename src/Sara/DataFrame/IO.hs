@@ -22,10 +22,6 @@ module Sara.DataFrame.IO (
     writeJSONStreaming
 ) where
 
-
-
-
-
 import qualified Data.ByteString.Lazy as BL
 import qualified Data.Csv as C
 import Data.Csv (FromNamedRecord)
@@ -37,6 +33,7 @@ import qualified Data.Map.Strict as Map
 
 import Data.Maybe (fromMaybe)
 import Data.Time.Format (formatTime, defaultTimeLocale)
+import Data.Time.Calendar (Day)
 import qualified Data.ByteString.Char8 as BC
 import qualified Data.HashMap.Strict as HM
 import Data.Char (toUpper)
@@ -44,7 +41,7 @@ import Data.Aeson as A
 import Data.Proxy (Proxy(..))
 import GHC.Generics (Generic, Rep)
 
-import Sara.DataFrame.Types (DFValue(..), DataFrame(..), KnownColumns(..), toRows)
+import Sara.DataFrame.Types (DFValue(..), DataFrame(..), KnownColumns(..), toRows, fromRows)
 import Sara.DataFrame.Static (readCsv)
 import Sara.DataFrame.Internal (HasSchema, Schema, recordToDFValueList, GToFields)
 import Sara.Error (SaraError(..))
@@ -54,7 +51,11 @@ import qualified Streaming.Prelude as S
 import Control.Exception (try, IOException)
 import Control.Applicative ((<|>))
 import Sara.DataFrame.CsvInstances ()
+import Sara.Validation.Employee (validateEmployee, ValidatedEmployee(..))
+import Sara.Schema.Definitions (EmployeesRecord)
 
+import Data.Bifunctor (first)
+import Sara.Core.Types (unEmployeeID, unSalary)
 
 
 
@@ -63,7 +64,7 @@ import Sara.DataFrame.CsvInstances ()
 
 -- | Parses a `DFValue` from a CSV field.
 -- It tries to parse the field in the following order:
---
+-- 
 -- 1.  `NA` (if the field is "NA" or empty)
 -- 2.  `IntValue`
 -- 3.  `DoubleValue`
@@ -84,22 +85,37 @@ instance C.FromField DFValue where
 
 -- | Reads a CSV file in a streaming fashion.
 -- It returns a `Stream` of `DataFrame`s, where each `DataFrame` contains a single row.
-readCsvStreaming :: forall record proxy cols. (FromNamedRecord record, HasSchema record, cols ~ Schema record, KnownColumns cols, Generic record, GToFields (Rep record)) => proxy record -> FilePath -> IO (Either SaraError (Stream (Of (DataFrame cols)) IO ()))
+readCsvStreaming :: forall record proxy cols. (FromNamedRecord record, HasSchema record, cols ~ Schema record, KnownColumns cols, Generic record, GToFields (Rep record)) => proxy record -> FilePath -> IO (Either [SaraError] (Stream (Of (DataFrame cols)) IO ()))
 readCsvStreaming _ filePath = do
     eContents <- try (BL.readFile filePath) :: IO (Either IOException BL.ByteString)
     case eContents of
-        Left e -> return $ Left $ IOError (T.pack $ show e)
-        Right contents -> return $ case C.decodeByName contents :: Either String (C.Header, V.Vector record) of
-            Left err -> Left $ ParsingError (T.pack err)
-            Right (header, records) ->
+        Left e -> return $ Left $ [IOError (T.pack $ show e)]
+        Right contents -> return $ case first (pure . ParsingError . T.pack) (C.decodeByName contents) :: Either [SaraError] (C.Header, V.Vector EmployeesRecord) of 
+            Left errs -> Left errs
+            Right (header, records) -> 
                 let expectedColNames = V.fromList $ columnNames (Proxy @cols)
                     actualHeader = V.map TE.decodeUtf8 header
                 in if actualHeader /= expectedColNames
-                    then Left $ IOError (T.pack $ "CSV header mismatch. Expected: " ++ show expectedColNames ++ ", Got: " ++ show actualHeader)
-                    else Right $ S.for (S.each (V.toList records)) $ \record -> do
-                        let rowMap = Map.fromList $ V.toList $ V.zip expectedColNames (V.fromList (recordToDFValueList record))
-                        let df = DataFrame (Map.map V.singleton rowMap)
-                        S.yield df
+                    then Left $ [IOError (T.pack $ "CSV header mismatch. Expected: " ++ show expectedColNames ++ ", Got: " ++ show actualHeader)]
+                    else Right $ S.for (S.each (V.toList records)) $ \rec -> do
+                        let dfValues = recordToDFValueList rec
+                        case dfValues of
+                            [IntValue eid', TextValue n', TextValue dn', DoubleValue s', DateValue sd', TextValue e'] ->
+                                case validateEmployee (fromIntegral eid', n', dn', s', sd', e') of
+                                    Left errs -> fail $ unlines $ map show errs
+                                    Right validated -> do
+                                        let rowMap = Map.fromList
+                                                [ ("employeeID", IntValue (unEmployeeID (veEmployeeID validated)))
+                                                , ("name", TextValue (veName validated))
+                                                , ("departmentName", TextValue (T.pack $ show (veDepartmentName validated)))
+                                                , ("salary", DoubleValue (unSalary (veSalary validated)))
+                                                , ("startDate", DateValue (veStartDate validated))
+                                                , ("email", TextValue (T.pack $ show (veEmail validated)))
+                                                ]
+                                        let df = DataFrame (Map.map V.singleton rowMap)
+                                        S.yield df
+                            _ -> fail "Mismatched EmployeesRecord fields"
+
 
 
 
@@ -133,49 +149,57 @@ writeCSV filePath (DataFrame dfMap) = do
 
     BL.writeFile filePath $ C.encodeByName headerBS (V.toList rows)
 
+
+
 -- | Reads a JSON file into a `DataFrame`.
 -- The JSON file should be an array of objects, where each object represents a row.
 -- The keys of the objects should match the column names of the `DataFrame`.
 -- The function validates that the column names and types in the JSON file match the `DataFrame`'s schema.
-readJSON :: forall cols. KnownColumns cols => Proxy cols -> FilePath -> IO (Either SaraError (DataFrame cols))
+readJSON :: forall cols. KnownColumns cols => Proxy cols -> FilePath -> IO (Either [SaraError] (DataFrame cols))
 readJSON p filePath = do
-    let expectedColNames = columnNames p
-
     jsonData <- BL.readFile filePath
-    case A.eitherDecode jsonData :: Either String [Map T.Text DFValue] of
-        Left err -> return $ Left $ ParsingError (T.pack err)
-        Right rows -> do
-            if null rows
-                then return $ Right $ DataFrame Map.empty
-                else do
-                    let actualColumnNames = Map.keys (head rows)
-                    -- Validate column names
-                    if V.fromList expectedColNames /= V.fromList actualColumnNames
-                        then return $ Left $ IOError (T.pack $ "JSON header mismatch. Expected: " ++ show expectedColNames ++ ", Got: " ++ show actualColumnNames)
-                        else do
-                            let initialColumnsMap = Map.fromList $ V.toList $ V.map (, V.empty) (V.fromList actualColumnNames)
-                                finalColumnsMap = V.foldl' (\accMap row ->
-                                        Map.mapWithKey (\colName colVec ->
-                                            let val = fromMaybe NA (Map.lookup colName row) -- Get DFValue from row
-                                            in V.snoc colVec val
-                                        ) accMap
-                                    ) initialColumnsMap (V.fromList rows) -- Convert rows to Vector for foldl'
+    case first (pure . ParsingError . T.pack) (A.eitherDecode jsonData) :: Either [SaraError] [EmployeesRecord] of
+        Left err -> return $ Left err
+        Right records -> do
+            let validatedRecords =
+                    traverse
+                        (\rec ->
+                            let dfValues = recordToDFValueList rec
+                            in case dfValues of
+                                [IntValue eid', TextValue n', TextValue dn', DoubleValue s', DateValue sd', TextValue e'] ->
+                                    validateEmployee (fromIntegral eid', n', dn', s', sd', e')
+                                _ ->
+                                    Left [GenericError "Mismatched EmployeesRecord fields"]
+                        )
+                        records
+            case validatedRecords of 
+                Left errs -> return $ Left errs
+                Right validated -> do
+                    let rows = map (\validated -> Map.fromList
+                                        [ ("employeeID", IntValue (unEmployeeID (veEmployeeID validated)))
+                                        , ("name", TextValue (veName validated))
+                                        , ("departmentName", TextValue (T.pack $ show (veDepartmentName validated)))
+                                        , ("salary", DoubleValue (unSalary (veSalary validated)))
+                                        , ("startDate", DateValue (veStartDate validated))
+                                        , ("email", TextValue (T.pack $ show (veEmail validated)))
+                                        ]) validated
+                    return $ Right $ fromRows rows
 
-                            return $ Right $ DataFrame finalColumnsMap
+
 
 -- | Reads a JSON file in a streaming fashion.
 -- NOTE: This is a temporary non-streaming implementation due to issues with streaming JSON libraries.
 -- It reads the entire file into memory before processing.
-readJSONStreaming :: forall cols. KnownColumns cols => Proxy cols -> FilePath -> IO (Either SaraError (Stream (Of (DataFrame cols)) IO ()))
+readJSONStreaming :: forall cols. KnownColumns cols => Proxy cols -> FilePath -> IO (Either [SaraError] (Stream (Of (DataFrame cols)) IO ()))
 readJSONStreaming _ filePath = do
     eJsonData <- try (BL.readFile filePath) :: IO (Either IOException BL.ByteString)
     case eJsonData of
-        Left e -> return $ Left $ IOError (T.pack $ show e)
-        Right jsonData -> case A.eitherDecode jsonData :: Either String [Map T.Text DFValue] of
-            Left err -> return $ Left $ ParsingError (T.pack err)
-            Right rows -> return $ Right $ S.for (S.each rows) $ \row -> do
+        Left e -> return $ Left $ [IOError (T.pack $ show e)]
+        Right jsonData -> case first (pure . ParsingError . T.pack) (A.eitherDecode jsonData) :: Either [SaraError] [Map T.Text DFValue] of 
+            Left err -> return $ Left err
+            Right rows -> return $ Right $ S.for (S.each rows) $ \row -> 
                 let rowMap = Map.map V.singleton row
-                S.yield (DataFrame rowMap)
+                in S.yield (DataFrame rowMap)
 
 
 -- | Writes a `DataFrame` to a JSON file.

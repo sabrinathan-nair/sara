@@ -18,13 +18,14 @@ library
                      , Sara.DataFrame.TimeSeries
                      , Sara.DataFrame.Transform
                      , Sara.DataFrame.Types
-                     , Sara.DataFrame.Wrangling
                      , Sara.REPL
                      , Sara.DataFrame.Internal
                      , Sara.DataFrame.Apply
                      , Sara.Error
                      , Sara.Schema.Definitions
                      , Sara.DataFrame.CsvInstances
+                     , Sara.Validation.Employee
+                     , Sara.Core.Types
   hs-source-dirs:      src
   build-depends:       base >=4.21.0.0 && <4.22
                      , text
@@ -105,6 +106,8 @@ test-suite sara-test
     , Sara.DataFrame.CsvInstances
     , Sara.DataFrame.SQL
     , Sara.DataFrame.Wrangling
+    , Sara.Validation.Employee
+    , Sara.Core.Types
 
 
 
