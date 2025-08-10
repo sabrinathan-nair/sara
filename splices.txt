@@ -1,2 +1,0 @@
-Loaded package environment from /home/sn/.ghc/x86_64-linux-9.6.7/environments/default
-[1 of 2] Compiling Main             ( app/Tutorial.hs, app/Tutorial.o )
