@@ -71,7 +71,7 @@ import GHC.TypeLits (symbolVal, Symbol, ErrorMessage(Text, (:<>:), ShowType), Kn
 import Data.Kind (Type, Constraint)
 import Data.Typeable (TypeRep, Typeable, typeRep)
 
-import Sara.Error (SaraError(..), ValidationError(..))
+import Sara.Error (SaraError(..))
 import Control.Monad.Fail (fail)
 import qualified Data.Vector as V
 import Data.Scientific (toRealFloat)

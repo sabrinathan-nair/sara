@@ -26,6 +26,7 @@ library
                      , Sara.DataFrame.CsvInstances
                      , Sara.Validation.Employee
                      , Sara.Core.Types
+                     , Sara.DataFrame.Wrangling
   hs-source-dirs:      src
   build-depends:       base >=4.21.0.0 && <4.22
                      , text
