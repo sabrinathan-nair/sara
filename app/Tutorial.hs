@@ -35,13 +35,15 @@ tutorial = do
     case readResult of
         Left err -> putStrLn $ "Error reading CSV: " ++ show err
         Right dfStream -> do
-            S.mapM_ (\df -> do
-                let mutatedDfEither = mutate (Proxy :: Proxy "IsSalaryHigh") (col (Proxy @"Salary") >. lit 70000) df
-                case mutatedDfEither of
-                    Left err -> putStrLn $ "Error mutating: " ++ show err
-                    Right mutatedDf -> do
-                        let filteredDf = filterByBoolColumn (Proxy :: Proxy "IsSalaryHigh") (S.yield mutatedDf)
-                        S.mapM_ print filteredDf
+            S.mapM_ (\dfEither -> case dfEither of
+                Left err -> putStrLn $ "Error processing DataFrame: " ++ show err
+                Right df -> do
+                    let mutatedDfEither = mutate (Proxy :: Proxy "IsSalaryHigh") (col (Proxy @"Salary") >. lit 70000) df
+                    case mutatedDfEither of
+                        Left err -> putStrLn $ "Error mutating: " ++ show err
+                        Right mutatedDf -> do
+                            let filteredDf = filterByBoolColumn (Proxy :: Proxy "IsSalaryHigh") (S.yield mutatedDf)
+                            S.mapM_ print filteredDf
                 ) dfStream
 
 main :: IO ()

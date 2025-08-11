@@ -1,52 +1,66 @@
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE RankNTypes #-}
-{-# OPTIONS_HADDOCK hide #-}
--- | Internal safe helpers to avoid partial functions.
+{-# LANGUAGE Safe #-}
+
+-- | Safe utility functions to avoid partial operations.
+--   This module wraps potentially unsafe Prelude functions
+--   and provides total (safe) alternatives.
 module Sara.Internal.Safe
   ( safeHead
   , safeTail
+  , safeInit
   , safeLast
-  , safeIndex
   , safeMaximum
   , safeMinimum
-  , readMaybeEither
+  , safeLookup
+  , safeIndex
+  , safeRead
   ) where
 
-import Prelude hiding (head, tail, last)
-import qualified Data.Vector as V
-import Data.Maybe (listToMaybe)
-import Text.Read (readMaybe)
-import Data.Either (Either(..))
-import Data.List (foldl')
+import qualified Data.List as List
+import qualified Data.Maybe as Maybe
+import qualified Text.Read as Read
+import qualified Data.Map.Strict as Map
 
+-- | Safe version of 'head'
 safeHead :: [a] -> Maybe a
-safeHead = listToMaybe
+safeHead []    = Nothing
+safeHead (x:_) = Just x
 
+-- | Safe version of 'tail'
 safeTail :: [a] -> Maybe [a]
-safeTail [] = Nothing
+safeTail []     = Nothing
 safeTail (_:xs) = Just xs
 
+-- | Safe version of 'init'
+safeInit :: [a] -> Maybe [a]
+safeInit [] = Nothing
+safeInit xs = Just (List.init xs)
+
+-- | Safe version of 'last'
 safeLast :: [a] -> Maybe a
 safeLast [] = Nothing
-safeLast xs = Just (last xs)
+safeLast xs = Just (List.last xs)
 
-safeIndex :: [a] -> Int -> Maybe a
-safeIndex xs i
-  | i < 0 = Nothing
-  | otherwise = case drop i xs of
-      (y:_) -> Just y
-      []    -> Nothing
-
+-- | Safe version of 'maximum'
 safeMaximum :: Ord a => [a] -> Maybe a
 safeMaximum [] = Nothing
-safeMaximum xs = Just (foldl1 max xs)
+safeMaximum xs = Just (List.maximum xs)
 
+-- | Safe version of 'minimum'
 safeMinimum :: Ord a => [a] -> Maybe a
 safeMinimum [] = Nothing
-safeMinimum xs = Just (foldl1 min xs)
+safeMinimum xs = Just (List.minimum xs)
 
--- Parse with readMaybe and convert to Either with a message
-readMaybeEither :: Read a => String -> Either String a
-readMaybeEither s = case readMaybe s of
-  Just v -> Right v
-  Nothing -> Left ("readMaybeEither: failed to parse: " ++ show s)
+-- | Safe lookup for lists of pairs or Maps
+safeLookup :: (Eq k, Ord k) => k -> [(k, v)] -> Maybe v
+safeLookup _ [] = Nothing
+safeLookup k xs = Maybe.listToMaybe [v | (k', v) <- xs, k == k']
+
+-- | Safe index operation
+safeIndex :: [a] -> Int -> Maybe a
+safeIndex xs i
+  | i < 0 || i >= length xs = Nothing
+  | otherwise               = Just (xs !! i)
+
+-- | Safe read function
+safeRead :: Read a => String -> Maybe a
+safeRead = Read.readMaybe

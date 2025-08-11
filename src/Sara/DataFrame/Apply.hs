@@ -44,9 +44,11 @@ instance CanApply (Apply cols newCols) where
         transformDFValue dfVal = case fromDFValue @(TypeOf col cols) dfVal of
             Right val -> Right $ toDFValue (f val)
             Left err  -> Left err
-    in case traverse transformDFValue (dfMap Map.! colName) of
-        Right updatedCol -> Right $ DataFrame (Map.insert colName updatedCol dfMap)
-        Left err -> Left err
+    in case Map.lookup colName dfMap of
+        Just column -> case traverse transformDFValue column of
+            Right updatedCol -> Right $ DataFrame (Map.insert colName updatedCol dfMap)
+            Left err -> Left err
+        Nothing -> Left $ GenericError (T.pack "Column not found for apply operation")
 
 type family GetCols (f :: k) :: [(Symbol, Type)] where
   GetCols (Apply cols _) = cols

@@ -31,9 +31,9 @@ import qualified Data.Vector as V
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
 
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, listToMaybe)
 import Data.Time.Format (formatTime, defaultTimeLocale)
-import Data.Time.Calendar (Day)
+
 import qualified Data.ByteString.Char8 as BC
 import qualified Data.HashMap.Strict as HM
 import Data.Char (toUpper)
@@ -85,7 +85,7 @@ instance C.FromField DFValue where
 
 -- | Reads a CSV file in a streaming fashion.
 -- It returns a `Stream` of `DataFrame`s, where each `DataFrame` contains a single row.
-readCsvStreaming :: forall record proxy cols. (FromNamedRecord record, HasSchema record, cols ~ Schema record, KnownColumns cols, Generic record, GToFields (Rep record)) => proxy record -> FilePath -> IO (Either [SaraError] (Stream (Of (DataFrame cols)) IO ()))
+readCsvStreaming :: forall record proxy cols. (FromNamedRecord record, HasSchema record, cols ~ Schema record, KnownColumns cols, Generic record, GToFields (Rep record)) => proxy record -> FilePath -> IO (Either [SaraError] (Stream (Of (Either SaraError (DataFrame cols))) IO ()))
 readCsvStreaming _ filePath = do
     eContents <- try (BL.readFile filePath) :: IO (Either IOException BL.ByteString)
     case eContents of
@@ -97,12 +97,12 @@ readCsvStreaming _ filePath = do
                     actualHeader = V.map TE.decodeUtf8 header
                 in if actualHeader /= expectedColNames
                     then Left $ [IOError (T.pack $ "CSV header mismatch. Expected: " ++ show expectedColNames ++ ", Got: " ++ show actualHeader)]
-                    else Right $ S.for (S.each (V.toList records)) $ \rec -> do
+                    else Right $ S.for (S.each (V.toList records)) $ \rec ->
                         let dfValues = recordToDFValueList rec
-                        case dfValues of
+                        in case dfValues of
                             [IntValue eid', TextValue n', TextValue dn', DoubleValue s', DateValue sd', TextValue e'] ->
                                 case validateEmployee (fromIntegral eid', n', dn', s', sd', e') of
-                                    Left errs -> fail $ unlines $ map show errs
+                                    Left errs -> S.yield (Left (GenericError (T.pack $ show errs)))
                                     Right validated -> do
                                         let rowMap = Map.fromList
                                                 [ ("employeeID", IntValue (unEmployeeID (veEmployeeID validated)))
@@ -113,8 +113,8 @@ readCsvStreaming _ filePath = do
                                                 , ("email", TextValue (T.pack $ show (veEmail validated)))
                                                 ]
                                         let df = DataFrame (Map.map V.singleton rowMap)
-                                        S.yield df
-                            _ -> fail "Mismatched EmployeesRecord fields"
+                                        S.yield (Right df)
+                            _ -> S.yield (Left (GenericError "Mismatched EmployeesRecord fields"))
 
 
 
@@ -140,11 +140,13 @@ writeCSV filePath (DataFrame dfMap) = do
 
         -- Get all columns and ensure they have the same length
         columns = Map.elems dfMap
-        numRows = if null columns then 0 else V.length (head columns)
+        numRows = case listToMaybe columns of
+            Just c -> V.length c
+            Nothing -> 0
 
         -- Create NamedRecords from rows
         rows = V.generate numRows $ \rowIndex ->
-            let rowValues = V.map (\colName -> valueToByteString $ (dfMap Map.! colName) V.! rowIndex) header
+            let rowValues = V.map (\colName -> valueToByteString $ fromMaybe NA (Map.lookup colName dfMap >>= (\colVec -> colVec V.!? rowIndex))) header
             in C.namedRecord $ HM.toList $ HM.fromList $ V.toList $ V.zip headerBS rowValues
 
     BL.writeFile filePath $ C.encodeByName headerBS (V.toList rows)

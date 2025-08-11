@@ -27,7 +27,7 @@ import Data.Maybe (isJust)
 import Data.Either (isRight)
 import Sara.DataFrame.Internal ()
 import Sara.DataFrame.CsvInstances ()
-import Sara.Error(ValidationError(..), SaraError(..))
+import Sara.Error(SaraError(..))
 import Data.Bifunctor (first)
 
 

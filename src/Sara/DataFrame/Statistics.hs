@@ -46,7 +46,7 @@ import Sara.DataFrame.Types
 import qualified Data.Vector as V
 import qualified Data.Map.Strict as Map
 import qualified Data.Text as T
-import Data.List (sort, group, sortBy, foldl')
+import Data.List (sort, group, sortBy)
 import Data.Ord (comparing)
 import GHC.TypeLits (Symbol, KnownSymbol, symbolVal)
 import Data.Proxy (Proxy(..))

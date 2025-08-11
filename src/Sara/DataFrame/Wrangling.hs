@@ -46,7 +46,7 @@ import Data.Proxy (Proxy(..))
 import Data.Kind (Type)
 import Streaming (Stream, Of)
 import qualified Streaming.Prelude as S
-import Sara.Error (SaraError(..))
+-- import Sara.Error (SaraError(..))
 
 import Data.Either (fromRight)
 
@@ -70,7 +70,7 @@ filterRows p =
             rowsWithIdx = zip [0..] rows
             filteredRows = [ row
                            | (idx, row) <- rowsWithIdx
-                           , fromRight False $ evaluate p (DataFrameMap df) idx
+                           , fromRight False $ evaluate p (getDataFrameMap df) idx
                            ]
         in fromRows filteredRows
     )
@@ -154,7 +154,9 @@ dropColumns (DataFrame dfMap) =
 dropRows :: KnownColumns cols => [Int] -> DataFrame cols -> DataFrame cols
 dropRows indicesToDrop (DataFrame dfMap) =
     let
-        numRows = if Map.null dfMap then 0 else V.length (snd . head . Map.toList $ dfMap)
+        numRows = case Map.lookupMin dfMap of
+            Just (_, col) -> V.length col
+            Nothing -> 0
         indicesToKeep = V.fromList [ i | i <- [0 .. numRows - 1], i `notElem` indicesToDrop ]
         newDfMap = Map.map (\col -> V.map (col V.!) indicesToKeep) dfMap
     in

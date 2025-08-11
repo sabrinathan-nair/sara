@@ -12,14 +12,14 @@ module Sara.Validation.Employee (
 import Data.Text (Text)
 import qualified Data.Text as T
 import Data.Time.Calendar (Day)
-import Control.Monad.Trans.Except (ExceptT(..), runExceptT)
-import Control.Monad.IO.Class (liftIO)
-import Control.Monad (when)
+
+
+
 import Data.Char (isAlphaNum)
 
 import Sara.Error (SaraError(..))
 import Sara.Core.Types (EmployeeID, DepartmentName, Email, Salary, mkEmployeeID, mkDepartmentName, mkEmail, mkSalary)
-import Sara.Schema.Definitions (EmployeesRecord)
+
 
 -- | Represents a validated employee record.
 data ValidatedEmployee = ValidatedEmployee

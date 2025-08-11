@@ -35,7 +35,7 @@ import Sara.DataFrame.IO (readJSONStreaming, writeJSONStreaming, readCsvStreamin
 import Sara.DataFrame.SQL (readSQL)
 import Database.SQLite.Simple
 import Sara.Schema.Definitions (EmployeesRecord)
-import Data.Either (partitionEithers)
+
 import Control.Monad.IO.Class (liftIO)
 import Sara.Error (SaraError(..))
 import System.IO.Temp (withSystemTempFile)
@@ -238,25 +238,33 @@ main = hspec $ do
             withSystemTempFile "empty.csv" $ \filePath handle -> do
                 BL.hPutStr handle ""
                 hClose handle
-                readResult <- readCsvStreaming (Proxy @EmployeesRecord) filePath
-                case readResult of
-                    Left [ParsingError err] -> err `shouldBe` "parse error (not enough input) at \"\""
-                    _ -> expectationFailure "Expected ParsingError for empty CSV file"
+                readResultEither <- readCsvStreaming (Proxy @EmployeesRecord) filePath
+                case readResultEither of
+                    Left errs -> errs `shouldBe` [ParsingError "parse error (not enough input) at \"\""]
+                    Right _ -> expectationFailure "Expected Left for empty CSV file"
 
         it "handles non-existent CSV file" $ do
-            readResult <- readCsvStreaming (Proxy @EmployeesRecord) "non_existent.csv"
-            case readResult of
-                Left [IOError err] -> T.unpack err `shouldContain` "non_existent.csv"
-                _ -> expectationFailure "Expected IOError for non-existent CSV file"
+            readResultEither <- readCsvStreaming (Proxy @EmployeesRecord) "non_existent.csv"
+            case readResultEither of
+                Left errs -> do
+                    length errs `shouldBe` 1
+                    case errs of
+                        [IOError err] -> T.unpack err `shouldContain` "non_existent.csv"
+                        _ -> expectationFailure "Expected IOError"
+                Right _ -> expectationFailure "Expected Left for non-existent CSV file"
 
         it "handles malformed CSV file" $ do
             withSystemTempFile "malformed.csv" $ \filePath handle -> do
                 BL.hPutStr handle "col1,col2\nval1\n"
                 hClose handle
-                readResult <- readCsvStreaming (Proxy @EmployeesRecord) filePath
-                case readResult of
-                    Left [ParsingError err] -> T.unpack err `shouldContain` "conversion error: no field named \"EmployeeID\""
-                    _ -> expectationFailure "Expected ParsingError for malformed CSV file"
+                readResultEither <- readCsvStreaming (Proxy @EmployeesRecord) filePath
+                case readResultEither of
+                    Left errs -> do
+                        length errs `shouldBe` 1
+                        case errs of
+                            [ParsingError err] -> T.unpack err `shouldContain` "conversion error: no field named \"EmployeeID\""
+                            _ -> expectationFailure "Expected ParsingError"
+                    Right _ -> expectationFailure "Expected Left for malformed CSV file"
 
     describe "JSON Streaming" $ do
         let testDataFrame = fromRows @'[ '("name", T.Text), '("age", Int)] [
@@ -931,7 +939,7 @@ prop_sortDataFrame_core df criteria =
                         let val1 = Map.lookup (T.pack $ symbolVal (Proxy @col)) r1
                             val2 = Map.lookup (T.pack $ symbolVal (Proxy @col)) r2
                         in compare val2 val1
-            in  all (\(r1, r2) -> compareRows' r1 r2 /= GT) (zip sorted (tail sorted)) &&
+            in  all (\(r1, r2) -> compareRows' r1 r2 /= GT) (zip sorted (drop 1 sorted)) &&
                 sortBy compareRows' original == sorted
 
 prop_joinDF_correct_ids :: forall cols1 cols2. (KnownColumns cols1, KnownColumns cols2, Arbitrary (DataFrame cols1), Arbitrary (DataFrame cols2), HasColumn "ID" cols1, HasColumn "ID" cols2, TypeOf "ID" cols1 ~ Int, TypeOf "ID" cols2 ~ Int, KnownColumns (JoinCols cols1 cols2), All CanBeDFValue (GetColumnTypes cols1), All CanBeDFValue (GetColumnTypes cols2), All CanBeDFValue (GetColumnTypes (JoinCols cols1 cols2)), CreateOutputRow (JoinCols cols1 cols2)) => DataFrame cols1 -> DataFrame cols2 -> Property

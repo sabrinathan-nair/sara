@@ -28,7 +28,8 @@ data SaraError =
     -- | An error for an operation on an empty column.
     EmptyColumn T.Text T.Text |
     -- | A generic error, with a descriptive message.
-    GenericError T.Text
+    GenericError T.Text |
+    ValidationErrors [ValidationError]
     deriving (Eq)
 
 data ValidationError =
@@ -52,3 +53,4 @@ instance Show SaraError where
     show (InvalidArgument msg) = "Invalid Argument: " ++ T.unpack msg
     show (EmptyColumn colName msg) = "Empty Column Error for '" ++ T.unpack colName ++ "': " ++ T.unpack msg
     show (GenericError msg) = "Error: " ++ T.unpack msg
+    show (ValidationErrors errs) = "Validation Errors: " ++ show errs
