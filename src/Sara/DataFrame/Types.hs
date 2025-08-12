@@ -70,6 +70,7 @@ import Data.Proxy (Proxy(..))
 import GHC.TypeLits (symbolVal, Symbol, ErrorMessage(Text, (:<>:), ShowType), KnownSymbol, TypeError, CmpSymbol)
 import Data.Kind (Type, Constraint)
 import Data.Typeable (TypeRep, Typeable, typeRep)
+import Data.Maybe (fromMaybe)
 
 import Sara.Error (SaraError(..))
 import Control.Monad.Fail (fail)
@@ -385,7 +386,7 @@ toRows (DataFrame dfMap) =
                     (_, col) : _ -> V.length col
                 columnNames' = Map.keys dfMap
             in
-                [ Map.fromList [ (colName, (dfMap Map.! colName) V.! rowIndex) | colName <- columnNames' ]
+                [ Map.fromList [ (colName, fromMaybe NA (Map.lookup colName dfMap >>= (V.!? rowIndex))) | colName <- columnNames' ]
                 | rowIndex <- [0 .. numRows - 1]
                 ]
 

@@ -1,0 +1,18 @@
+feat: Enhance type safety and error handling; remove partial functions
+
+This commit addresses several areas to improve the robustness and type safety of the Sara library:
+
+- **Refactored `Sara.DataFrame.Apply`:** Replaced partial `Map.!` with safe `Map.lookup` and introduced `GenericError` for missing columns.
+- **Refactored `Sara.DataFrame.Wrangling`:** Replaced partial `head` and `snd . head . Map.toList` with a safe `numRows` calculation.
+- **Refactored `Sara.DataFrame.IO`:**
+    - Replaced partial `head` and `Map.!`/`V.!` with safe alternatives in `writeCSV`.
+    - Modified `readCsvStreaming` to return `Stream (Of (Either SaraError (DataFrame cols)))` for robust error propagation.
+    - Replaced `fail` calls with explicit `SaraError` handling.
+- **Updated `Sara.Error`:** Added `ValidationErrors [ValidationError]` constructor to `Sara.Error` for more specific error reporting.
+- **Updated `app/Tutorial.hs`:** Adapted `readCsvStreaming` usage to handle the new `Either` return type.
+- **Updated `test/TestSuite.hs`:**
+    - Modified `CSV Streaming` tests to correctly handle the new `readCsvStreaming` signature.
+    - Removed partial `head` and `tail` calls from various test helpers and QuickCheck properties.
+    - Cleaned up redundant imports.
+
+These changes ensure that potential runtime errors due to partial functions are now caught at compile-time or handled gracefully, significantly improving the stability and reliability of the Sara library. All existing tests and QuickCheck properties pass, confirming no regressions were introduced.

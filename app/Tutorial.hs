@@ -16,16 +16,10 @@ import Sara.DataFrame.Wrangling (filterByBoolColumn)
 import Sara.DataFrame.Transform (mutate)
 import Sara.DataFrame.Expression (col, lit, (>.))
 import Data.Proxy
-import Sara.DataFrame.Static (inferCsvSchema)
-import Data.Text (Text)
-import qualified Data.ByteString.Char8 as BC
-import qualified Data.Csv as C
-import Data.Time.Calendar (Day)
-import GHC.Generics (Generic)
-import Data.Csv (FromNamedRecord)
-import Sara.DataFrame.Internal (HasSchema, Schema, HasTypeName, getTypeName)
+import Sara.Schema.Definitions (EmployeesRecord)
 
-$(inferCsvSchema "Employees" False "employees.csv")
+
+
 
 
 tutorial :: IO ()
@@ -38,7 +32,7 @@ tutorial = do
             S.mapM_ (\dfEither -> case dfEither of
                 Left err -> putStrLn $ "Error processing DataFrame: " ++ show err
                 Right df -> do
-                    let mutatedDfEither = mutate (Proxy :: Proxy "IsSalaryHigh") (col (Proxy @"Salary") >. lit 70000) df
+                    let mutatedDfEither = mutate (Proxy :: Proxy "IsSalaryHigh") (col (Proxy @"Employees.Salary") >. lit 70000) df
                     case mutatedDfEither of
                         Left err -> putStrLn $ "Error mutating: " ++ show err
                         Right mutatedDf -> do

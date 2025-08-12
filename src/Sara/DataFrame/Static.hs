@@ -64,7 +64,7 @@ tableTypes name filePath = do
 -- | Normalizes a field name to be a valid Haskell identifier.
 -- It converts the first character to lowercase.
 normalizeFieldName :: T.Text -> T.Text
-normalizeFieldName t = case T.uncons t of
+normalizeFieldName t = case T.uncons (T.replace (T.pack ".") (T.pack "_") t) of
     Just (x, xs) -> T.cons (toLower x) xs
     Nothing -> T.empty
 
@@ -130,7 +130,7 @@ inferCsvSchema typeName withPrefix filePath = do
                             V.toList $ V.map (\row -> TE.decodeUtf8 (row V.! colIdx)) dataRows
                     
                     inferredTypes <- mapM inferColumnTypeFromSamples columnSamples
-                    let finalHeaders = if withPrefix then map (T.pack typeName <>) headers else headers
+                    let finalHeaders = if withPrefix then map (\h -> T.pack typeName <> T.pack "." <> h) headers else headers
                     let normalizedFinalHeaders = map normalizeFieldName finalHeaders
                     let schemaListType = foldr (\(h, t) acc -> PromotedConsT `AppT` (PromotedTupleT 2 `AppT` LitT (StrTyLit (T.unpack h)) `AppT` t) `AppT` acc) PromotedNilT (zip finalHeaders inferredTypes)
                     let typeSyn = TySynD (mkName typeName) [] schemaListType

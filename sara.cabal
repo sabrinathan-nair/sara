@@ -27,6 +27,7 @@ library
                      , Sara.Validation.Employee
                      , Sara.Core.Types
                      , Sara.DataFrame.Wrangling
+                     , Sara.Internal.Safe
   hs-source-dirs:      src
   build-depends:       base >=4.21.0.0 && <4.22
                      , text

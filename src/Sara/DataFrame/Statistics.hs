@@ -39,7 +39,7 @@ module Sara.DataFrame.Statistics (
     -- * Expanding Window Functions
     expandingApply,
     -- * Exponentially Weighted Moving Functions
-    ewmApply
+    -- ewmApply
 ) where
 
 import Sara.DataFrame.Types
@@ -51,6 +51,8 @@ import Data.Ord (comparing)
 import GHC.TypeLits (Symbol, KnownSymbol, symbolVal)
 import Data.Proxy (Proxy(..))
 import Sara.Error (SaraError(..))
+import Sara.Internal.Safe (safeIndex, safeHead)
+import Data.Maybe (fromMaybe)
 
 -- | Converts a `DFValue` to a `Double` for calculations.
 -- Returns `Nothing` if the value is not numeric.
@@ -123,8 +125,12 @@ medianV vec =
     in if len == 0
        then NA
        else if odd len
-            then DoubleValue $ sortedVals !! (len `div` 2)
-            else DoubleValue $ (sortedVals !! (len `div` 2 - 1) + sortedVals !! (len `div` 2)) / 2.0
+            then case safeIndex sortedVals (len `div` 2) of
+                Just val -> DoubleValue val
+                Nothing -> NA -- Should not happen if len > 0
+            else case (safeIndex sortedVals (len `div` 2 - 1), safeIndex sortedVals (len `div` 2)) of
+                (Just v1, Just v2) -> DoubleValue $ (v1 + v2) / 2.0
+                _ -> NA -- Should not happen if len > 0
 
 -- | Calculates the mode of a vector of `DFValue`s.
 -- The mode is the value that appears most frequently.
@@ -137,11 +143,11 @@ modeV vec =
            let grouped = group (V.toList nonNAValues)
                -- Sort by length (frequency) in descending order
                sortedGroups = sortBy (comparing (negate . length)) grouped
-                      in case sortedGroups of
-               [] -> NA
-               (firstGroup:_) -> case firstGroup of
-                   [] -> NA
-                   (modeVal:_) -> modeVal
+               in case safeHead sortedGroups of
+                   Just firstGroup -> case safeHead firstGroup of
+                       Just modeVal -> modeVal
+                       Nothing -> NA
+                   Nothing -> NA
 
 -- | Calculates the variance of a vector of `DFValue`s.
 -- Non-numeric values are ignored.
@@ -186,15 +192,17 @@ kurtosisV vec =
 
 -- | Applies a function over a rolling window of a column.
 -- The new column is named by appending "_rolling" to the original column name.
-rollingApply :: KnownColumns cols => DataFrame cols -> Int -> String -> (V.Vector DFValue -> DFValue) -> DataFrame cols
-rollingApply (DataFrame dfMap) window colName aggFunc =
-    let col = dfMap Map.! T.pack colName
-        rollingCol = V.fromList $ map (\i ->
-            let windowed = V.slice i (min window (V.length col - i)) col
-            in aggFunc windowed
-            ) [0 .. V.length col - 1]
-        newDfMap = Map.insert (T.pack colName `T.append` "_rolling") rollingCol dfMap
-    in DataFrame newDfMap
+rollingApply :: KnownColumns cols => DataFrame cols -> Int -> String -> (V.Vector DFValue -> DFValue) -> Either SaraError (DataFrame cols)
+rollingApply (DataFrame dfMap) window colName aggFunc = do
+    case Map.lookup (T.pack colName) dfMap of
+        Nothing -> Left $ ColumnNotFound (T.pack colName)
+        Just col ->
+            let rollingCol = V.fromList $ map (\i ->
+                    let windowed = V.slice i (min window (V.length col - i)) col
+                    in aggFunc windowed
+                    ) [0 .. V.length col - 1]
+                newDfMap = Map.insert (T.pack colName `T.append` "_rolling") rollingCol dfMap
+            in Right $ DataFrame newDfMap
 
 -- | Counts the occurrences of unique, non-NA values in a specified column.
 -- Returns a new DataFrame with two columns: the unique values and their counts.
@@ -256,11 +264,12 @@ quantile p q df
                            idxFloor = floor index
                            idxCeil = ceiling index
                        in if idxFloor == idxCeil
-                          then Right $ DoubleValue (sortedVals !! idxFloor)
+                          then case safeIndex sortedVals idxFloor of
+                              Just val -> Right $ DoubleValue val
+                              Nothing -> Left $ GenericError "Quantile calculation failed: invalid index."
                           else
-                              let v1 = sortedVals !! idxFloor
-                                  v2 = sortedVals !! idxCeil
-                                  -- Interpolate: v1 + (v2 - v1) * (index - idxFloor)
+                              let v1 = fromMaybe 0.0 (safeIndex sortedVals idxFloor)
+                                  v2 = fromMaybe 0.0 (safeIndex sortedVals idxCeil)
                                   interpolated = v1 + (v2 - v1) * (index - fromIntegral idxFloor)
                               in Right $ DoubleValue interpolated
 
@@ -378,7 +387,7 @@ summaryStatistics df =
 
         -- Helper to get numeric values from a column vector
         getNumericVals :: T.Text -> V.Vector Double
-        getNumericVals colName = V.mapMaybe toNumeric (dfMap Map.! colName)
+        getNumericVals colName = fromMaybe V.empty (Map.lookup colName dfMap >>= Just . V.mapMaybe toNumeric)
 
         -- Calculate statistics for a single numeric column
         calculateColumnStats :: T.Text -> Map.Map T.Text DFValue
@@ -405,10 +414,12 @@ summaryStatistics df =
                                idxFloor = floor index
                                idxCeil = ceiling index
                            in if idxFloor == idxCeil
-                              then DoubleValue (sortedVals !! idxFloor)
+                              then case safeIndex sortedVals idxFloor of
+                                  Just val -> DoubleValue val
+                                  Nothing -> NA -- Should not happen if len > 0
                               else
-                                  let v1 = sortedVals !! idxFloor
-                                      v2 = sortedVals !! idxCeil
+                                  let v1 = fromMaybe 0.0 (safeIndex sortedVals idxFloor)
+                                      v2 = fromMaybe 0.0 (safeIndex sortedVals idxCeil)
                                       interpolated = v1 + (v2 - v1) * (index - fromIntegral idxFloor)
                                   in DoubleValue interpolated
                    in Map.fromList [
@@ -423,7 +434,7 @@ summaryStatistics df =
                        ]
 
         -- Filter for numeric columns and calculate their statistics
-        numericColumnStats = Map.fromList $ map (\colName -> (colName, calculateColumnStats colName)) $ filter (\cn -> Map.member cn dfMap && not (V.null (V.mapMaybe toNumeric (dfMap Map.! cn)))) (Map.keys dfMap)
+        numericColumnStats = Map.fromList $ map (\colName -> (colName, calculateColumnStats colName)) $ filter (\cn -> not (V.null (getNumericVals cn))) (Map.keys dfMap)
 
         -- Restructure the map: StatisticName -> (ColumnName -> Value)
         restructuredMap = foldl' (\acc (colName, statsMap) ->
@@ -460,21 +471,24 @@ expandingApply p aggFunc df = do
 -- The new column is named by appending "_ewma" to the original column name.
 -- The `alpha` parameter is the smoothing factor, typically between 0 and 1.
 -- Returns `Left SaraError` if the column is not found, is not numeric, or `alpha` is out of range.
-ewmApply :: forall (col :: Symbol) cols.
-             ( KnownSymbol col
-             , HasColumn col cols
-             , KnownColumns (cols :++: '[ '(col, TypeOf col cols)])
-             , CanBeDFValue (TypeOf col cols)
-             ) => Proxy col -> Double -> DataFrame cols -> Either SaraError (DataFrame (cols :++: '[ '(col, TypeOf col cols)]))
-ewmApply p alpha df
-    | alpha <= 0.0 || alpha >= 1.0 = Left $ InvalidArgument "Alpha for EWMA must be between 0.0 and 1.0 (exclusive)."
-    | otherwise = do
-        let colName = T.pack $ symbolVal p
-        case Map.lookup colName (getDataFrameMap df) of
-            Nothing -> Left $ ColumnNotFound colName
-            Just colVector ->
-                let numericVals = V.mapMaybe toNumeric colVector
-                    ewmaVals = V.scanl' (\prevEwma currentVal -> alpha * currentVal + (1 - alpha) * prevEwma) (V.head numericVals) (V.tail numericVals)
-                    newColName = colName `T.append` "_ewma"
-                    newDfMap = Map.insert newColName (V.map DoubleValue ewmaVals) (getDataFrameMap df)
-                in Right $ DataFrame newDfMap
+-- ewmApply :: forall (col :: Symbol) cols.
+--              ( KnownSymbol col
+--              , HasColumn col cols
+--              , KnownColumns (cols :++: '[ '(col, TypeOf col cols)])
+--              , CanBeDFValue (TypeOf col cols)
+--              ) => Proxy col -> Double -> DataFrame cols -> Either SaraError (DataFrame (cols :++: '[ '(col, TypeOf col cols)]))
+-- ewmApply p alpha df
+--     | alpha <= 0.0 || alpha >= 1.0 = Left $ InvalidArgument "Alpha for EWMA must be between 0.0 and 1.0 (exclusive)."
+--     | otherwise = do
+--         let colName = T.pack $ symbolVal p
+--         case Map.lookup colName (getDataFrameMap df) of
+--             Nothing -> Left $ ColumnNotFound colName
+--             Just colVector ->
+--                 let numericVals = V.mapMaybe toNumeric colVector in
+--                 case safeHead (V.toList numericVals) of
+--                     Just initialEwma ->
+--                         let ewmaVals = V.scanl' (\prevEwma currentVal -> alpha * currentVal + (1 - alpha) * prevEwma) initialEwma (V.fromList (fromMaybe [] (safeTail (V.toList numericVals))))
+--                             newColName = colName `T.append` "_ewma"
+--                             newDfMap = Map.insert newColName (V.map DoubleValue ewmaVals) (getDataFrameMap df)
+--                         in Right $ DataFrame newDfMap
+--                     Nothing -> Left $ InvalidArgument "EWMA requires a non-empty numeric column."

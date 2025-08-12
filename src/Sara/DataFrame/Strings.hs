@@ -24,6 +24,7 @@ import qualified Data.Map.Strict as Map
 import qualified Data.Text as T
 import GHC.TypeLits (Symbol, KnownSymbol, symbolVal)
 import Data.Proxy (Proxy(..))
+import Data.Maybe (fromMaybe)
 
 -- | Applies a `Text` transformation function to a `DFValue`.
 -- Non-`TextValue`s and `NA` are returned unchanged.
@@ -66,7 +67,7 @@ strip colProxy (DataFrame dfMap) =
 contains :: forall (col :: Symbol) cols. (KnownSymbol col, HasColumn col cols, KnownColumns cols) => Proxy col -> T.Text -> DataFrame cols -> DataFrame cols
 contains colProxy searchPattern (DataFrame dfMap) =
     let colName = T.pack (symbolVal colProxy)
-    in DataFrame $ Map.insert (colName `T.append` T.pack "_contains_" `T.append` searchPattern) (V.map (applyTextPredicate (T.isInfixOf searchPattern)) (dfMap Map.! colName)) dfMap
+    in DataFrame $ Map.insert (colName `T.append` T.pack "_contains_" `T.append` searchPattern) (V.map (applyTextPredicate (T.isInfixOf searchPattern)) (fromMaybe V.empty (Map.lookup colName dfMap))) dfMap
 
 -- | Replaces occurrences of a substring in the specified column.
 -- The column must be of type `TextValue`.
