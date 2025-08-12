@@ -110,6 +110,7 @@ test-suite sara-test
     , Sara.DataFrame.Wrangling
     , Sara.Validation.Employee
     , Sara.Core.Types
+    , Sara.Internal.Safe
 
 
 

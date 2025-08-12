@@ -133,7 +133,7 @@ melt df =
 -- The schema of the `DataFrame` is updated accordingly.
 applyColumn :: forall col oldType newType cols newCols.
               (HasColumn col cols, KnownColumns cols, CanBeDFValue oldType, CanBeDFValue newType, TypeOf col cols ~ oldType, newCols ~ UpdateColumn col newType cols, KnownColumns newCols)
-              => Proxy col -> (oldType -> newType) -> Stream (Of (DataFrame cols)) IO () -> Stream (Of (Either SaraError (DataFrame newCols))) IO ()
+              => Proxy col -> (oldType -> newType) -> Stream (Of (DataFrame cols)) IO () -> Stream (Of (DataFrame newCols)) IO ()
 applyColumn colProxy f =
     S.map (\df ->
         let colName = T.pack (symbolVal colProxy)
@@ -141,10 +141,10 @@ applyColumn colProxy f =
             oldColumnEither = Map.lookup colName dfMap
         in case oldColumnEither of
             Just oldColumn ->
-                let newColumn = V.map (\val -> either (const NA) (toDFValue . f) (fromDFValue val)) oldColumn
-                    newDfMap = Map.insert colName newColumn dfMap
-                in Right (DataFrame newDfMap)
-            Nothing -> Left (ColumnNotFound colName)
+                let newColumn :: V.Vector DFValue
+                    newColumn = V.map (\val -> either (const NA) (toDFValue . f) (fromDFValue val)) oldColumn
+                in DataFrame (Map.insert colName newColumn dfMap)
+            Nothing -> fromRows [] -- Yield empty DataFrame on error
     )
 
 
@@ -163,11 +163,11 @@ filterRows :: forall cols.
              KnownColumns cols
              => FilterPredicate cols
              -> Stream (Of (DataFrame cols)) IO ()
-             -> Stream (Of (Either SaraError (DataFrame cols))) IO ()
+             -> Stream (Of (DataFrame cols)) IO ()
 filterRows predicate = S.mapM (\df -> do
     let dfMap = getDataFrameMap df
     let rows = toRows df
     let filteredRows = [row | (row, idx) <- zip rows [0..], fromRight False (evaluate predicate dfMap idx)]
     if null filteredRows
-        then return $ Right $ DataFrame Map.empty
-        else return $ Right $ fromRows filteredRows)
+        then return $ DataFrame Map.empty
+        else return $ fromRows filteredRows)

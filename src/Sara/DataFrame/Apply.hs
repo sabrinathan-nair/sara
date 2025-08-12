@@ -23,6 +23,8 @@ import GHC.TypeLits
 import Data.Proxy (Proxy(..))
 import qualified Data.Text as T
 import qualified Data.Map.Strict as Map
+import Streaming (Stream, Of)
+import qualified Streaming.Prelude as S
 
 
 import Sara.Error (SaraError(..))
@@ -34,21 +36,22 @@ data Apply (cols :: [(Symbol, Type)]) (newCols :: [(Symbol, Type)]) where
         -> Apply cols newCols
 
 class CanApply f where
-  apply :: f -> DataFrame (GetCols f) -> Either SaraError (DataFrame (GetNewCols f))
+  apply :: f -> Stream (Of (DataFrame (GetCols f))) IO () -> Stream (Of (DataFrame (GetNewCols f))) IO ()
 
 instance CanApply (Apply cols newCols) where
-  apply (Apply (colProxy :: Proxy col) f) (DataFrame dfMap) =
-    let
-        colName = T.pack (symbolVal colProxy)
-        transformDFValue :: DFValue -> Either SaraError DFValue
+  apply (Apply (colProxy :: Proxy col) f) dfStream = S.mapM (\df -> do
+    let colName = T.pack (symbolVal colProxy)
+    let transformDFValue :: DFValue -> Either SaraError DFValue
         transformDFValue dfVal = case fromDFValue @(TypeOf col cols) dfVal of
             Right val -> Right $ toDFValue (f val)
             Left err  -> Left err
-    in case Map.lookup colName dfMap of
+    
+    case Map.lookup colName (getDataFrameMap df) of
         Just column -> case traverse transformDFValue column of
-            Right updatedCol -> Right $ DataFrame (Map.insert colName updatedCol dfMap)
-            Left err -> Left err
-        Nothing -> Left $ GenericError (T.pack "Column not found for apply operation")
+            Right updatedCol -> return $ DataFrame (Map.insert colName updatedCol (getDataFrameMap df))
+            Left _ -> return $ fromRows [] -- Yield empty DataFrame on error
+        Nothing -> return $ fromRows [] -- Yield empty DataFrame on error
+    ) dfStream
 
 type family GetCols (f :: k) :: [(Symbol, Type)] where
   GetCols (Apply cols _) = cols
