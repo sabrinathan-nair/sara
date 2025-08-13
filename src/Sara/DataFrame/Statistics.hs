@@ -93,23 +93,35 @@ stdV vec =
                sumSqDiff = V.sum $ V.map (\x -> (x - m) * (x - m)) numericVals
            in DoubleValue $ sqrt (sumSqDiff / fromIntegral (len - 1))
 
+-- | Safely calculates the minimum of a vector of `Double`s.
+safeMinimum :: V.Vector Double -> Maybe Double
+safeMinimum vec
+  | V.null vec = Nothing
+  | otherwise = Just $ V.minimum vec
+
 -- | Calculates the minimum of a vector of `DFValue`s.
 -- Non-numeric values are ignored.
 minV :: V.Vector DFValue -> DFValue
-minV vec = 
+minV vec =
     let numericVals = V.mapMaybe toNumeric vec
-    in if V.null numericVals
-       then NA
-       else DoubleValue $ V.minimum numericVals
+    in case safeMinimum numericVals of
+        Just minVal -> DoubleValue minVal
+        Nothing -> NA
+
+-- | Safely calculates the maximum of a vector of `Double`s.
+safeMaximum :: V.Vector Double -> Maybe Double
+safeMaximum vec
+  | V.null vec = Nothing
+  | otherwise = Just $ V.maximum vec
 
 -- | Calculates the maximum of a vector of `DFValue`s.
 -- Non-numeric values are ignored.
 maxV :: V.Vector DFValue -> DFValue
-maxV vec = 
+maxV vec =
     let numericVals = V.mapMaybe toNumeric vec
-    in if V.null numericVals
-       then NA
-       else DoubleValue $ V.maximum numericVals
+    in case safeMaximum numericVals of
+        Just maxVal -> DoubleValue maxVal
+        Nothing -> NA
 
 -- | Counts the non-`NA` values in a vector of `DFValue`s.
 countV :: V.Vector DFValue -> DFValue
@@ -143,11 +155,9 @@ modeV vec =
            let grouped = group (V.toList nonNAValues)
                -- Sort by length (frequency) in descending order
                sortedGroups = sortBy (comparing (negate . length)) grouped
-               in case safeHead sortedGroups of
-                   Just firstGroup -> case safeHead firstGroup of
-                       Just modeVal -> modeVal
-                       Nothing -> NA
-                   Nothing -> NA
+               firstGroup = fromMaybe [] (safeHead sortedGroups)
+               modeVal = fromMaybe NA (safeHead firstGroup)
+           in modeVal
 
 -- | Calculates the variance of a vector of `DFValue`s.
 -- Non-numeric values are ignored.
