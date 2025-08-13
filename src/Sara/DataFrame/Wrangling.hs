@@ -48,7 +48,7 @@ import Streaming (Stream, Of)
 import qualified Streaming.Prelude as S
 import Sara.Error (SaraError(..))
 import Data.Either (fromRight)
-import Data.Maybe (isNothing, fromJust)
+import Data.Maybe (isNothing, mapMaybe)
 
 -- | A typeclass for converting a type-level list of `Symbol`s to a list of `T.Text` values.
 class AllKnownSymbol (xs :: [Symbol]) where
@@ -205,7 +205,7 @@ dropNA df = do
                    let columnValuesMaybes = map (\r -> Map.lookup colName r) filteredRows
                    if any isNothing columnValuesMaybes
                        then Left $ ColumnNotFound colName
-                       else Right $ V.fromList $ map fromJust columnValuesMaybes
+                       else Right $ V.fromList $ mapMaybe id columnValuesMaybes
                    ) colNames
            
            -- Sequence the list of Eithers to get Either SaraError [V.Vector DFValue]
