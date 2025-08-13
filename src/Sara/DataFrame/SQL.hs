@@ -19,6 +19,8 @@ import Data.Proxy (Proxy(..))
 import Data.Typeable (TypeRep, typeRep)
 import Control.Monad (forM)
 import Control.Exception (try, SomeException)
+import Data.Maybe (mapMaybe)
+
 
 import Sara.DataFrame.Types
 import Sara.Error (SaraError(..))
@@ -87,4 +89,11 @@ readSQL p dbPath sqlQuery = do
 transpose :: [[a]] -> [[a]]
 transpose [] = []
 transpose ([]:_) = []
-transpose ((x:xs):xss) = (x : [h | (h:_) <- xss]) : transpose (xs : [t | (_:t) <- xss])
+transpose xss =
+    let safeHead (y:_) = Just y
+        safeHead _ = Nothing
+        safeTail (_:ys) = Just ys
+        safeTail _ = Nothing
+    in case traverse safeHead xss of
+        Nothing -> []
+        Just hs -> hs : transpose (mapMaybe safeTail xss)

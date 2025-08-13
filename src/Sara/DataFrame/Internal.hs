@@ -37,6 +37,8 @@ import qualified Data.Text as T ()
 import qualified Data.Text.Encoding as TE ()
 import Data.Aeson ()
 import qualified Data.Aeson.Types as A ()
+import Data.Maybe (mapMaybe)
+
 
 -- | Converts a record to a list of Text values.
 recordToDFValueList :: (Generic a, GToFields (Rep a)) => a -> [DFValue]
@@ -85,7 +87,14 @@ instance (CanBeDFValue a) => GToFields (K1 i a) where
 transpose :: [[a]] -> [[a]]
 transpose [] = []
 transpose ([]:_) = []
-transpose ((x:xs):xss) = (x : [h | (h:_) <- xss]) : transpose (xs : [t | (_:t) <- xss])
+transpose xss =
+    let safeHead (y:_) = Just y
+        safeHead _ = Nothing
+        safeTail (_:ys) = Just ys
+        safeTail _ = Nothing
+    in case traverse safeHead xss of
+        Nothing -> []
+        Just hs -> hs : transpose (mapMaybe safeTail xss)
 
 -- | Helper function to combine two DataFrames (pure version)
 combineDataFramesPure :: DataFrame cols -> DataFrame cols -> DataFrame cols

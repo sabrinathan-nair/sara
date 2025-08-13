@@ -15,10 +15,8 @@ module Sara.Internal.Safe
   , safeRead
   ) where
 
-import qualified Data.List as List
 import qualified Data.Maybe as Maybe
 import qualified Text.Read as Read
-import qualified Data.Map.Strict as Map
 
 -- | Safe version of 'head'
 safeHead :: [a] -> Maybe a
@@ -33,22 +31,24 @@ safeTail (_:xs) = Just xs
 -- | Safe version of 'init'
 safeInit :: [a] -> Maybe [a]
 safeInit [] = Nothing
-safeInit xs = Just (List.init xs)
+safeInit [_] = Just []
+safeInit (x:xs) = fmap (x:) (safeInit xs)
 
 -- | Safe version of 'last'
 safeLast :: [a] -> Maybe a
 safeLast [] = Nothing
-safeLast xs = Just (List.last xs)
+safeLast [x] = Just x
+safeLast (_:xs) = safeLast xs
 
 -- | Safe version of 'maximum'
 safeMaximum :: Ord a => [a] -> Maybe a
 safeMaximum [] = Nothing
-safeMaximum xs = Just (List.maximum xs)
+safeMaximum (x:xs) = Just (foldr max x xs)
 
 -- | Safe version of 'minimum'
 safeMinimum :: Ord a => [a] -> Maybe a
 safeMinimum [] = Nothing
-safeMinimum xs = Just (List.minimum xs)
+safeMinimum (x:xs) = Just (foldr min x xs)
 
 -- | Safe lookup for lists of pairs or Maps
 safeLookup :: (Eq k, Ord k) => k -> [(k, v)] -> Maybe v
@@ -58,8 +58,11 @@ safeLookup k xs = Maybe.listToMaybe [v | (k', v) <- xs, k == k']
 -- | Safe index operation
 safeIndex :: [a] -> Int -> Maybe a
 safeIndex xs i
-  | i < 0 || i >= length xs = Nothing
-  | otherwise               = Just (xs !! i)
+  | i < 0 = Nothing
+  | otherwise = case (xs, i) of
+      ([], _) -> Nothing
+      (x:_, 0) -> Just x
+      (_:xs', n) -> safeIndex xs' (n - 1)
 
 -- | Safe read function
 safeRead :: Read a => String -> Maybe a

@@ -43,7 +43,7 @@ import qualified Data.Vector as V
 
 
 
-import Sara.Error (SaraError(ColumnNotFound, ArithmeticError))
+import Sara.Error (SaraError(ColumnNotFound, ArithmeticError, GenericError))
 
 
 -- | A type-safe expression GADT for `DataFrame` operations.
@@ -90,7 +90,10 @@ evaluateExpr :: Expr cols a -> Map.Map T.Text Column -> Int -> Either SaraError 
 evaluateExpr (Lit val) _ _ = Right val
 evaluateExpr (Col p) dfMap idx = 
     case Map.lookup (T.pack (symbolVal p)) dfMap of
-        Just colData -> fromDFValue (colData V.! idx)
+        Just colData -> 
+            case colData V.!? idx of
+                Just val -> fromDFValue val
+                Nothing -> Left $ GenericError (T.pack "Index out of bounds")
         Nothing -> Left $ ColumnNotFound (T.pack (symbolVal p))
 evaluateExpr (Add e1 e2) dfMap idx = liftA2 (+) (evaluateExpr e1 dfMap idx) (evaluateExpr e2 dfMap idx)
 evaluateExpr (Subtract e1 e2) dfMap idx = liftA2 (-) (evaluateExpr e1 dfMap idx) (evaluateExpr e2 dfMap idx)

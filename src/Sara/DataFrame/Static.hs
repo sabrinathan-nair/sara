@@ -1,8 +1,7 @@
 -- | This module provides Template Haskell functions for statically inferring schemas
 -- from CSV files. This allows for creating `DataFrame`s with compile-time guarantees
 -- about column names and types.
-{-# LANGUAGE DoAndIfThenElse #-}
-module Sara.DataFrame.Static (
+module Sara.DataFrame.Static ( 
     -- * Template Haskell Functions
     tableTypes,
     inferCsvSchema,
@@ -29,6 +28,7 @@ import Sara.DataFrame.Internal ()
 import Sara.DataFrame.CsvInstances ()
 import Sara.Error(SaraError(..))
 import Data.Bifunctor (first)
+import Sara.Internal.Safe (safeHead)
 
 
 -- | A Template Haskell function that generates a record type from a CSV file.
@@ -50,16 +50,22 @@ tableTypes name filePath = do
     contents <- runIO $ BL.readFile filePath
     case C.decode C.NoHeader contents of
         Left err -> fail err
-        Right records -> do
-            let headers = V.toList $ V.map TE.decodeUtf8 $ records V.! 0
-            let firstRow = V.toList $ V.map TE.decodeUtf8 $ records V.! 1
-            let fields = zipWith (\h t -> (mkName (T.unpack (normalizeFieldName h)), inferDFType t)) headers firstRow
-            let recordName = mkName name
-            record <- dataD (cxt []) recordName [] Nothing [recC recordName (map (\(n, t) -> varBangType n (bangType (bang noSourceUnpackedness noSourceStrictness) t)) fields)]
-              [derivClause (Just StockStrategy) [pure (ConT (mkName "Show")), pure (ConT (mkName "Generic"))]
-                                    , derivClause (Just AnyclassStrategy) [pure (ConT (mkName "Data.Csv.FromNamedRecord"))]
-                                    ]
-            return [record]
+        Right records -> 
+            case V.toList records of
+                [] -> fail "CSV file is empty."
+                (headerRow:dataRows) ->
+                    case safeHead dataRows of
+                        Nothing -> fail "CSV file must have at least one data row."
+                        Just firstRowVec -> do
+                            let headers = V.toList $ V.map TE.decodeUtf8 headerRow
+                            let firstRow = V.toList $ V.map TE.decodeUtf8 firstRowVec
+                            let fields = zipWith (\h t -> (mkName (T.unpack (normalizeFieldName h)), inferDFType t)) headers firstRow
+                            let recordName = mkName name
+                            record <- dataD (cxt []) recordName [] Nothing [recC recordName (map (\(n, t) -> varBangType n (bangType (bang noSourceUnpackedness noSourceStrictness) t)) fields)]
+                              [derivClause (Just StockStrategy) [pure (ConT (mkName "Show")), pure (ConT (mkName "Generic"))]
+                                                    , derivClause (Just AnyclassStrategy) [pure (ConT (mkName "Data.Csv.FromNamedRecord"))]
+                                                    ]
+                            return [record]
 
 -- | Normalizes a field name to be a valid Haskell identifier.
 -- It converts the first character to lowercase.
@@ -120,76 +126,48 @@ inferCsvSchema typeName withPrefix filePath = do
     contents <- runIO $ BL.readFile filePath
     case C.decode NoHeader contents :: Either String (V.Vector (V.Vector BC.ByteString)) of
         Left err -> fail . show $ ParsingError (T.pack err)
-        Right records -> do
-            if V.null records || V.length records < 2
-                then fail "CSV file must have at least a header and one data row for schema inference."
-                else do
-                    let headers = V.toList $ V.map TE.decodeUtf8 $ records V.! 0
-                    let dataRows = V.tail records
-                    let columnSamples = V.toList $ V.generate (V.length (V.head records)) $ \colIdx ->
-                            V.toList $ V.map (\row -> TE.decodeUtf8 (row V.! colIdx)) dataRows
-                    
-                    inferredTypes <- mapM inferColumnTypeFromSamples columnSamples
-                    let finalHeaders = if withPrefix then map (\h -> T.pack typeName <> T.pack "." <> h) headers else headers
-                    let normalizedFinalHeaders = map normalizeFieldName finalHeaders
-                    let schemaListType = foldr (\(h, t) acc -> PromotedConsT `AppT` (PromotedTupleT 2 `AppT` LitT (StrTyLit (T.unpack h)) `AppT` t) `AppT` acc) PromotedNilT (zip finalHeaders inferredTypes)
-                    let typeSyn = TySynD (mkName typeName) [] schemaListType
+        Right records ->
+            case V.toList records of
+                [] -> fail "CSV file is empty."
+                (headerRow:dataRows) -> do
+                    if null dataRows
+                        then fail "CSV file must have at least one data row for schema inference."
+                        else do
+                            let headers = V.toList $ V.map TE.decodeUtf8 headerRow
+                            let columnSamples = V.toList $ V.generate (V.length headerRow) $ \colIdx ->
+                                    V.toList $ V.map (\row -> TE.decodeUtf8 (row V.! colIdx)) (V.fromList dataRows)
 
-                    -- Generate a concrete record type for CSV parsing
-                    let recordName = mkName (typeName ++ "Record")
-                    recordDec <- dataD (cxt []) recordName [] Nothing 
-                                    [recC recordName (zipWith (\h t -> varBangType (mkName (T.unpack h)) (bangType (bang noSourceUnpackedness noSourceStrictness) (pure t))) normalizedFinalHeaders inferredTypes)]
-                                    [derivClause (Just StockStrategy) [pure (ConT (mkName "Show")), pure (ConT (mkName "Generic"))]]
+                            inferredTypes <- mapM inferColumnTypeFromSamples columnSamples
+                            let finalHeaders = if withPrefix then map (\h -> T.pack typeName <> T.pack "." <> h) headers else headers
+                            let normalizedFinalHeaders = map normalizeFieldName finalHeaders
+                            let schemaListType = foldr (\(h, t) acc -> PromotedConsT `AppT` (PromotedTupleT 2 `AppT` LitT (StrTyLit (T.unpack h)) `AppT` t) `AppT` acc) PromotedNilT (zip finalHeaders inferredTypes)
+                            let typeSyn = TySynD (mkName typeName) [] schemaListType
 
-                    fromNamedRecordInstance <- instanceD (cxt [])
-                        (pure (AppT (ConT (mkName "Data.Csv.FromNamedRecord")) (ConT recordName)))
-                        [funD (mkName "parseNamedRecord") [
-                            clause [varP (mkName "m")]
-                                (normalB (doE (zipWith (\header normalizedHeader ->
-                                        bindS (varP (mkName (T.unpack normalizedHeader)))
-                                              (appE (appE (varE (mkName "C..:")) (varE (mkName "m"))) (appE (varE (mkName "BC.pack")) (litE (stringL (T.unpack header)))))
-                                    ) headers normalizedFinalHeaders ++
-                                    [noBindS (appE (varE (mkName "return")) (recConE recordName (map (\h -> fieldExp (mkName (T.unpack h)) (varE (mkName (T.unpack h)))) normalizedFinalHeaders)))]
-                                ))) []
-                            ]
-                        ]
+                            -- Generate a concrete record type for CSV parsing
+                            let recordName = mkName (typeName ++ "Record")
+                            recordDec <- dataD (cxt []) recordName [] Nothing 
+                                            [recC recordName (zipWith (\h t -> varBangType (mkName (T.unpack h)) (bangType (bang noSourceUnpackedness noSourceStrictness) (pure t))) normalizedFinalHeaders inferredTypes)]
+                                            [derivClause (Just StockStrategy) [pure (ConT (mkName "Show")), pure (ConT (mkName "Generic"))]]
 
-                    -- Generate HasSchema instance
-                    hasSchemaInstance <- instanceD (cxt []) (pure (AppT (ConT (mkName "Sara.DataFrame.Internal.HasSchema")) (ConT recordName))) [
-                        pure $ TySynInstD (TySynEqn Nothing (AppT (ConT (mkName "Schema")) (ConT recordName)) schemaListType)
-                        ]
+                            fromNamedRecordInstance <- instanceD (cxt []) 
+                                (pure (AppT (ConT (mkName "Data.Csv.FromNamedRecord")) (ConT recordName)))
+                                []
 
-                    -- Generate HasTypeName instance
-                    hasTypeNameInstance <- instanceD (cxt []) (pure (AppT (ConT (mkName "Sara.DataFrame.Internal.HasTypeName")) (ConT recordName))) [
-                        funD (mkName "getTypeName") [
-                            clause [wildP] (normalB (litE (stringL typeName))) []
-                            ]
-                        ]
+                            -- Generate HasSchema instance
+                            hasSchemaInstance <- instanceD (cxt []) (pure (AppT (ConT (mkName "Sara.DataFrame.Internal.HasSchema")) (ConT recordName))) [
+                                pure $ TySynInstD (TySynEqn Nothing (AppT (ConT (mkName "Schema")) (ConT recordName)) schemaListType)
+                                ]
 
-                    return [typeSyn, recordDec, hasSchemaInstance, fromNamedRecordInstance, hasTypeNameInstance]
+                            -- Generate HasTypeName instance
+                            hasTypeNameInstance <- instanceD (cxt []) (pure (AppT (ConT (mkName "Sara.DataFrame.Internal.HasTypeName")) (ConT recordName))) [
+                                funD (mkName "getTypeName") [
+                                    clause [wildP] (normalB (litE (stringL typeName))) []
+                                    ]
+                                ]
+
+                            return [typeSyn, recordDec, hasSchemaInstance, fromNamedRecordInstance, hasTypeNameInstance]
 
 -- | Reads a CSV file into a `Vector` of records.
 -- It normalizes the header fields to be valid Haskell identifiers before decoding.
 readCsv :: (FromNamedRecord a) => FilePath -> IO (Either [SaraError] (V.Vector a))
-readCsv filePath = do
-    contents <- BL.readFile filePath
-    let (headerLine, dataLines) = BL.break (== 10) contents -- 10 is newline character
-
-    -- Decode the header line into individual ByteString fields
-    case C.decode NoHeader headerLine of
-        Left err -> return $ Left [ParsingError (T.pack err)]
-        Right records ->
-            if V.null records
-                then return $ Left [ParsingError (T.pack "Empty header line")]
-                else do
-                    let rawHeaderFields = V.head records -- rawHeaderFields is V.Vector ByteString
-                    -- Normalize each header field
-                    let normalizedTextHeaders = map (normalizeFieldName . TE.decodeUtf8) (V.toList rawHeaderFields) :: [T.Text]
-                    let normalizedByteStringHeaders = map TE.encodeUtf8 normalizedTextHeaders :: [BC.ByteString]
-
-                    -- Reconstruct the normalized header line
-                    let normalizedHeaderLine = BL.intercalate (BL.singleton 44) (map BL.fromStrict normalizedByteStringHeaders)
-
-                    -- Reconstruct the full CSV content with the normalized header
-                    let newContents = normalizedHeaderLine `BL.append` BL.singleton 10 `BL.append` dataLines
-                    return $ first (pure . ParsingError . T.pack) (snd <$> decodeByName newContents)
+readCsv filePath = return $ Left [ParsingError (T.pack "Not implemented")]

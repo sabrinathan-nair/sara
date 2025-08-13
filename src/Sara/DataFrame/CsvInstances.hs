@@ -10,14 +10,13 @@ import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
 import Data.Time (Day, UTCTime)
 import Data.Time.Format (parseTimeM, defaultTimeLocale)
-import Control.Monad.Fail (fail)
 
 -- | Parses a `Bool` from a CSV field. Accepts "true" or "false" (case-insensitive).
 instance C.FromField Bool where
     parseField s
         | T.toLower (TE.decodeUtf8 s) == "true" = return True
         | T.toLower (TE.decodeUtf8 s) == "false" = return False
-        | otherwise = Control.Monad.Fail.fail "Not a boolean value"
+        | otherwise = fail "Not a boolean value"
 
 -- | Parses a `Day` from a CSV field. Expects the format "YYYY-MM-DD".
 instance C.FromField Day where

@@ -73,7 +73,6 @@ import Data.Typeable (TypeRep, Typeable, typeRep)
 import Data.Maybe (fromMaybe)
 
 import Sara.Error (SaraError(..))
-import Control.Monad.Fail (fail)
 import qualified Data.Vector as V
 import Data.Scientific (toRealFloat)
 import GHC.Generics (Generic)
@@ -218,7 +217,7 @@ instance FromJSON DFValue where
                                 _ -> pure (TextValue s)
     parseJSON (A.Bool b) = pure (BoolValue b)
     parseJSON A.Null = pure NA
-    parseJSON _ = Control.Monad.Fail.fail "Unsupported JSON value type for DFValue"
+    parseJSON _ = fail "Unsupported JSON value type for DFValue"
 
 -- | A column in a DataFrame, represented as a 'Vector' of 'DFValue's.
 -- Using 'Vector' provides efficient storage and operations.
