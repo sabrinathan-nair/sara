@@ -262,7 +262,7 @@ main = hspec $ do
                     Left errs -> do
                         length errs `shouldBe` 1
                         case errs of
-                            [ParsingError err] -> T.unpack err `shouldContain` "conversion error" .&&. T.unpack err `shouldContain` "EmployeeID"
+                            [ParsingError err] -> do T.unpack err `shouldContain` "conversion error"; T.unpack err `shouldContain` "EmployeeID"
                             _ -> expectationFailure "Expected ParsingError"
                     Right _ -> expectationFailure "Expected Left for malformed CSV file"
 
