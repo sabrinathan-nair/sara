@@ -46,9 +46,9 @@ import Data.Proxy (Proxy(..))
 import Data.Kind (Type)
 import Streaming (Stream, Of)
 import qualified Streaming.Prelude as S
--- import Sara.Error (SaraError(..))
-
+import Sara.Error (SaraError(..))
 import Data.Either (fromRight)
+import Data.Maybe (isNothing, fromJust)
 
 -- | A typeclass for converting a type-level list of `Symbol`s to a list of `T.Text` values.
 class AllKnownSymbol (xs :: [Symbol]) where
@@ -188,23 +188,34 @@ renameColumn (DataFrame dfMap) =
         DataFrame newDfMap
 
 -- | Drops rows that contain any `NA` values.
-dropNA :: forall cols. KnownColumns cols => DataFrame cols -> DataFrame cols
-dropNA df =
+dropNA :: forall cols. KnownColumns cols => DataFrame cols -> Either SaraError (DataFrame cols)
+dropNA df = do
     let
         rows = toRows df
         filteredRows = filter (not . any isNA . Map.elems) rows
-        newDfMap = if null filteredRows
-                   then Map.empty
-                   else
-                       let
-                           colNames = columnNames (Proxy @cols)
-                           cols = [ V.fromList [ Map.findWithDefault NA colName r | r <- filteredRows ]
-                                  | colName <- colNames
-                                  ]
-                       in
-                           Map.fromList (zip colNames cols)
-    in
-        DataFrame newDfMap
+    if null filteredRows
+       then Right $ DataFrame Map.empty
+       else do
+           let colNames = columnNames (Proxy @cols)
+           
+           -- This will be a list of Either SaraError (V.Vector DFValue)
+           -- Each element corresponds to a column
+           let columnsEither :: [Either SaraError (V.Vector DFValue)]
+               columnsEither = map (\colName -> do
+                   let columnValuesMaybes = map (\r -> Map.lookup colName r) filteredRows
+                   if any isNothing columnValuesMaybes
+                       then Left $ ColumnNotFound colName
+                       else Right $ V.fromList $ map fromJust columnValuesMaybes
+                   ) colNames
+           
+           -- Sequence the list of Eithers to get Either SaraError [V.Vector DFValue]
+           let allColumnsEither :: Either SaraError [V.Vector DFValue]
+               allColumnsEither = sequence columnsEither
+           
+           case allColumnsEither of
+               Left err -> Left err
+               Right columnsVectors ->
+                   Right $ DataFrame (Map.fromList (zip colNames columnsVectors))
 
 -- | Replaces `NA` values with a specified `DFValue`.
 fillNA :: KnownColumns cols => DFValue -> DataFrame cols -> DataFrame cols
