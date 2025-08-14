@@ -8,9 +8,8 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE TupleSections #-}
-{-# OPTIONS_GHC -Wno-orphans #-}
 
-module Sara.DataFrame.IO (
+module Sara.DataFrame.IO ( 
     -- * CSV Functions
     readCsv,
     writeCSV,
@@ -32,7 +31,6 @@ import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
 
 import Data.Maybe (fromMaybe, listToMaybe)
-import Data.Time.Format (formatTime, defaultTimeLocale)
 
 import qualified Data.ByteString.Char8 as BC
 import qualified Data.HashMap.Strict as HM
@@ -49,14 +47,14 @@ import Sara.Error (SaraError(..))
 import Streaming (Stream, Of)
 import qualified Streaming.Prelude as S
 import Control.Exception (try, IOException)
-import Control.Applicative ((<|>))
-import Sara.DataFrame.CsvInstances ()
+
+
 import Sara.Validation.Employee (validateEmployee, ValidatedEmployee(..))
 import Sara.Schema.Definitions (EmployeesRecord)
 
 import Data.Bifunctor (first)
+import Data.Time.Format (formatTime, defaultTimeLocale)
 import Sara.Core.Types (unEmployeeID, unSalary)
-
 
 
 
@@ -72,16 +70,7 @@ import Sara.Core.Types (unEmployeeID, unSalary)
 -- 5.  `DateValue`
 -- 6.  `TimestampValue`
 -- 7.  `TextValue` (as a fallback)
-instance C.FromField DFValue where
-    parseField s
-        | s == "NA" || s == "" = return NA
-        | otherwise = 
-            (IntValue <$> C.parseField s) <|> 
-            (DoubleValue <$> C.parseField s) <|> 
-            (BoolValue <$> C.parseField s) <|> 
-            (DateValue <$> C.parseField s) <|> 
-            (TimestampValue <$> C.parseField s) <|> 
-            (TextValue <$> (TE.decodeUtf8 <$> C.parseField s))
+
 
 -- | Reads a CSV file in a streaming fashion.
 -- It returns a `Stream` of `DataFrame`s, where each `DataFrame` contains a single row.
@@ -105,7 +94,7 @@ readCsvStreaming _ filePath = do
                                     Left errs -> S.yield (Left (GenericError (T.pack $ show errs)))
                                     Right validated -> do
                                         let rowMap = Map.fromList
-                                                [ ("employeeID", IntValue (unEmployeeID (veEmployeeID validated)))
+                                                [ ("employeeID", IntValue (unEmployeeID (veEmployeeID validated))) 
                                                 , ("name", TextValue (veName validated))
                                                 , ("departmentName", TextValue (T.pack $ show (veDepartmentName validated)))
                                                 , ("salary", DoubleValue (unSalary (veSalary validated)))
@@ -115,7 +104,6 @@ readCsvStreaming _ filePath = do
                                         let df = DataFrame (Map.map V.singleton rowMap)
                                         S.yield (Right df)
                             _ -> S.yield (Left (GenericError "Mismatched EmployeesRecord fields"))
-
 
 
 
@@ -158,7 +146,7 @@ writeCSV filePath (DataFrame dfMap) = do
 -- The keys of the objects should match the column names of the `DataFrame`.
 -- The function validates that the column names and types in the JSON file match the `DataFrame`'s schema.
 readJSON :: forall cols. KnownColumns cols => Proxy cols -> FilePath -> IO (Either [SaraError] (DataFrame cols))
-readJSON p filePath = do
+readJSON _ filePath = do
     jsonData <- BL.readFile filePath
     case first (pure . ParsingError . T.pack) (A.eitherDecode jsonData) :: Either [SaraError] [EmployeesRecord] of
         Left err -> return $ Left err
@@ -177,13 +165,13 @@ readJSON p filePath = do
             case validatedRecords of 
                 Left errs -> return $ Left errs
                 Right validated -> do
-                    let rows = map (\validated -> Map.fromList
-                                        [ ("employeeID", IntValue (unEmployeeID (veEmployeeID validated)))
-                                        , ("name", TextValue (veName validated))
-                                        , ("departmentName", TextValue (T.pack $ show (veDepartmentName validated)))
-                                        , ("salary", DoubleValue (unSalary (veSalary validated)))
-                                        , ("startDate", DateValue (veStartDate validated))
-                                        , ("email", TextValue (T.pack $ show (veEmail validated)))
+                    let rows = map (\v -> Map.fromList
+                                        [ ("employeeID", IntValue (unEmployeeID (veEmployeeID v))) 
+                                        , ("name", TextValue (veName v))
+                                        , ("departmentName", TextValue (T.pack $ show (veDepartmentName v)))
+                                        , ("salary", DoubleValue (unSalary (veSalary v)))
+                                        , ("startDate", DateValue (veStartDate v))
+                                        , ("email", TextValue (T.pack $ show (veEmail v)))
                                         ]) validated
                     return $ Right $ fromRows rows
 

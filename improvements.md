@@ -4,8 +4,8 @@ This document lists identified areas for improvement in the Sara project, ordere
 
 | Issue | Files affected | Issue code | Proposed solution | Proposed solution code |
 |---|---|---|---|---|
-| Redundant import of `fromJust` | `src/Sara/DataFrame/Wrangling.hs` | `import Data.Maybe (isNothing, fromJust, mapMaybe)` | Remove `fromJust` from import list. | `import Data.Maybe (isNothing, mapMaybe)` |
-| `error` usage in test/benchmark files | `test/TestSuite.hs`, `test/Benchmark.hs` | `error ("Test failed: " ++ show e)` | Replace `error` with `throwIO` or `fail` in `IO` contexts, or use `QuickCheck`'s `counterexample` for properties. | `throwIO (userError ("Test failed: " ++ show e))` |
+| Redundant import of `fromJust` (Completed) | `src/Sara/DataFrame/Wrangling.hs` | `import Data.Maybe (isNothing, fromJust, mapMaybe)` | Remove `fromJust` from import list. | `import Data.Maybe (isNothing, mapMaybe)` |
+| `error` usage in test/benchmark files (Completed) | `test/TestSuite.hs`, `test/Benchmark.hs` | `error ("Test failed: " ++ show e)` | Replace `error` with `throwIO` or `fail` in `IO` contexts, or use `QuickCheck`'s `counterexample` for properties. | `throwIO (userError ("Test failed: " ++ show e))` |
 | Orphan `FromField` instances | `src/Sara/DataFrame/CsvInstances.hs` | `instance C.FromField Bool where ...` | Relocate instances to a more appropriate module (e.g., `Sara.DataFrame.IO` or a dedicated `Sara.DataFrame.CsvParsing`). | (Relocation, no direct code change here) |
 | Duplicate `transpose` function | `src/Sara/DataFrame/SQL.hs` | `transpose :: [[a]] -> [[a]] ...` | Remove local `transpose` and import from `Sara.DataFrame.Internal.hs`. | (Removal, import statement) |
 | `V.!` (partial indexing) in `inferCsvSchema` | `src/Sara/DataFrame/Static.hs` | `(row V.! colIdx)` | Replace `V.!` with `V.!?` (safe indexing) and handle `Nothing` case with a compile-time error. | `case row V.!? colIdx of Just val -> ... Nothing -> fail "Index out of bounds"` |

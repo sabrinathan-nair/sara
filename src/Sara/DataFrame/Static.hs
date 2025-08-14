@@ -10,7 +10,7 @@ module Sara.DataFrame.Static (
 ) where
 
 import Language.Haskell.TH
-import Data.Csv (FromNamedRecord, decodeByName, HasHeader(NoHeader))
+import Data.Csv (FromNamedRecord, HasHeader(NoHeader))
 import qualified Data.ByteString.Lazy as BL
 import qualified Data.Vector as V
 import Data.Char (toLower)
@@ -25,7 +25,7 @@ import Text.Read (readEither)
 import Data.Maybe (isJust)
 import Data.Either (isRight)
 import Sara.DataFrame.Internal ()
-import Sara.DataFrame.CsvInstances ()
+
 import Sara.Error(SaraError(..))
 import Data.Bifunctor (first)
 import Sara.Internal.Safe (safeHead)
@@ -170,4 +170,4 @@ inferCsvSchema typeName withPrefix filePath = do
 -- | Reads a CSV file into a `Vector` of records.
 -- It normalizes the header fields to be valid Haskell identifiers before decoding.
 readCsv :: (FromNamedRecord a) => FilePath -> IO (Either [SaraError] (V.Vector a))
-readCsv filePath = return $ Left [ParsingError (T.pack "Not implemented")]
+readCsv _ = return $ Left [ParsingError (T.pack "Not implemented")]

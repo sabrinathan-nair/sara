@@ -23,7 +23,7 @@ library
                      , Sara.DataFrame.Apply
                      , Sara.Error
                      , Sara.Schema.Definitions
-                     , Sara.DataFrame.CsvInstances
+                     
                      , Sara.Validation.Employee
                      , Sara.Core.Types
                      , Sara.DataFrame.Wrangling
@@ -105,7 +105,7 @@ test-suite sara-test
     , Sara.Error
     , Sara.Schema.Definitions
     , Sara.DataFrame.Concat
-    , Sara.DataFrame.CsvInstances
+    
     , Sara.DataFrame.SQL
     , Sara.DataFrame.Wrangling
     , Sara.Validation.Employee

@@ -12,6 +12,7 @@
 -- | This module provides functions for joining `DataFrame`s.
 module Sara.DataFrame.Join (
     joinDF,
+    JoinCols,
     CreateOutputRow
 ) where
 

@@ -1,17 +1,17 @@
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TypeApplications #-}
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE TypeFamilies #-}
-{-# LANGUAGE TypeOperators #-}
-{-# LANGUAGE GADTs #-}
-{-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE ConstraintKinds #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE UndecidableInstances #-}
-{-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE OverloadedStrings #}
+{-# LANGUAGE TypeApplications #}
+{-# LANGUAGE DataKinds #}
+{-# LANGUAGE ScopedTypeVariables #}
+{-# LANGUAGE FlexibleContexts #}
+{-# LANGUAGE TypeFamilies #}
+{-# LANGUAGE TypeOperators #}
+{-# LANGUAGE GADTs #}
+{-# LANGUAGE RankNTypes #}
+{-# LANGUAGE ConstraintKinds #}
+{-# LANGUAGE MultiParamTypeClasses #}
+{-# LANGUAGE FlexibleInstances #}
+{-# LANGUAGE UndecidableInstances #}
+{-# LANGUAGE AllowAmbiguousTypes #}
 
 module Main where
 
@@ -37,6 +37,7 @@ import Database.SQLite.Simple
 import Sara.Schema.Definitions (EmployeesRecord)
 
 import Control.Monad.IO.Class (liftIO)
+import Control.Exception (throwIO)
 import Sara.Error (SaraError(..))
 import System.IO.Temp (withSystemTempFile)
 import qualified Data.ByteString.Lazy as BL
@@ -54,17 +55,18 @@ import Data.Time.Clock (secondsToDiffTime)
 import qualified Data.Aeson as A
 
 -- Helper function to extract value from Either in tests
-fromRight' :: (Show e) => Either e a -> a
-fromRight' (Right a) = a
-fromRight' (Left e) = error ("Test failed: expected Right, got Left: " ++ show e)
+fromRight' :: (Show e) => Either e \a -> IO a
+fromRight' (Right a) = return a
+fromRight' (Left e) = throwIO (userError ("Test failed: expected Right, got Left: " ++ show e))
 
 -- Helper function to convert a DataFrame to a Stream of single-row DataFrames
-dfToStream :: DataFrame cols -> Stream (Of (DataFrame cols)) IO ()
-dfToStream df = S.each (map (\row -> DataFrame (Map.map V.singleton row)) (toRows df))
+dfToStream :: DataFrame \cols -> Stream (Of (DataFrame cols)) IO ()
+dfToStream df = S.each (map (
+\ow -> DataFrame (Map.map V.singleton row)) (toRows df))
 
 -- Helper function to combine two DataFrames (pure version)
-combineDataFramesPure :: DataFrame cols -> DataFrame cols -> DataFrame cols
-combineDataFramesPure (DataFrame dfMap1) (DataFrame dfMap2) =
+combineDataFramesPure :: DataFrame \cols -> DataFrame \cols -> DataFrame cols
+combineDataFramesPure (DataFrame dfMap1) (DataFrame dfMap2) = 
     DataFrame $ Map.unionWith (V.++) dfMap1 dfMap2
 
 -- Helper function to convert a Stream of single-row DataFrames back to a single DataFrame
@@ -75,7 +77,7 @@ streamToDf stream = do
         then return $ DataFrame Map.empty
         else return $ foldr1 combineDataFramesPure list
 
-isEmpty :: DataFrame cols -> Bool
+isEmpty :: DataFrame \cols -> Bool
 isEmpty (DataFrame dfMap) = Map.null dfMap
 
 main :: IO ()
@@ -110,11 +112,11 @@ main = hspec $ do
         it "applies a function to a column with the correct type" $ do
             df <- createTestDataFrame
             let dfStream = S.yield df
-            appliedDf <- streamToDf (applyColumn (Proxy @"Age") ((+ 2) :: Int -> Int) dfStream)
+            appliedDf <- streamToDf (applyColumn (Proxy @"Age") ((+ 2) :: \Int -> Int) dfStream)
             let (DataFrame appliedMap) = appliedDf
             case (appliedMap Map.! "Age") V.!? 0 of
-                Just (IntValue i) -> i `shouldBe` 32
-                _ -> expectationFailure "Expected IntValue for Age"
+                Just \(IntValue i) -> i `shouldBe` 32
+                \_ -> expectationFailure "Expected IntValue for Age"
 
     describe "Type-Safe sortDataFrame" $ do
         it "sorts a DataFrame by a column" $ do
@@ -122,8 +124,8 @@ main = hspec $ do
             let sortedDf = sortDataFrame [SortCriterion (Proxy @"Age") Ascending] df
             let (DataFrame sortedMap) = sortedDf
             case (sortedMap Map.! "Name") V.!? 0 of
-                Just (TextValue t) -> t `shouldBe` "Bob"
-                _ -> expectationFailure "Expected TextValue for Name"
+                Just \(TextValue t) -> t `shouldBe` "Bob"
+                \_ -> expectationFailure "Expected TextValue for Name"
 
     describe "Type-Safe mutate" $ do
         it "adds a new column based on an expression" $ do
@@ -131,12 +133,12 @@ main = hspec $ do
             let expr = col (Proxy @"Age") +.+ lit (5 :: Int)
             let mutatedDfEither = mutate @"AgePlusFive" (Proxy @"AgePlusFive") expr df
             case mutatedDfEither of
-                Left err -> expectationFailure $ show err
-                Right mutatedDf -> do
+                Left \err -> expectationFailure $ show err
+                Right \mutatedDf -> do
                     let (DataFrame mutatedMap) = mutatedDf
                     case (mutatedMap Map.! "AgePlusFive") V.!? 0 of
-                        Just (IntValue i) -> i `shouldBe` 35
-                        _ -> expectationFailure "Expected IntValue for AgePlusFive"
+                        Just \(IntValue i) -> i `shouldBe` 35
+                        \_ -> expectationFailure "Expected IntValue for AgePlusFive"
 
         
 
@@ -164,11 +166,11 @@ main = hspec $ do
             let (DataFrame joinedMap) = joinedDf
             V.length (joinedMap Map.! "ID") `shouldBe` 1
             case (joinedMap Map.! "Name") V.!? 0 of
-                Just (TextValue t) -> t `shouldBe` "Alice"
-                _ -> expectationFailure "Expected TextValue for Name"
+                Just \(TextValue t) -> t `shouldBe` "Alice"
+                \_ -> expectationFailure "Expected TextValue for Name"
             case (joinedMap Map.! "City") V.!? 0 of
-                Just (TextValue t) -> t `shouldBe` "New York"
-                _ -> expectationFailure "Expected TextValue for City"
+                Just \(TextValue t) -> t `shouldBe` "New York"
+                \_ -> expectationFailure "Expected TextValue for City"
 
     describe "Type-Safe dropColumns" $ do
         it "drops specified columns from a DataFrame" $ do
@@ -203,11 +205,11 @@ main = hspec $ do
             aggregatedDf <- sumAgg @"Value_sum" @"Value" (Proxy @"Value_sum") (return groupedDf)
             let (DataFrame aggMap) = aggregatedDf
             case (aggMap Map.! "Value_sum") V.!? 0 of
-                Just (DoubleValue d) -> d `shouldBe` 30.0
-                _ -> expectationFailure "Expected DoubleValue for sumA"
+                Just \(DoubleValue d) -> d `shouldBe` 30.0
+                \_ -> expectationFailure "Expected DoubleValue for sumA"
             case (aggMap Map.! "Value_sum") V.!? 1 of
-                Just (DoubleValue d) -> d `shouldBe` 70.0
-                _ -> expectationFailure "Expected DoubleValue for sumB"
+                Just \(DoubleValue d) -> d `shouldBe` 70.0
+                \_ -> expectationFailure "Expected DoubleValue for sumB"
 
         it "performs mean aggregation correctly" $ do
             df <- createAggTestDataFrame
@@ -215,11 +217,11 @@ main = hspec $ do
             aggregatedDf <- meanAgg @"Value_mean" @"Value" (Proxy @"Value_mean") (return groupedDf)
             let (DataFrame aggMap) = aggregatedDf
             case (aggMap Map.! "Value_mean") V.!? 0 of
-                Just (DoubleValue d) -> d `shouldBe` 15.0
-                _ -> expectationFailure "Expected DoubleValue for meanA"
+                Just \(DoubleValue d) -> d `shouldBe` 15.0
+                \_ -> expectationFailure "Expected DoubleValue for meanA"
             case (aggMap Map.! "Value_mean") V.!? 1 of
-                Just (DoubleValue d) -> d `shouldBe` 35.0
-                _ -> expectationFailure "Expected DoubleValue for meanB"
+                Just \(DoubleValue d) -> d `shouldBe` 35.0
+                \_ -> expectationFailure "Expected DoubleValue for meanB"
 
         it "performs count aggregation correctly" $ do
             df <- createAggTestDataFrame
@@ -227,44 +229,44 @@ main = hspec $ do
             aggregatedDf <- countAgg @"Category_count" @"Category" (Proxy @"Category_count") (return groupedDf)
             let (DataFrame aggMap) = aggregatedDf
             case (aggMap Map.! "Category_count") V.!? 0 of
-                Just (IntValue i) -> i `shouldBe` 2
-                _ -> expectationFailure "Expected IntValue for countA"
+                Just \(IntValue i) -> i `shouldBe` 2
+                \_ -> expectationFailure "Expected IntValue for countA"
             case (aggMap Map.! "Category_count") V.!? 1 of
-                Just (IntValue i) -> i `shouldBe` 2
-                _ -> expectationFailure "Expected IntValue for countB"
+                Just \(IntValue i) -> i `shouldBe` 2
+                \_ -> expectationFailure "Expected IntValue for countB"
 
     describe "CSV Streaming" $ do
         it "handles empty CSV file" $ do
-            withSystemTempFile "empty.csv" $ \filePath handle -> do
+            withSystemTempFile "empty.csv" $ \filePath \handle -> do
                 BL.hPutStr handle ""
                 hClose handle
                 readResultEither <- readCsvStreaming (Proxy @EmployeesRecord) filePath
                 case readResultEither of
-                    Left errs -> errs `shouldBe` [ParsingError "parse error (not enough input) at \"\""]
-                    Right _ -> expectationFailure "Expected Left for empty CSV file"
+                    Left \errs -> errs `shouldBe` [ParsingError "parse error (not enough input) at \""]
+                    Right \_ -> expectationFailure "Expected Left for empty CSV file"
 
         it "handles non-existent CSV file" $ do
             readResultEither <- readCsvStreaming (Proxy @EmployeesRecord) "non_existent.csv"
             case readResultEither of
-                Left errs -> do
+                Left \errs -> do
                     length errs `shouldBe` 1
                     case errs of
                         [IOError err] -> T.unpack err `shouldContain` "non_existent.csv"
-                        _ -> expectationFailure "Expected IOError"
-                Right _ -> expectationFailure "Expected Left for non-existent CSV file"
+                        \_ -> expectationFailure "Expected IOError"
+                Right \_ -> expectationFailure "Expected Left for non-existent CSV file"
 
         it "handles malformed CSV file" $ do
-            withSystemTempFile "malformed.csv" $ \filePath handle -> do
+            withSystemTempFile "malformed.csv" $ \filePath \handle -> do
                 BL.hPutStr handle "col1,col2\nval1\n"
                 hClose handle
                 readResultEither <- readCsvStreaming (Proxy @EmployeesRecord) filePath
                 case readResultEither of
-                    Left errs -> do
+                    Left \errs -> do
                         length errs `shouldBe` 1
                         case errs of
                             [ParsingError err] -> do T.unpack err `shouldContain` "conversion error"; T.unpack err `shouldContain` "EmployeeID"
-                            _ -> expectationFailure "Expected ParsingError"
-                    Right _ -> expectationFailure "Expected Left for malformed CSV file"
+                            \_ -> expectationFailure "Expected ParsingError"
+                    Right \_ -> expectationFailure "Expected Left for malformed CSV file"
 
     describe "JSON Streaming" $ do
         let testDataFrame = fromRows @'[ '("name", T.Text), '("age", Int)] [
@@ -273,14 +275,14 @@ main = hspec $ do
                 ]
 
         it "writes and reads JSON in a streaming fashion" $ do
-            withSystemTempFile "test.json" $ \filePath handle -> do
+            withSystemTempFile "test.json" $ \filePath \handle -> do
                 BL.hPutStr handle ""
                 hClose handle
                 writeJSONStreaming filePath (dfToStream testDataFrame)
                 readDfStreamEither <- liftIO $ readJSONStreaming (Proxy @'[ '("name", T.Text), '("age", Int)]) filePath
                 case readDfStreamEither of
-                    Left err -> expectationFailure $ show err
-                    Right readDfStream -> do
+                    Left \err -> expectationFailure $ show err
+                    Right \readDfStream -> do
                         readDf <- streamToDf readDfStream
                         readDf `shouldBe` testDataFrame
 
@@ -288,16 +290,16 @@ main = hspec $ do
             readResult <- readJSONStreaming (Proxy @'[ '("name", T.Text), '("age", Int)]) "non_existent.json"
             case readResult of
                 Left [IOError err] -> T.unpack err `shouldContain` "non_existent.json"
-                _ -> expectationFailure "Expected IOError for non-existent JSON file"
+                \_ -> expectationFailure "Expected IOError for non-existent JSON file"
 
         it "handles malformed JSON file" $ do
-            withSystemTempFile "malformed.json" $ \filePath handle -> do
+            withSystemTempFile "malformed.json" $ \filePath \handle -> do
                 BL.hPutStr handle "[{"
                 hClose handle
                 readResult <- readJSONStreaming (Proxy @'[ '("name", T.Text), '("age", Int)]) filePath
                 case readResult of
                     Left [ParsingError err] -> T.unpack err `shouldContain` "Unexpected end-of-input, expecting record key literal or }"
-                    _ -> expectationFailure "Expected ParsingError for malformed JSON file"
+                    \_ -> expectationFailure "Expected ParsingError for malformed JSON file"
 
     describe "DFValue JSON Serialization/Deserialization" $ do
         it "serializes and deserializes IntValue" $ do
@@ -509,13 +511,13 @@ main = hspec $ do
             toRows resultDf `shouldBe` [Map.fromList [("colA", IntValue 2), ("colB", TextValue "y")]]
 
     describe "SQL Integration" $ do
-        let withTempDb :: (FilePath -> IO a) -> IO a
-            withTempDb action = withSystemTempFile "test.db" $ \filePath handle -> do
+        let withTempDb :: \(\FilePath -> IO a) -> IO a
+            withTempDb action = withSystemTempFile "test.db" $ \filePath \handle -> do
                 hClose handle -- Close the handle immediately, as sqlite opens it itself
                 action filePath
 
         it "reads data from a simple SQL table" $ do
-            withTempDb $ \dbPath -> do
+            withTempDb $ \d\bPath -> do
                 conn <- open dbPath
                 execute_ conn "CREATE TABLE users (id INTEGER, name TEXT, age INTEGER)"
                 execute_ conn "INSERT INTO users (id, name, age) VALUES (1, 'Alice', 30)"
@@ -525,8 +527,8 @@ main = hspec $ do
                 let expectedSchema = Proxy @'[ '("id", Int), '("name", T.Text), '("age", Int)]
                 resultEither <- readSQL expectedSchema dbPath "SELECT id, name, age FROM users"
                 case resultEither of
-                    Left err -> expectationFailure $ show err
-                    Right df -> do
+                    Left \err -> expectationFailure $ show err
+                    Right \df -> do
                         let expectedRows = [
                                 Map.fromList [("id", IntValue 1), ("name", TextValue "Alice"), ("age", IntValue 30)],
                                 Map.fromList [("id", IntValue 2), ("name", TextValue "Bob"), ("age", IntValue 25)]
@@ -534,7 +536,7 @@ main = hspec $ do
                         toRows df `shouldBe` expectedRows
 
         it "reads data from an empty SQL table" $ do
-            withTempDb $ \dbPath -> do
+            withTempDb $ \d\bPath -> do
                 conn <- open dbPath
                 execute_ conn "CREATE TABLE empty_table (col1 INTEGER, col2 TEXT)"
                 close conn
@@ -542,11 +544,11 @@ main = hspec $ do
                 let expectedSchema = Proxy @'[ '("col1", Int), '("col2", T.Text)]
                 resultEither <- readSQL expectedSchema dbPath "SELECT col1, col2 FROM empty_table"
                 case resultEither of
-                    Left err -> expectationFailure $ show err
-                    Right df -> isEmpty df `shouldBe` True
+                    Left \err -> expectationFailure $ show err
+                    Right \df -> isEmpty df `shouldBe` True
 
         it "reads data with different types including Bool and NA" $ do
-            withTempDb $ \dbPath -> do
+            withTempDb $ \d\bPath -> do
                 conn <- open dbPath
                 execute_ conn "CREATE TABLE mixed_types (id INTEGER, name TEXT, active BOOLEAN, value REAL, description TEXT)"
                 execute_ conn "INSERT INTO mixed_types (id, name, active, value, description) VALUES (1, 'Test1', 'true', 1.23, NULL)"
@@ -556,8 +558,8 @@ main = hspec $ do
                 let expectedSchema = Proxy @'[ '("id", Int), '("name", T.Text), '("active", Bool), '("value", Double), '("description", T.Text)]
                 resultEither <- readSQL expectedSchema dbPath "SELECT id, name, active, value, description FROM mixed_types"
                 case resultEither of
-                    Left err -> expectationFailure $ show err
-                    Right df -> do
+                    Left \err -> expectationFailure $ show err
+                    Right \df -> do
                         let expectedRows = [
                                 Map.fromList [("id", IntValue 1), ("name", TextValue "Test1"), ("active", BoolValue True), ("value", DoubleValue 1.23), ("description", NA)],
                                 Map.fromList [("id", IntValue 2), ("name", TextValue "Test2"), ("active", BoolValue False), ("value", DoubleValue 4.56), ("description", TextValue "some text")]]
@@ -567,11 +569,11 @@ main = hspec $ do
             let expectedSchema = Proxy @'[ '("id", Int)]
             resultEither <- readSQL expectedSchema "non_existent_temp.db" "SELECT id FROM users"
             case resultEither of
-                Left (GenericError err) -> T.unpack err `shouldContain` "no such table"
-                _ -> expectationFailure "Expected GenericError for non-existent table in new DB"
+                Left \(GenericError err) -> T.unpack err `shouldContain` "no such table"
+                \_ -> expectationFailure "Expected GenericError for non-existent table in new DB"
 
         it "handles column count mismatch" $ do
-            withTempDb $ \dbPath -> do
+            withTempDb $ \d\bPath -> do
                 conn <- open dbPath
                 execute_ conn "CREATE TABLE test_table (col1 INTEGER, col2 TEXT)"
                 execute_ conn "INSERT INTO test_table (col1, col2) VALUES (1, 'a')"
@@ -580,11 +582,11 @@ main = hspec $ do
                 let expectedSchema = Proxy @'[ '("col1", Int)] -- Expecting only one column
                 resultEither <- readSQL expectedSchema dbPath "SELECT col1, col2 FROM test_table"
                 case resultEither of
-                    Left (GenericError err) -> T.unpack err `shouldContain` "column count mismatch"
-                    _ -> expectationFailure "Expected GenericError for column count mismatch"
+                    Left \(GenericError err) -> T.unpack err `shouldContain` "column count mismatch"
+                    \_ -> expectationFailure "Expected GenericError for column count mismatch"
 
         it "handles type mismatch" $ do
-            withTempDb $ \dbPath -> do
+            withTempDb $ \d\bPath -> do
                 conn <- open dbPath
                 execute_ conn "CREATE TABLE test_table (col1 INTEGER)"
                 execute_ conn "INSERT INTO test_table (col1) VALUES ('not_an_int')"
@@ -593,13 +595,13 @@ main = hspec $ do
                 let expectedSchema = Proxy @'[ '("col1", Int)]
                 resultEither <- readSQL expectedSchema dbPath "SELECT col1 FROM test_table"
                 case resultEither of
-                    Left (TypeMismatch expected actual) -> do
+                    Left \(TypeMismatch expected actual) -> do
                         expected `shouldBe` "Int"
                         T.unpack actual `shouldContain` "not_an_int"
-                    _ -> expectationFailure "Expected TypeMismatch for type mismatch"
+                    \_ -> expectationFailure "Expected TypeMismatch for type mismatch"
 
         it "handles unsupported SQL type (BLOB)" $ do
-            withTempDb $ \dbPath -> do
+            withTempDb $ \d\bPath -> do
                 conn <- open dbPath
                 execute_ conn "CREATE TABLE test_table (col1 BLOB)"
                 execute_ conn "INSERT INTO test_table (col1) VALUES (X'010203')"
@@ -608,8 +610,8 @@ main = hspec $ do
                 let expectedSchema = Proxy @'[ '("col1", Int)] -- Type doesn't matter, it's about the BLOB
                 resultEither <- readSQL expectedSchema dbPath "SELECT col1 FROM test_table"
                 case resultEither of
-                    Left (GenericError err) -> err `shouldBe` "Unsupported SQL type: BLOB"
-                    _ -> expectationFailure "Expected GenericError for unsupported BLOB type"
+                    Left \(GenericError err) -> err `shouldBe` "Unsupported SQL type: BLOB"
+                    \_ -> expectationFailure "Expected GenericError for unsupported BLOB type"
 
     describe "Missing Data Handling" $ do
         let dfWithNAs = fromRows @'[ '("colA", Int), '("colB", T.Text), '("colC", Double)] [
@@ -685,14 +687,14 @@ main = hspec $ do
             toRows filledDf `shouldBe` expectedRows
 
         it "drops rows with any NA values" $ do
-            let droppedDf = dropna dfWithNAs DropRows Nothing
+            let droppedDf = dropna dfWithNAs (DropAxis DropRows) Nothing
             let expectedRows = [
                     Map.fromList [("colA", IntValue 1), ("colB", TextValue "a"), ("colC", DoubleValue 1.1)]
                     ]
             toRows droppedDf `shouldBe` expectedRows
 
         it "drops rows based on threshold" $ do
-            let droppedDf = dropna dfWithNAs DropRows (Just 2) -- Requires at least 2 non-NA values
+            let droppedDf = dropna dfWithNAs (DropAxis DropRows) (Just 2) -- Requires at least 2 non-NA values
             let expectedRows = [
                     Map.fromList [("colA", IntValue 1), ("colB", TextValue "a"), ("colC", DoubleValue 1.1)],
                     Map.fromList [("colA", IntValue 3), ("colB", NA), ("colC", DoubleValue 3.3)]
@@ -700,11 +702,11 @@ main = hspec $ do
             toRows droppedDf `shouldBe` expectedRows
 
         it "drops columns with any NA values" $ do
-            let droppedDf = dropna dfWithNAs DropColumns Nothing
+            let droppedDf = dropna dfWithNAs (DropAxis DropColumns) Nothing
             toRows droppedDf `shouldBe` []
 
         it "drops columns based on threshold" $ do
-            let droppedDf = dropna dfWithNAs DropColumns (Just 3) -- Requires at least 3 non-NA values
+            let droppedDf = dropna dfWithNAs (DropAxis DropColumns) (Just 3) -- Requires at least 3 non-NA values
             toRows droppedDf `shouldBe` []
 
         it "returns isna DataFrame" $ do
@@ -730,16 +732,16 @@ main = hspec $ do
     describe "Granular QuickCheck Properties" $ do
         prop "filterRows with a tautology predicate is identity" (prop_filterRows_tautology @'[ '("Name", T.Text), '("Age", Int), '("Salary", Double)])
         prop "filterRows with a contradiction predicate is empty" (prop_filterRows_contradiction @'[ '("Name", T.Text), '("Age", Int), '("Salary", Double)])
-        prop "selectColumns preserves values" $
-            \(df :: DataFrame '[ '("Name", T.Text), '("Age", Int), '("Salary", Double)]) ->
+        prop "selectColumns preserves values" $ 
+            \(df :: DataFrame '[ '("Name", T.Text), '("Age", Int), '("Salary", Double)]) -> 
                 prop_selectColumns_preserves_values (Proxy @'["Name", "Age"]) df
-        prop "dropColumns preserves values in remaining columns" $
-            \(df :: DataFrame '[ '("Name", T.Text), '("Age", Int), '("Salary", Double)]) ->
+        prop "dropColumns preserves values in remaining columns" $ 
+            \(df :: DataFrame '[ '("Name", T.Text), '("Age", Int), '("Salary", Double)]) -> 
                 prop_dropColumns_preserves_values (Proxy @'["Age"]) df
         
-        prop "sortDataFrame preserves rows and sorts correctly" $
-            forAll (arbitrary :: Gen (DataFrame '[ '("Name", T.Text), '("Age", Int), '("Salary", Double)])) $ \df ->
-                forAll (arbitrarySortCriteriaFixed @'[ '("Name", T.Text), '("Age", Int), '("Salary", Double)]) $ \criteria ->
+        prop "sortDataFrame preserves rows and sorts correctly" $ 
+            \(df :: DataFrame '[ '("Name", T.Text), '("Age", Int), '("Salary", Double)]) -> 
+                \(criteria :: [SortCriterion '[ '("Name", T.Text), '("Age", Int), '("Salary", Double)]]) -> 
                     prop_sortDataFrame_core df criteria
         prop "joinDF produces correct IDs" (prop_joinDF_correct_ids @'[ '("ID", Int), '("Name", T.Text)] @'[ '("ID", Int), '("City", T.Text)])
         prop "applyColumn applies a function correctly" (prop_applyColumn_plus_one)
@@ -750,15 +752,15 @@ main = hspec $ do
 
 prop_applyColumn_plus_one :: DataFrame '[ '("Name", T.Text), '("Age", Int), '("Salary", Double)] -> Property
 prop_applyColumn_plus_one df = ioProperty $ do
-    let f = (+1) :: Int -> Int
+    let f = (+1) :: \Int -> Int
     appliedDf <- streamToDf (applyColumn (Proxy @"Age") f (dfToStream df))
-    let originalAges = map (fromRight' . fromDFValue @Int . (Map.! "Age")) (toRows df)
-    let appliedAges = map (fromRight' . fromDFValue @Int . (Map.! "Age")) (toRows appliedDf)
+    originalAges <- mapM (fromRight' . fromDFValue @Int . (Map.! "Age")) (toRows df)
+    appliedAges <- mapM (fromRight' . fromDFValue @Int . (Map.! "Age")) (toRows appliedDf)
     let expectedAges = map f originalAges
 
     -- also check that other columns are untouched
-    let originalNames = map (fromRight' . fromDFValue @T.Text . (Map.! "Name")) (toRows df)
-    let appliedNames = map (fromRight' . fromDFValue @T.Text . (Map.! "Name")) (toRows appliedDf)
+    originalNames <- mapM (fromRight' . fromDFValue @T.Text . (Map.! "Name")) (toRows df)
+    appliedNames <- mapM (fromRight' . fromDFValue @T.Text . (Map.! "Name")) (toRows appliedDf)
 
     return $ (appliedAges === expectedAges) .&&. (originalNames === appliedNames)
 
@@ -767,10 +769,10 @@ prop_mutate_correctness df = ioProperty $ do
     let expr = col (Proxy @"Age") +.+ lit (5 :: Int)
     let mutatedDfEither = mutate (Proxy @"AgePlusFive") expr df
     case mutatedDfEither of
-        Left _ -> return $ property False
-        Right mutatedDf -> do
-            let originalAges = map (fromRight' . fromDFValue @Int . (Map.! "Age")) (toRows df)
-            let newColValues = map (fromRight' . fromDFValue @Int . (Map.! "AgePlusFive")) (toRows mutatedDf)
+        Left \_ -> return $ property False
+        Right \mutatedDf -> do
+            originalAges <- mapM (fromRight' . fromDFValue @Int . (Map.! "Age")) (toRows df)
+            newColValues <- mapM (fromRight' . fromDFValue @Int . (Map.! "AgePlusFive")) (toRows mutatedDf)
             let expectedValues = map (+5) originalAges
             return $ newColValues === expectedValues .&&. Map.member "AgePlusFive" (getDataFrameMap mutatedDf)
 
@@ -778,19 +780,23 @@ prop_mutate_correctness df = ioProperty $ do
 prop_sumAgg_correctness :: DataFrame '[ '("Category", T.Text), '("Value", Int)] -> Property
 prop_sumAgg_correctness df = not (isEmpty df) ==> ioProperty $ do
     groupedStream <- groupBy @'["Category"] (dfToStream df)
-    aggregatedDf <- sumAgg @"Value_sum" @"Value" (Proxy @"Value_sum") (return groupedStream)
+    aggregatedDf <- sumAgg @"Value_sum" @"Value" (Proxy @"Value_sum") (return groupedDf)
 
     let originalRows = toRows df
-    let expectedSumMap = Map.fromListWith (+) $ map (\row ->
-            ( fromRight' (fromDFValue @T.Text (row Map.! "Category"))
-            , fromIntegral @Int @Double $ fromRight' (fromDFValue @Int (row Map.! "Value"))
-            )) originalRows
+    expectedSumMapList <- forM originalRows $ \r\ow -> do
+            category <- fromRight' (fromDFValue @T.Text (row Map.! "Category"))
+            value <- fromRight' (fromDFValue @Int (row Map.! "Value") :: IO Int)
+            return (category, fromIntegral @Int @Double value)
+            )
+    let expectedSumMap = Map.fromListWith (+) expectedSumMapList
 
     let aggregatedRows = toRows aggregatedDf
-    let actualSumMap = Map.fromList $ map (\row ->
-            ( fromRight' (fromDFValue @T.Text (row Map.! "Category"))
-            , fromRight' (fromDFValue @Double (row Map.! "Value_sum"))
-            )) aggregatedRows
+    actualSumMapList <- forM aggregatedRows $ \r\ow -> do
+            category <- fromRight' $ fromDFValue @T.Text (row Map.! "Category")
+            valueSum <- fromRight' $ fromDFValue @Double (row Map.! "Value_sum")
+            return (category, valueSum)
+            )
+    let actualSumMap = Map.fromList actualSumMapList
 
     return $ actualSumMap === expectedSumMap
 
@@ -799,20 +805,24 @@ prop_sumAgg_correctness df = not (isEmpty df) ==> ioProperty $ do
 prop_meanAgg_correctness :: DataFrame '[ '("Category", T.Text), '("Value", Int)] -> Property
 prop_meanAgg_correctness df = not (isEmpty df) ==> ioProperty $ do
     groupedStream <- groupBy @'["Category"] (dfToStream df)
-    aggregatedDf <- meanAgg @"Value_mean" @"Value" (Proxy @"Value_mean") (return groupedStream)
+    aggregatedDf <- meanAgg @"Value_mean" @"Value" (Proxy @"Value_mean") (return groupedDf)
 
     let originalRows = toRows df
-    let valueMap = Map.fromListWith (++) $ map (\row ->
-            ( fromRight' (fromDFValue @T.Text (row Map.! "Category"))
-            , [fromIntegral @Int @Double $ fromRight' (fromDFValue @Int (row Map.! "Value"))]
-            )) originalRows
-    let expectedMeanMap = Map.map (\vals -> sum vals / fromIntegral (length vals)) valueMap
+    valueMapList <- forM originalRows $ \r\ow -> do
+            category <- fromRight' $ fromDFValue @T.Text (row Map.! "Category")
+            value <- fromRight' (fromDFValue @Int (row Map.! "Value") :: IO Int)
+            return (category, [fromIntegral @Int @Double value])
+            )
+    let valueMap = Map.fromListWith (++) valueMapList
+    let expectedMeanMap = Map.map \v\als -> sum vals / fromIntegral (length vals)) valueMap
 
     let aggregatedRows = toRows aggregatedDf
-    let actualMeanMap = Map.fromList $ map (\row ->
-            ( fromRight' (fromDFValue @T.Text (row Map.! "Category"))
-            , fromRight' (fromDFValue @Double (row Map.! "Value_mean"))
-            )) aggregatedRows
+    actualMeanMapList <- forM aggregatedRows \r\ow -> do
+            category <- fromRight' $ fromDFValue @T.Text (row Map.! "Category")
+            valueMean <- fromRight' $ fromDFValue @Double (row Map.! "Value_mean")
+            return (category, valueMean)
+            )
+    let actualMeanMap = Map.fromList actualMeanMapList
 
     return $ actualMeanMap === expectedMeanMap
 
@@ -821,34 +831,40 @@ prop_meanAgg_correctness df = not (isEmpty df) ==> ioProperty $ do
 prop_countAgg_correctness :: DataFrame '[ '("Category", T.Text), '("Value", Int)] -> Property
 prop_countAgg_correctness df = not (isEmpty df) ==> ioProperty $ do
     groupedStream <- groupBy @'["Category"] (dfToStream df)
-    aggregatedDf <- countAgg @"Category_count" @"Category" (Proxy @"Category_count") (return groupedStream)
+    aggregatedDf <- countAgg @"Category_count" @"Category" (Proxy @"Category_count") (return groupedDf)
 
     let originalRows = toRows df
-    let expectedCountMap = Map.fromListWith (+) $ map (\row ->
-            ( fromRight' (fromDFValue @T.Text (row Map.! "Category"))
-            , 1 :: Int
-            )) originalRows
+    expectedCountMapList <- forM originalRows $ \r\ow -> do
+            category <- fromRight' (fromDFValue @T.Text (row Map.! "Category"))
+            return (category, 1 :: Int)
+            )
+    let expectedCountMap = Map.fromListWith (+) expectedCountMapList
 
-    let aggregatedRows = toRows aggregatedDf
-    let actualCountMap = Map.fromList $ map (\row ->
-            ( fromRight' (fromDFValue @T.Text (row Map.! "Category"))
-            , fromRight' (fromDFValue @Int (row Map.! "Category_count"))
-            )) aggregatedRows
+    let aggregatedRows = toRows df
+    actualCountMapList <- forM aggregatedRows \r\ow -> do
+            category <- fromRight' $ fromDFValue @T.Text (row Map.! "Category")
+            categoryCount <- fromRight' $ fromDFValue @Int (row Map.! "Category_count")
+            return (category, categoryCount)
+            )
+
+    let actualCountMap = Map.fromList actualCountMapList
 
     return $ actualCountMap === expectedCountMap
 
 
 
-prop_arbitrary_dataframe_type_awareness :: forall cols. (KnownColumns cols, Arbitrary (DataFrame cols)) => DataFrame cols -> Property
+prop_arbitrary_dataframe_type_awareness :: forall cols. (KnownColumns cols, Arbitrary (DataFrame cols)) => DataFrame \cols -> Property
 prop_arbitrary_dataframe_type_awareness df = property $ do
     let (DataFrame dfMap) = df
-    all (\(colName, colType) ->
+    all \(colName, colType) ->
         case Map.lookup (T.pack colName) dfMap of
-            Just vec -> all (isCorrectType colType) (V.toList vec)
-            Nothing -> True
-        ) (map (\(n, t) -> (T.unpack n, t)) (columnSchema (Proxy @cols)))
+            Just \vec -> all (isCorrectType colType) (V.toList vec)
+            \Nothing -> True
+        ) (map (
+            \(n, t) -> (T.unpack n, t) -- Explicitly unpack Symbol to String
+            ) (columnSchema (Proxy @cols)))
     where
-        isCorrectType :: TypeRep -> DFValue -> Bool
+        isCorrectType :: \TypeRep -> \DFValue -> Bool
         isCorrectType tr (IntValue _) = tr == typeRep (Proxy @Int)
         isCorrectType tr (TextValue _) = tr == typeRep (Proxy @T.Text)
         isCorrectType tr (DoubleValue _) = tr == typeRep (Proxy @Double)
@@ -857,12 +873,12 @@ prop_arbitrary_dataframe_type_awareness df = property $ do
         isCorrectType _ (DateValue _) = True -- Placeholder
         isCorrectType _ (TimestampValue _) = True -- Placeholder
 
-prop_filterRows_tautology :: (KnownColumns cols, Arbitrary (DataFrame cols)) => DataFrame cols -> Property
+prop_filterRows_tautology :: (KnownColumns cols, Arbitrary (DataFrame cols)) => DataFrame \cols -> Property
 prop_filterRows_tautology df = ioProperty $ do
     filteredDf <- streamToDf (filterRows (FilterPredicate (ExprPredicate (lit True))) (dfToStream df))
     return $ filteredDf === df
 
-prop_filterRows_contradiction :: (KnownColumns cols, Arbitrary (DataFrame cols)) => DataFrame cols -> Property
+prop_filterRows_contradiction :: (KnownColumns cols, Arbitrary (DataFrame cols)) => DataFrame \cols -> Property
 prop_filterRows_contradiction df = ioProperty $ do
     filteredDf <- streamToDf (filterRows (FilterPredicate (ExprPredicate (lit False))) (dfToStream df))
     return $ toRows filteredDf === []
@@ -874,15 +890,17 @@ prop_selectColumns_preserves_values :: forall (selectedCols :: [Symbol]) allCols
     , AllKnownSymbol selectedCols
     , All CanBeDFValue (GetColumnTypes allCols)
     , All CanBeDFValue (GetColumnTypes (SelectCols selectedCols allCols))
-    ) => Proxy selectedCols -> DataFrame allCols -> Property
-prop_selectColumns_preserves_values _ df =
+    ) => Proxy \selectedCols -> DataFrame \allCols -> Property
+prop_selectColumns_preserves_values _ df = 
     let selectedDf = selectColumns @selectedCols df
         originalRows = toRows df
         selectedRows = toRows selectedDf
     in  property $ L.length originalRows == L.length selectedRows &&
-        all (\(originalRow, selectedRow) ->
-            all (\colName ->
-                Map.lookup colName originalRow ==
+        all (
+            \(originalRow, selectedRow) -> 
+            all (
+                \colName -> 
+                Map.lookup colName originalRow == 
                 Map.lookup colName selectedRow
             ) (symbolsToTexts (Proxy @selectedCols))
         ) (zip originalRows selectedRows)
@@ -894,17 +912,19 @@ prop_dropColumns_preserves_values :: forall droppedCols allCols.
     , All CanBeDFValue (GetColumnTypes allCols)
     , All CanBeDFValue (GetColumnTypes (DropColumns droppedCols allCols))
     , AllKnownSymbol (MapFst (DropColumns droppedCols allCols))
-    ) => Proxy droppedCols -> DataFrame allCols -> Property
-prop_dropColumns_preserves_values _ df =
+    ) => Proxy \droppedCols -> DataFrame \allCols -> Property
+prop_dropColumns_preserves_values _ df = 
     let droppedDf = dropColumns @droppedCols df
         originalRows = toRows df
         droppedRows = toRows droppedDf
         remainingCols = Sara.DataFrame.Wrangling.symbolsToTexts (Proxy @(MapFst (DropColumns droppedCols allCols)))
-    in  property $ L.length originalRows == L.length droppedRows &&
-        all (\(originalRow, droppedRow) ->
-            all (\colName ->
-                Map.lookup colName originalRow ==
-                Map.lookup colName droppedRow
+    in  property $ L.length originalRows == L.length droppedRows && 
+        all (
+            \(originalRow, droppedRow) -> 
+            all (
+                \colName -> 
+                Map.lookup colName originalRow == 
+                Map.lookup colName selectedRow
             ) remainingCols
         ) (zip originalRows droppedRows)
 
@@ -913,40 +933,42 @@ arbitrarySortCriteriaFixed = do
     order <- elements [Ascending, Descending]
     return [SortCriterion (Proxy @"Name") order] -- Using a fixed column for simplicity
 
-prop_sortDataFrame_core :: forall cols.
+prop_sortDataFrame_core :: forall cols. 
     ( KnownColumns cols, Arbitrary (DataFrame cols)
     , HasColumn "Name" cols, TypeOf "Name" cols ~ T.Text
     , HasColumn "Age" cols, TypeOf "Age" cols ~ Int
     , HasColumn "Salary" cols, TypeOf "Salary" cols ~ Double
     , All CanBeDFValue (GetColumnTypes cols)
-    ) => DataFrame cols -> [SortCriterion cols] -> Property
-prop_sortDataFrame_core df criteria =
+    ) => DataFrame \cols -> [SortCriterion cols] -> Property
+prop_sortDataFrame_core df criteria = 
     let sortedDf = sortDataFrame criteria df
         originalRows = toRows df
         sortedRows = toRows sortedDf
-    in  property $ L.length originalRows == L.length sortedRows &&
+    in  property $ L.length originalRows == L.length sortedRows && 
         isSorted criteria sortedRows originalRows
     where
         isSorted :: [SortCriterion cols] -> [Row] -> [Row] -> Bool
         isSorted [] _ _ = True
-        isSorted (crit:_) sorted original =
-            let compareRows' r1 r2 = case crit of
-                    SortCriterion (_ :: Proxy col) Ascending ->
+        isSorted (crit:_) sorted original = 
+            let compareRows' r1 r2 = case crit of 
+                    SortCriterion (_ :: Proxy col) \Ascending -> 
                         let val1 = Map.lookup (T.pack $ symbolVal (Proxy @col)) r1
                             val2 = Map.lookup (T.pack $ symbolVal (Proxy @col)) r2
                         in compare val1 val2
-                    SortCriterion (_ :: Proxy col) Descending ->
+                    SortCriterion (_ :: Proxy col) \Descending -> 
                         let val1 = Map.lookup (T.pack $ symbolVal (Proxy @col)) r1
                             val2 = Map.lookup (T.pack $ symbolVal (Proxy @col)) r2
                         in compare val2 val1
-            in  all (\(r1, r2) -> compareRows' r1 r2 /= GT) (zip sorted (drop 1 sorted)) &&
+            in  all (
+                \(r1, r2) -> compareRows' r1 r2 /= GT
+            ) (zip sorted (drop 1 sorted)) && 
                 sortBy compareRows' original == sorted
 
-prop_joinDF_correct_ids :: forall cols1 cols2. (KnownColumns cols1, KnownColumns cols2, Arbitrary (DataFrame cols1), Arbitrary (DataFrame cols2), HasColumn "ID" cols1, HasColumn "ID" cols2, TypeOf "ID" cols1 ~ Int, TypeOf "ID" cols2 ~ Int, KnownColumns (JoinCols cols1 cols2), All CanBeDFValue (GetColumnTypes cols1), All CanBeDFValue (GetColumnTypes cols2), All CanBeDFValue (GetColumnTypes (JoinCols cols1 cols2)), CreateOutputRow (JoinCols cols1 cols2)) => DataFrame cols1 -> DataFrame cols2 -> Property
-prop_joinDF_correct_ids df1 df2 = property $ do
+prop_joinDF_correct_ids :: forall cols1 cols2. (KnownColumns cols1, KnownColumns cols2, Arbitrary (DataFrame cols1), Arbitrary (DataFrame cols2), HasColumn "ID" cols1, HasColumn "ID" cols2, TypeOf "ID" cols1 ~ Int, TypeOf "ID" cols2 ~ Int, KnownColumns (JoinCols cols1 cols2), All CanBeDFValue (GetColumnTypes cols1), All CanBeDFValue (GetColumnTypes cols2), All CanBeDFValue (GetColumnTypes (JoinCols cols1 cols2)), CreateOutputRow (JoinCols cols1 cols2)) => DataFrame \cols1 -> DataFrame \cols2 -> Property
+prop_joinDF_correct_ids df1 df2 = ioProperty $ do
     let joinedDf = joinDF @'["ID"] df1 df2
-    let joinedIDs = Set.fromList $ map (fromRight' . fromDFValue @Int . (Map.! "ID")) (toRows joinedDf)
-    let df1IDs = Set.fromList $ map (fromRight' . fromDFValue @Int . (Map.! "ID")) (toRows df1)
-    let df2IDs = Set.fromList $ map (fromRight' . fromDFValue @Int . (Map.! "ID")) (toRows df2)
+    joinedIDs <- Set.fromList <$> mapM (fromRight' . fromDFValue @Int . (Map.! "ID")) (toRows joinedDf)
+    df1IDs <- Set.fromList <$> mapM (fromRight' . fromDFValue @Int . (Map.! "ID")) (toRows df1)
+    df2IDs <- Set.fromList <$> mapM (fromRight' . fromDFValue @Int . (Map.! "ID")) (toRows df2)
     let expectedIDs = Set.intersection df1IDs df2IDs
-    joinedIDs === expectedIDs
+    return $ joinedIDs === expectedIDs

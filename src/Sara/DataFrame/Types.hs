@@ -14,6 +14,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE AllowAmbiguousTypes #-}
+{-# OPTIONS_GHC -Wno-orphans #-}
 
 module Sara.DataFrame.Types (
     DFValue(..),
@@ -60,8 +61,10 @@ module Sara.DataFrame.Types (
 ) where
 
 import qualified Data.Text as T
+import qualified Data.Text.Encoding as TE -- New import
 import Data.Time (Day, UTCTime)
 import Data.Map.Strict (Map)
+import qualified Data.Csv as C -- New import
 import qualified Data.Map.Strict as Map
 import Data.Vector (Vector)
 import Data.Time.Format (parseTimeM, defaultTimeLocale, formatTime)
@@ -82,6 +85,18 @@ import Test.QuickCheck
 import Data.Time.Calendar (fromGregorian)
 import Data.Time.Clock (UTCTime(..), secondsToDiffTime)
 import Data.Bifunctor (first)
+import Control.Applicative ((<|>))
+
+instance C.FromField DFValue where
+    parseField s
+        | s == "NA" || s == "" = return NA
+        | otherwise = 
+            (IntValue <$> C.parseField s) <|> 
+            (DoubleValue <$> C.parseField s) <|> 
+            (BoolValue <$> C.parseField s) <|> 
+            (DateValue <$> C.parseField s) <|> 
+            (TimestampValue <$> C.parseField s) <|> 
+            (TextValue <$> (TE.decodeUtf8 <$> C.parseField s))
 
 
 
@@ -183,6 +198,21 @@ data DFValue = IntValue Int
            | BoolValue Bool
            | NA -- ^ Represents a missing value.
            deriving (Show, Eq, Ord, Generic, NFData)
+
+-- | Parses a `Bool` from a CSV field. Accepts "true" or "false" (case-insensitive).
+instance C.FromField Bool where
+    parseField s
+        | T.toLower (TE.decodeUtf8 s) == "true" = return True
+        | T.toLower (TE.decodeUtf8 s) == "false" = return False
+        | otherwise = fail "Not a boolean value"
+
+-- | Parses a `Day` from a CSV field. Expects the format "YYYY-MM-DD".
+instance C.FromField Day where
+    parseField s = parseTimeM True defaultTimeLocale "%Y-%m-%d" (T.unpack (TE.decodeUtf8 s))
+
+-- | Parses a `UTCTime` from a CSV field. Expects the format "YYYY-MM-DDTHH:MM:SSZ".
+instance C.FromField UTCTime where
+    parseField s = parseTimeM True defaultTimeLocale "%Y-%m-%dT%H:%M:%S%QZ" (T.unpack (TE.decodeUtf8 s))
 
 -- | ToJSON instance for DFValue, allowing conversion to JSON.
 instance ToJSON DFValue where
