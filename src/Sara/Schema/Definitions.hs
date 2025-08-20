@@ -14,12 +14,12 @@ module Sara.Schema.Definitions (
 
 import Sara.DataFrame.Static (inferCsvSchema)
 
-import Data.Text (Text)
+import Data.Text ()
 
-import Data.Time.Calendar (Day)
-import GHC.Generics (Generic)
-import Data.Csv (FromNamedRecord)
-import Sara.DataFrame.Internal (HasSchema, Schema, HasTypeName, getTypeName)
+import Data.Time.Calendar ()
+import GHC.Generics ()
+import Data.Csv ()
+import Sara.DataFrame.Internal ()
 import Data.Aeson
 
 

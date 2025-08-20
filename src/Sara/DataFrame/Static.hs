@@ -1,12 +1,16 @@
 -- | This module provides Template Haskell functions for statically inferring schemas
 -- from CSV files. This allows for creating `DataFrame`s with compile-time guarantees
 -- about column names and types.
+{-# LANGUAGE TemplateHaskell #-}
+
 module Sara.DataFrame.Static ( 
     -- * Template Haskell Functions
     tableTypes,
     inferCsvSchema,
     -- * CSV Reading
     readCsv,
+    -- * Testable helpers (exported for tests)
+    collectColumnSamplesText
 ) where
 
 import Language.Haskell.TH
@@ -14,37 +18,89 @@ import Data.Csv (FromNamedRecord, HasHeader(NoHeader))
 import qualified Data.ByteString.Lazy as BL
 import qualified Data.Vector as V
 import Data.Char (toLower)
-import GHC.Generics ()
+import GHC.Generics (Generic)
 import qualified Data.ByteString.Char8 as BC
+import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
 import qualified Data.Csv as C
 import Data.Time (Day, UTCTime)
 import Data.Time.Format (parseTimeM, defaultTimeLocale)
 import Text.Read (readEither)
-import Data.Maybe (isJust)
+import Data.Maybe (isJust, fromMaybe)
 import Data.Either (isRight)
-import Sara.DataFrame.Internal ()
-
-import Sara.Error(SaraError(..))
 import Data.Bifunctor (first)
+import qualified Data.HashMap.Strict as HM
+
+-- Local modules
+import Sara.DataFrame.Internal (HasSchema(..), HasTypeName(..))
+import Sara.Error (SaraError(..))
 import Sara.Internal.Safe (safeHead)
 
+--------------------------------------------------------------------------------
+-- Field name normalization
+--------------------------------------------------------------------------------
 
--- | A Template Haskell function that generates a record type from a CSV file.
--- The first row of the CSV file is used to determine the field names.
--- The types of the fields are inferred from the data in the first data row.
---
--- For example, given a CSV file `people.csv`:
---
--- > name,age
--- > Alice,25
--- > Bob,30
---
--- `tableTypes "Person" "people.csv"` will generate:
---
--- > data Person = Person { name :: T.Text, age :: Int } deriving (Show, Generic)
--- > instance FromNamedRecord Person
+normalizeFieldName :: Text -> Text
+normalizeFieldName t = case T.uncons (T.replace (T.pack ".") (T.pack "_") t) of
+    Just (x, xs) -> T.cons (toLower x) xs
+    Nothing      -> T.empty
+
+
+--------------------------------------------------------------------------------
+-- Type inference
+--------------------------------------------------------------------------------
+
+inferColumnTypeFromSamples :: [Text] -> Q Type
+inferColumnTypeFromSamples samples = do
+    let nonNaSamples = filter (\s -> T.toLower s /= T.pack "na" && not (T.null s)) samples
+        hasNa        = length nonNaSamples < length samples
+
+    baseTypeQ <- if null nonNaSamples
+        then [t| Text |]
+        else inferMostSpecificType nonNaSamples
+
+    if hasNa
+        then [t| Maybe $(pure baseTypeQ) |]
+        else pure baseTypeQ
+
+inferMostSpecificType :: [Text] -> Q Type
+inferMostSpecificType []    = [t| Text |]
+inferMostSpecificType (s:_) = inferDFType s
+
+inferDFType :: Text -> Q Type
+inferDFType s = do
+  let s_unpack = T.unpack s
+  if isRight (first (const [ParsingError (T.pack "Invalid Int")]) (readEither s_unpack) :: Either [SaraError] Int)
+     then [t| Int |]
+  else if isRight (first (const [ParsingError (T.pack "Invalid Double")]) (readEither s_unpack) :: Either [SaraError] Double)
+     then [t| Double |]
+  else if isJust (parseTimeM True defaultTimeLocale "%Y-%m-%d" s_unpack :: Maybe Day)
+     then [t| Day |]
+  else if isJust (parseTimeM True defaultTimeLocale "%Y-%m-%dT%H:%M:%S%QZ" s_unpack :: Maybe UTCTime)
+     then [t| UTCTime |]
+  else if let ls = T.toLower s in ls == T.pack "true" || ls == T.pack "false"
+     then [t| Bool |]
+  else [t| Text |]
+
+--------------------------------------------------------------------------------
+-- Safe column sampling from rows
+--------------------------------------------------------------------------------
+
+collectColumnSamplesText
+  :: V.Vector BC.ByteString        -- ^ header row (bytes)
+  -> [V.Vector BC.ByteString]      -- ^ data rows (bytes)
+  -> [[Text]]                      -- ^ column-wise samples (as Text)
+collectColumnSamplesText headerRow dataRows =
+  let numCols = V.length headerRow
+      atOrEmpty v i = fromMaybe BC.empty (v V.!? i)
+      column j = [ TE.decodeUtf8 (atOrEmpty row j) | row <- dataRows ]
+  in [ column j | j <- [0 .. numCols - 1] ]
+
+--------------------------------------------------------------------------------
+-- Template Haskell: tableTypes
+--------------------------------------------------------------------------------
+
 tableTypes :: String -> FilePath -> Q [Dec]
 tableTypes name filePath = do
     contents <- runIO $ BL.readFile filePath
@@ -57,70 +113,35 @@ tableTypes name filePath = do
                     case safeHead dataRows of
                         Nothing -> fail "CSV file must have at least one data row."
                         Just firstRowVec -> do
-                            let headers = V.toList $ V.map TE.decodeUtf8 headerRow
-                            let firstRow = V.toList $ V.map TE.decodeUtf8 firstRowVec
-                            let fields = zipWith (\h t -> (mkName (T.unpack (normalizeFieldName h)), inferDFType t)) headers firstRow
+                            let headers  = V.toList $ V.map TE.decodeUtf8 headerRow
+                                firstRow = V.toList $ V.map TE.decodeUtf8 firstRowVec
+                            fields <- mapM
+                              (\(h,t) -> do
+                                  ty <- inferDFType t
+                                  pure (mkName (T.unpack (normalizeFieldName h)), ty)
+                              )
+                              (zip headers firstRow)
                             let recordName = mkName name
-                            record <- dataD (cxt []) recordName [] Nothing [recC recordName (map (\(n, t) -> varBangType n (bangType (bang noSourceUnpackedness noSourceStrictness) t)) fields)]
-                              [derivClause (Just StockStrategy) [pure (ConT (mkName "Show")), pure (ConT (mkName "Generic"))]
-                                                    , derivClause (Just AnyclassStrategy) [pure (ConT (mkName "Data.Csv.FromNamedRecord"))]
-                                                    ]
-                            return [record]
+                            record <- dataD (cxt []) recordName [] Nothing
+                                      [ recC recordName
+                                          ( map (\(n, t) ->
+                                               varBangType n
+                                                 (bangType
+                                                   (bang noSourceUnpackedness noSourceStrictness)
+                                                   (pure t)))
+                                                fields
+                                          )
+                                      ]
+                                      [ derivClause (Just StockStrategy)
+                                          [ [t| Show |], [t| Generic |] ]
+                                      ]
+                            pure [record]
 
--- | Normalizes a field name to be a valid Haskell identifier.
--- It converts the first character to lowercase.
-normalizeFieldName :: T.Text -> T.Text
-normalizeFieldName t = case T.uncons (T.replace (T.pack ".") (T.pack "_") t) of
-    Just (x, xs) -> T.cons (toLower x) xs
-    Nothing -> T.empty
 
--- | Infers the most specific type from a list of sample strings.
--- If any sample is `NA` or empty, the type will be `Maybe` of the inferred type.
-inferColumnTypeFromSamples :: [T.Text] -> Q Language.Haskell.TH.Type
-inferColumnTypeFromSamples samples = do
-    let nonNaSamples = filter (\s -> T.toLower s /= T.pack "na" && not (T.null s)) samples
-    let hasNa = length nonNaSamples < length samples -- If any sample was NA or empty
+--------------------------------------------------------------------------------
+-- Template Haskell: inferCsvSchema
+--------------------------------------------------------------------------------
 
-    baseTypeQ <- if null nonNaSamples
-        then pure (ConT (mkName "Data.Text.Text")) -- Default to Text if all are NA/empty
-        else inferMostSpecificType nonNaSamples
-
-    if hasNa
-        then pure (AppT (ConT (mkName "Data.Maybe.Maybe")) baseTypeQ)
-        else pure baseTypeQ
-
--- | Infers the most specific type from a list of non-`NA` sample strings.
-inferMostSpecificType :: [T.Text] -> Q Language.Haskell.TH.Type
-inferMostSpecificType [] = pure (ConT (mkName "Data.Text.Text")) -- Should not happen if called from inferColumnTypeFromSamples
-inferMostSpecificType (s:_) = inferDFType s
-
--- | Infers a `DFValue` type from a string value.
--- The inference order is: `Int`, `Double`, `Day`, `UTCTime`, `Bool`, `T.Text`.
-inferDFType :: T.Text -> Q Language.Haskell.TH.Type
-inferDFType s = do
-  let s_unpack = T.unpack s
-  if isRight (first (const [ParsingError (T.pack "Invalid Int")]) (readEither s_unpack) :: Either [SaraError] Int) then pure (ConT (mkName "Int"))
-  else if isRight (first (const [ParsingError (T.pack "Invalid Double")]) (readEither s_unpack) :: Either [SaraError] Double) then pure (ConT (mkName "Double"))
-  else if isJust (parseTimeM True defaultTimeLocale "%Y-%m-%d" s_unpack :: Maybe Day) then pure (ConT (mkName "Data.Time.Calendar.Day"))
-  else if isJust (parseTimeM True defaultTimeLocale "%Y-%m-%dT%H:%M:%S%QZ" s_unpack :: Maybe UTCTime) then pure (ConT (mkName "Data.Time.Clock.UTCTime"))
-  else if T.toLower s == T.pack "true" || T.toLower s == T.pack "false" then pure (ConT (mkName "Bool"))
-  else pure (ConT (mkName "Data.Text.Text"))
-
--- | A Template Haskell function that infers a type-level schema from a CSV file
--- and generates a type synonym for it.
--- It also generates a concrete record type for CSV parsing and a `HasSchema` instance.
---
--- For example, given a CSV file `people.csv`:
---
--- > name,age
--- > Alice,25
--- > Bob,30
---
--- `inferCsvSchema "PeopleSchema" "people.csv"` will generate:
---
--- > type PeopleSchema = '[ "name" ::: T.Text, "age" ::: Int ]
--- > data PeopleSchemaRecord = PeopleSchemaRecord { peopleSchemaname :: T.Text, peopleSchemaage :: Int } ...
--- > instance HasSchema PeopleSchemaRecord where type Schema PeopleSchemaRecord = PeopleSchema
 inferCsvSchema :: String -> Bool -> FilePath -> Q [Dec]
 inferCsvSchema typeName withPrefix filePath = do
     contents <- runIO $ BL.readFile filePath
@@ -133,41 +154,111 @@ inferCsvSchema typeName withPrefix filePath = do
                     if null dataRows
                         then fail "CSV file must have at least one data row for schema inference."
                         else do
-                            let headers = V.toList $ V.map TE.decodeUtf8 headerRow
-                            let columnSamples = V.toList $ V.generate (V.length headerRow) $ \colIdx ->
-                                    V.toList $ V.map (\row -> TE.decodeUtf8 (row V.! colIdx)) (V.fromList dataRows)
+                            let headersBS   = V.toList headerRow
+                                headersTxt  = map TE.decodeUtf8 headersBS
+                                columnSamples = collectColumnSamplesText headerRow dataRows
 
                             inferredTypes <- mapM inferColumnTypeFromSamples columnSamples
-                            let finalHeaders = if withPrefix then map (\h -> T.pack typeName <> T.pack "." <> h) headers else headers
-                            let normalizedFinalHeaders = map normalizeFieldName finalHeaders
-                            let schemaListType = foldr (\(h, t) acc -> PromotedConsT `AppT` (PromotedTupleT 2 `AppT` LitT (StrTyLit (T.unpack h)) `AppT` t) `AppT` acc) PromotedNilT (zip finalHeaders inferredTypes)
-                            let typeSyn = TySynD (mkName typeName) [] schemaListType
 
-                            -- Generate a concrete record type for CSV parsing
-                            let recordName = mkName (typeName ++ "Record")
+                            let finalHeaders =
+                                  if withPrefix
+                                      then map (\h -> T.pack typeName <> T.pack "." <> h) headersTxt
+                                      else headersTxt
+
+                                normalizedFinalHeaders = map normalizeFieldName finalHeaders
+
+                                schemaListType =
+                                  foldr
+                                    (\(h, t) acc ->
+                                       PromotedConsT
+                                         `AppT`
+                                           (PromotedTupleT 2
+                                              `AppT` LitT (StrTyLit (T.unpack h))
+                                              `AppT` t)
+                                         `AppT` acc)
+                                    PromotedNilT
+                                    (zip finalHeaders inferredTypes)
+
+                                typeSyn = TySynD (mkName typeName) [] schemaListType
+                                recordName = mkName (typeName ++ "Record")
+
                             recordDec <- dataD (cxt []) recordName [] Nothing 
-                                            [recC recordName (zipWith (\h t -> varBangType (mkName (T.unpack h)) (bangType (bang noSourceUnpackedness noSourceStrictness) (pure t))) normalizedFinalHeaders inferredTypes)]
-                                            [derivClause (Just StockStrategy) [pure (ConT (mkName "Show")), pure (ConT (mkName "Generic"))]]
+                                           [ recC recordName
+                                               ( zipWith
+                                                   (\h t ->
+                                                      varBangType (mkName (T.unpack h))
+                                                        (bangType (bang noSourceUnpackedness noSourceStrictness) (pure t)))
+                                                   normalizedFinalHeaders
+                                                   inferredTypes
+                                               )
+                                           ]
+                                           [ derivClause (Just StockStrategy)
+                                               [ [t| Show |], [t| Generic |] ]
+                                           ]
 
-                            fromNamedRecordInstance <- instanceD (cxt []) 
-                                (pure (AppT (ConT (mkName "Data.Csv.FromNamedRecord")) (ConT recordName)))
-                                []
-
-                            -- Generate HasSchema instance
-                            hasSchemaInstance <- instanceD (cxt []) (pure (AppT (ConT (mkName "Sara.DataFrame.Internal.HasSchema")) (ConT recordName))) [
-                                pure $ TySynInstD (TySynEqn Nothing (AppT (ConT (mkName "Schema")) (ConT recordName)) schemaListType)
-                                ]
-
-                            -- Generate HasTypeName instance
-                            hasTypeNameInstance <- instanceD (cxt []) (pure (AppT (ConT (mkName "Sara.DataFrame.Internal.HasTypeName")) (ConT recordName))) [
-                                funD (mkName "getTypeName") [
-                                    clause [wildP] (normalB (litE (stringL typeName))) []
+                            -- FromNamedRecord instance using generic parser
+                            fromNamedRecordInstance <-
+                              instanceD (cxt [])
+                                [t| FromNamedRecord $(conT recordName) |]
+                                [ funD 'C.parseNamedRecord
+                                    [ clause []
+                                        (normalB [| C.genericParseNamedRecord C.defaultOptions |])
+                                        []
                                     ]
                                 ]
 
-                            return [typeSyn, recordDec, hasSchemaInstance, fromNamedRecordInstance, hasTypeNameInstance]
+                            -- HasSchema instance with associated type
+                            hasSchemaInstance <-
+                              instanceD (cxt [])
+                                [t| HasSchema $(conT recordName) |]
+                                [ tySynInstD (tySynEqn Nothing
+                                    [t| Schema $(conT recordName) |]
+                                    (pure schemaListType)
+                                  )
+                                ]
 
--- | Reads a CSV file into a `Vector` of records.
--- It normalizes the header fields to be valid Haskell identifiers before decoding.
+                            -- HasTypeName instance
+                            hasTypeNameInstance <-
+                              instanceD (cxt [])
+                                [t| HasTypeName $(conT recordName) |]
+                                [ funD 'getTypeName
+                                    [ clause [wildP]
+                                        (normalB (litE (stringL typeName)))
+                                        []
+                                    ]
+                                ]
+
+                            pure [ typeSyn
+                                 , recordDec
+                                 , fromNamedRecordInstance
+                                 , hasSchemaInstance
+                                 , hasTypeNameInstance
+                                 ]
+
+
+--------------------------------------------------------------------------------
+-- CSV reading
+--------------------------------------------------------------------------------
+
 readCsv :: (FromNamedRecord a) => FilePath -> IO (Either [SaraError] (V.Vector a))
-readCsv _ = return $ Left [ParsingError (T.pack "Not implemented")]
+readCsv fp = do
+  contents <- BL.readFile fp
+  case C.decode C.NoHeader contents :: Either String (V.Vector (V.Vector BC.ByteString)) of
+    Left err -> pure $ Left [ParsingError (T.pack err)]
+    Right rows ->
+      if V.null rows
+        then pure $ Left [ParsingError (T.pack "CSV file is empty.")]
+        else do
+          let headerRow = V.head rows
+              dataRows  = V.toList (V.tail rows)
+              headersTxt = map (normalizeFieldName . TE.decodeUtf8) (V.toList headerRow)
+              numCols    = V.length headerRow
+
+              mkNamed row =
+                let vals = [ fromMaybe BC.empty (row V.!? j) | j <- [0 .. numCols - 1] ]
+                    keys = map TE.encodeUtf8 headersTxt
+                in HM.fromList (zip keys vals)
+
+              parseRow r = C.runParser (C.parseNamedRecord (mkNamed r))
+
+          pure $ first (pure . ParsingError . T.pack) (traverse parseRow (V.fromList dataRows))
