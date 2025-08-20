@@ -1,0 +1,24 @@
+
+**Easy**
+
+*   **Remove Redundant Imports:** There are several unused imports that can be removed to clean up the code.
+*   **Replace `error` with safer alternatives:** The use of `error` can lead to runtime crashes. It's better to use safer alternatives like `throwIO` or `fail` in `IO` contexts, and `counterexample` in QuickCheck properties.
+*   **Address Orphan Instances:** The `FromField` instances in `src/Sara/DataFrame/CsvInstances.hs` are orphan instances, which is generally discouraged. They should be moved to a more appropriate module.
+*   **Remove Duplicate `transpose` function:** There's a duplicate `transpose` function in `src/Sara/DataFrame/SQL.hs`. It should be removed and the one from `src/Sara/DataFrame/Internal.hs` should be used instead.
+*   **Use safe indexing in `inferCsvSchema`:** The use of `V.!` (partial indexing) in `src/Sara/DataFrame/Static.hs` can lead to runtime errors. It should be replaced with `V.!?` (safe indexing).
+
+**Medium**
+
+*   **Handle `Map.findWithDefault NA`:** The use of `Map.findWithDefault NA` in `fromRows`, `melt`, and `sortDataFrame` can hide bugs. These functions should be refactored to return `Either SaraError (DataFrame cols)` and propagate a `ColumnNotFound` error if a column is missing.
+*   **Improve `applyColumn` error handling:** The `applyColumn` function currently yields an empty DataFrame on error. It should be modified to propagate the `SaraError` in the stream.
+*   **Optimize `filterRows` streaming:** The `filterRows` function can be optimized to operate directly on `Vector`s within the `DataFrame` to avoid `toRows`/`fromRows` conversions.
+*   **Implement `readCsv` in `Sara.DataFrame.Static`:** The `readCsv` function in `src/Sara/DataFrame/Static.hs` is not implemented.
+*   **Improve `validateEmployee` input type safety:** The `validateEmployee` function in `src/Sara/Validation/Employee.hs` takes a tuple as input, which is not very type-safe. It should be refactored to use a record type or a `Map` (like `Row`).
+*   **Improve email validation in `mkEmail`:** The email validation in `src/Sara/Core/Types.hs` is very basic. It should be improved to use a more robust validation method.
+*   **Optimize `transpose` efficiency:** The `transpose` function in `src/Sara/DataFrame/Internal.hs` can be optimized for large lists.
+
+**Difficult**
+
+*   **Full Streaming Integration:** The library is not yet fully leveraging the `streaming` library. There are several places where `S.toList_` is used, which reads the entire stream into memory. A full streaming integration would require significant architectural changes.
+*   **Strengthen Type-Level Schema Enforcement:** While the library has a strong type-level schema system, there are still some inconsistencies between the type-level schema and the runtime data. Ensuring runtime data consistency with the type-level schema would require changes to the `DataFrame` internal representation or more rigorous validation at data ingestion points.
+*   **Improve Type Inference Robustness:** The type inference in `src/Sara/DataFrame/Static.hs` could be more robust. It currently only samples the first data row. Sampling more rows or the entire column would provide a more accurate type inference.

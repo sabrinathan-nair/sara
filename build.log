@@ -1,0 +1,38 @@
+Configuration is affected by the following files:
+- cabal.project.local
+Resolving dependencies...
+Build profile: -w ghc-9.12.2 -O1
+In order, the following will be built (use -v for more details):
+ - sara-0.1.0.0 (lib) (first run)
+ - sara-0.1.0.0 (exe:sara-tutorial) (first run)
+Configuring library for sara-0.1.0.0...
+Preprocessing library for sara-0.1.0.0...
+Building library for sara-0.1.0.0...
+[ 1 of 23] Compiling Sara.DataFrame.TimeSeries ( src/Sara/DataFrame/TimeSeries.hs, dist-newstyle/build/x86_64-linux/ghc-9.12.2/sara-0.1.0.0/build/Sara/DataFrame/TimeSeries.o, dist-newstyle/build/x86_64-linux/ghc-9.12.2/sara-0.1.0.0/build/Sara/DataFrame/TimeSeries.dyn_o )
+[ 2 of 23] Compiling Sara.Error       ( src/Sara/Error.hs, dist-newstyle/build/x86_64-linux/ghc-9.12.2/sara-0.1.0.0/build/Sara/Error.o, dist-newstyle/build/x86_64-linux/ghc-9.12.2/sara-0.1.0.0/build/Sara/Error.dyn_o )
+[ 3 of 23] Compiling Sara.DataFrame.Types ( src/Sara/DataFrame/Types.hs, dist-newstyle/build/x86_64-linux/ghc-9.12.2/sara-0.1.0.0/build/Sara/DataFrame/Types.o, dist-newstyle/build/x86_64-linux/ghc-9.12.2/sara-0.1.0.0/build/Sara/DataFrame/Types.dyn_o )
+[ 4 of 23] Compiling Sara.DataFrame.Strings ( src/Sara/DataFrame/Strings.hs, dist-newstyle/build/x86_64-linux/ghc-9.12.2/sara-0.1.0.0/build/Sara/DataFrame/Strings.o, dist-newstyle/build/x86_64-linux/ghc-9.12.2/sara-0.1.0.0/build/Sara/DataFrame/Strings.dyn_o )
+[ 5 of 23] Compiling Sara.DataFrame.Missing ( src/Sara/DataFrame/Missing.hs, dist-newstyle/build/x86_64-linux/ghc-9.12.2/sara-0.1.0.0/build/Sara/DataFrame/Missing.o, dist-newstyle/build/x86_64-linux/ghc-9.12.2/sara-0.1.0.0/build/Sara/DataFrame/Missing.dyn_o )
+[ 6 of 23] Compiling Sara.DataFrame.Join ( src/Sara/DataFrame/Join.hs, dist-newstyle/build/x86_64-linux/ghc-9.12.2/sara-0.1.0.0/build/Sara/DataFrame/Join.o, dist-newstyle/build/x86_64-linux/ghc-9.12.2/sara-0.1.0.0/build/Sara/DataFrame/Join.dyn_o )
+[ 7 of 23] Compiling Sara.DataFrame.Internal ( src/Sara/DataFrame/Internal.hs, dist-newstyle/build/x86_64-linux/ghc-9.12.2/sara-0.1.0.0/build/Sara/DataFrame/Internal.o, dist-newstyle/build/x86_64-linux/ghc-9.12.2/sara-0.1.0.0/build/Sara/DataFrame/Internal.dyn_o )
+[ 8 of 23] Compiling Sara.DataFrame.Concat ( src/Sara/DataFrame/Concat.hs, dist-newstyle/build/x86_64-linux/ghc-9.12.2/sara-0.1.0.0/build/Sara/DataFrame/Concat.o, dist-newstyle/build/x86_64-linux/ghc-9.12.2/sara-0.1.0.0/build/Sara/DataFrame/Concat.dyn_o )
+[ 9 of 23] Compiling Sara.DataFrame.Aggregate ( src/Sara/DataFrame/Aggregate.hs, dist-newstyle/build/x86_64-linux/ghc-9.12.2/sara-0.1.0.0/build/Sara/DataFrame/Aggregate.o, dist-newstyle/build/x86_64-linux/ghc-9.12.2/sara-0.1.0.0/build/Sara/DataFrame/Aggregate.dyn_o )
+[10 of 23] Compiling Sara.DataFrame.SQL ( src/Sara/DataFrame/SQL.hs, dist-newstyle/build/x86_64-linux/ghc-9.12.2/sara-0.1.0.0/build/Sara/DataFrame/SQL.o, dist-newstyle/build/x86_64-linux/ghc-9.12.2/sara-0.1.0.0/build/Sara/DataFrame/SQL.dyn_o )
+[11 of 23] Compiling Sara.DataFrame.Expression ( src/Sara/DataFrame/Expression.hs, dist-newstyle/build/x86_64-linux/ghc-9.12.2/sara-0.1.0.0/build/Sara/DataFrame/Expression.o, dist-newstyle/build/x86_64-linux/ghc-9.12.2/sara-0.1.0.0/build/Sara/DataFrame/Expression.dyn_o )
+[12 of 23] Compiling Sara.DataFrame.Predicate ( src/Sara/DataFrame/Predicate.hs, dist-newstyle/build/x86_64-linux/ghc-9.12.2/sara-0.1.0.0/build/Sara/DataFrame/Predicate.o, dist-newstyle/build/x86_64-linux/ghc-9.12.2/sara-0.1.0.0/build/Sara/DataFrame/Predicate.dyn_o )
+[13 of 23] Compiling Sara.DataFrame.Wrangling ( src/Sara/DataFrame/Wrangling.hs, dist-newstyle/build/x86_64-linux/ghc-9.12.2/sara-0.1.0.0/build/Sara/DataFrame/Wrangling.o, dist-newstyle/build/x86_64-linux/ghc-9.12.2/sara-0.1.0.0/build/Sara/DataFrame/Wrangling.dyn_o )
+[14 of 23] Compiling Sara.DataFrame.Transform ( src/Sara/DataFrame/Transform.hs, dist-newstyle/build/x86_64-linux/ghc-9.12.2/sara-0.1.0.0/build/Sara/DataFrame/Transform.o, dist-newstyle/build/x86_64-linux/ghc-9.12.2/sara-0.1.0.0/build/Sara/DataFrame/Transform.dyn_o )
+[15 of 23] Compiling Sara.DataFrame.Apply ( src/Sara/DataFrame/Apply.hs, dist-newstyle/build/x86_64-linux/ghc-9.12.2/sara-0.1.0.0/build/Sara/DataFrame/Apply.o, dist-newstyle/build/x86_64-linux/ghc-9.12.2/sara-0.1.0.0/build/Sara/DataFrame/Apply.dyn_o )
+[16 of 23] Compiling Sara.Core.Types  ( src/Sara/Core/Types.hs, dist-newstyle/build/x86_64-linux/ghc-9.12.2/sara-0.1.0.0/build/Sara/Core/Types.o, dist-newstyle/build/x86_64-linux/ghc-9.12.2/sara-0.1.0.0/build/Sara/Core/Types.dyn_o )
+[17 of 23] Compiling Sara.Internal.Safe ( src/Sara/Internal/Safe.hs, dist-newstyle/build/x86_64-linux/ghc-9.12.2/sara-0.1.0.0/build/Sara/Internal/Safe.o, dist-newstyle/build/x86_64-linux/ghc-9.12.2/sara-0.1.0.0/build/Sara/Internal/Safe.dyn_o )
+[18 of 23] Compiling Sara.DataFrame.Statistics ( src/Sara/DataFrame/Statistics.hs, dist-newstyle/build/x86_64-linux/ghc-9.12.2/sara-0.1.0.0/build/Sara/DataFrame/Statistics.o, dist-newstyle/build/x86_64-linux/ghc-9.12.2/sara-0.1.0.0/build/Sara/DataFrame/Statistics.dyn_o )
+[19 of 23] Compiling Sara.DataFrame.Static ( src/Sara/DataFrame/Static.hs, dist-newstyle/build/x86_64-linux/ghc-9.12.2/sara-0.1.0.0/build/Sara/DataFrame/Static.o, dist-newstyle/build/x86_64-linux/ghc-9.12.2/sara-0.1.0.0/build/Sara/DataFrame/Static.dyn_o )
+[20 of 23] Compiling Sara.REPL        ( src/Sara/REPL.hs, dist-newstyle/build/x86_64-linux/ghc-9.12.2/sara-0.1.0.0/build/Sara/REPL.o, dist-newstyle/build/x86_64-linux/ghc-9.12.2/sara-0.1.0.0/build/Sara/REPL.dyn_o )
+[21 of 23] Compiling Sara.Schema.Definitions ( src/Sara/Schema/Definitions.hs, dist-newstyle/build/x86_64-linux/ghc-9.12.2/sara-0.1.0.0/build/Sara/Schema/Definitions.o, dist-newstyle/build/x86_64-linux/ghc-9.12.2/sara-0.1.0.0/build/Sara/Schema/Definitions.dyn_o )
+[22 of 23] Compiling Sara.Validation.Employee ( src/Sara/Validation/Employee.hs, dist-newstyle/build/x86_64-linux/ghc-9.12.2/sara-0.1.0.0/build/Sara/Validation/Employee.o, dist-newstyle/build/x86_64-linux/ghc-9.12.2/sara-0.1.0.0/build/Sara/Validation/Employee.dyn_o )
+[23 of 23] Compiling Sara.DataFrame.IO ( src/Sara/DataFrame/IO.hs, dist-newstyle/build/x86_64-linux/ghc-9.12.2/sara-0.1.0.0/build/Sara/DataFrame/IO.o, dist-newstyle/build/x86_64-linux/ghc-9.12.2/sara-0.1.0.0/build/Sara/DataFrame/IO.dyn_o )
+Configuring executable 'sara-tutorial' for sara-0.1.0.0...
+Preprocessing executable 'sara-tutorial' for sara-0.1.0.0...
+Building executable 'sara-tutorial' for sara-0.1.0.0...
+[1 of 1] Compiling Main             ( app/Tutorial.hs, dist-newstyle/build/x86_64-linux/ghc-9.12.2/sara-0.1.0.0/x/sara-tutorial/build/sara-tutorial/sara-tutorial-tmp/Main.o )
+[2 of 2] Linking dist-newstyle/build/x86_64-linux/ghc-9.12.2/sara-0.1.0.0/x/sara-tutorial/build/sara-tutorial/sara-tutorial

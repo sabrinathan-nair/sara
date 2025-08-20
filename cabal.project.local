@@ -1,2 +1,4 @@
 ignore-project: False
 with-compiler: ghc-9.12.2
+package sara
+  ghc-options: -Wunused-imports -Werror

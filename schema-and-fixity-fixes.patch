@@ -1,0 +1,87 @@
+--- sara/src/Sara/DataFrame/Types.hs
++++ sara/src/Sara/DataFrame/Types.hs
+@@ -269,8 +269,8 @@
+ instance Semigroup (DataFrame cols) where
+     (DataFrame dfMap1) <> (DataFrame dfMap2) = DataFrame $ Map.unionWith (V.++) dfMap1 dfMap2
+ 
+-instance Monoid (DataFrame cols) where
+-    mempty = DataFrame Map.empty
++instance KnownColumns cols => Monoid (DataFrame cols) where
++  mempty = DataFrame $ Map.fromList [ (c, V.empty) | c <- columnNames (Proxy @cols) ]
+ 
+ -- | A type to represent a single row with its schema at the type level.
+ newtype TypeLevelRow (cols :: [(Symbol, Type)]) = TypeLevelRow (Map T.Text DFValue)
+
+
+
+--- sara/src/Sara/DataFrame/Wrangling.hs
++++ sara/src/Sara/DataFrame/Wrangling.hs
+@@ -194,7 +194,7 @@
+         rows = toRows df
+         filteredRows = filter (not . any isNA . Map.elems) rows
+     if null filteredRows
+-       then Right $ DataFrame Map.empty
++       then Right $ DataFrame (Map.fromList [ (c, V.empty) | c <- columnNames (Proxy :: Proxy cols) ])
+        else do
+            let colNames = columnNames (Proxy @cols)
+            
+
+--- sara/src/Sara/DataFrame/SQL.hs
++++ sara/src/Sara/DataFrame/SQL.hs
+@@ -68,7 +68,7 @@
+                 expectedColTypes = columnTypes p
+ 
+             case rows of
+-                [] -> return $ Right $ DataFrame Map.empty
++            [] -> return $ Right $ DataFrame $ Map.fromList [ (c, V.empty) | c <- expectedColNames ]
+                 (firstRow:_) -> do
+                     if length firstRow /= colCount
+                         then return $ Left $ GenericError (T.pack $ "SQL query result column count mismatch. Expected " ++ show colCount ++ ", got " ++ show (length firstRow))
+
+--- sara/src/Sara/DataFrame/Concat.hs
++++ sara/src/Sara/DataFrame/Concat.hs
+@@ -37,10 +37,10 @@
+ -- [fromList [("age",IntValue 25),("name",TextValue "Alice")],fromList [("age",IntValue 30),("name",TextValue "Bob")]]
+ 
+ concatDF :: KnownColumns cols => Proxy cols -> ConcatAxis -> [DataFrame cols] -> DataFrame cols
+-concatDF _ _ [] = DataFrame Map.empty
++concatDF proxyCols _ [] = DataFrame $ Map.fromList [ (c, V.empty) | c <- fmap fst (columnSchema proxyCols) ]
+ concatDF proxyCols ConcatRows dfs =
+     if all isEmpty dfs
+-        then DataFrame Map.empty
++        then DataFrame $ Map.fromList [ (c, V.empty) | c <- fmap fst (columnSchema proxyCols) ]
+         else
+             let
+                 columnNames = map fst (columnSchema proxyCols)
+
+--- sara/src/Sara/DataFrame/Expression.hs
++++ sara/src/Sara/DataFrame/Expression.hs
+@@ -44,6 +44,13 @@
+ 
+ 
+ import Sara.Error (SaraError(ColumnNotFound, ArithmeticError, GenericError))
++
++infixr 3 &&.
++infixr 2 ||.
++infixl 6 +.+, -.-
++infixl 7 *.*, /.!
++infix  4 <., <=., ===., >., >=.
++
+ 
+ 
+ -- | A type-safe expression GADT for `DataFrame` operations.
+
+--- sara/src/Sara/DataFrame/Predicate.hs
++++ sara/src/Sara/DataFrame/Predicate.hs
+@@ -34,6 +34,11 @@
+ import qualified Data.Text as T
+ 
+ import Sara.Error (SaraError(..))
++
++infixr 3 &&&
++infixr 2 |||
++infix  4 <.<, <=.<, ===, >.>, >=.>
++
+ 
+ 
+ -- | A type-safe predicate for filtering a `DataFrame`.
