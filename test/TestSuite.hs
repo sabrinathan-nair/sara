@@ -15,21 +15,22 @@
 module Main where
 
 import Control.Exception (throwIO)
-import Control.Monad (forM)
-import Control.Monad.IO.Class (liftIO)
+
+
 import qualified Data.Aeson as A
 import qualified Data.ByteString.Lazy as BL
 import qualified Data.List as L
 import qualified Data.Map.Strict as Map
-import Data.Maybe (fromMaybe)
+
 import Data.Proxy (Proxy(..))
 import qualified Data.Set as Set
 import qualified Data.Text as T
 import Data.Time (UTCTime(..), secondsToDiffTime)
 import Data.Time.Calendar (fromGregorian)
 import qualified Data.Vector as V
+import Data.Typeable (typeRep)
 import Database.SQLite.Simple
-import GHC.TypeLits (Symbol)
+
 import System.IO (hClose)
 import System.IO.Temp (withSystemTempFile)
 import Test.Hspec
@@ -43,14 +44,14 @@ import Sara.DataFrame.Wrangling
   , dropColumns
   , filterRows
   , sortDataFrame
-  , SortCriterion(..), SortOrder(..)
   )
 import Sara.DataFrame.Transform (applyColumn, mutate)
 import Sara.DataFrame.Join (joinDF)
-import Sara.DataFrame.Concat (concatDF, ConcatMode(..))
+import Sara.DataFrame.Concat (concatDF)
 import Sara.DataFrame.Missing (fillna, ffill, bfill, dropna, isna, notna, DropAxis(..))
 import Sara.DataFrame.Aggregate
 import Sara.DataFrame.Expression
+import Sara.DataFrame.Predicate (FilterPredicate(..), RowPredicate(..))
 import Sara.DataFrame.SQL (readSQL)
 import Sara.DataFrame.IO (readJSONStreaming, writeJSONStreaming, readCsvStreaming)
 import Sara.Error (SaraError(..))
@@ -202,17 +203,19 @@ main = hspec $ do
                  , Map.fromList [("Name",TextValue "B"),("Age",IntValue 31),("Salary",DoubleValue 2.0)]
                  , Map.fromList [("Name",TextValue "C"),("Age",IntValue 40),("Salary",DoubleValue 3.0)]
                  ]
-          p  = (col (Proxy @"Age") :: Expr _ Int) >. lit (30 :: Int)
-      filtered <- streamToDf (filterRows p (dfToStream df))
+          p  = (col (Proxy @"Age") :: Expr '[ '("Name",T.Text), '("Age",Int), '("Salary",Double)] Int) >. lit (30 :: Int)
+      filtered <- streamToDf (filterRows (FilterPredicate (ExprPredicate p)) (dfToStream df))
       length (toRows filtered) `shouldBe` 2
 
     it "applyColumn modifies just one column" $ do
       let df = fromRows @'[ '("Name",T.Text), '("Age",Int), '("Salary",Double)]
                  [ Map.fromList [("Name",TextValue "A"),("Age",IntValue 5),("Salary",DoubleValue 0.0)] ]
       out <- streamToDf (applyColumn (Proxy @"Age") ((+2) :: Int -> Int) (dfToStream df))
-      let [r] = toRows out
-      fromDFValue @Int (r Map.! "Age") `shouldBe` Right 7
-      fromDFValue @T.Text (r Map.! "Name") `shouldBe` Right "A"
+      case toRows out of
+        [r] -> do
+          fromDFValue @Int (r Map.! "Age") `shouldBe` Right 7
+          fromDFValue @T.Text (r Map.! "Name") `shouldBe` Right "A"
+        rows -> expectationFailure ("Expected 1 row, but got " ++ show (length rows))
 
     it "sortDataFrame sorts by a single criterion" $ do
       let df = fromRows @'[ '("Name",T.Text), '("Age",Int), '("Salary",Double)]
@@ -227,12 +230,13 @@ main = hspec $ do
     it "mutate adds a new computable column" $ do
       let df = fromRows @'[ '("Name",T.Text), '("Age",Int), '("Salary",Double)]
                  [ Map.fromList [("Name",TextValue "A"),("Age",IntValue 5),("Salary",DoubleValue 0.0)] ]
-          expr = (col (Proxy @"Age") :: Expr _ Int) +.+ lit (5::Int)
+          expr = (col (Proxy @"Age") :: Expr '[ '("Name",T.Text), '("Age",Int), '("Salary",Double)] Int) +.+ lit (5::Int)
       case mutate @"AgePlusFive" (Proxy @"AgePlusFive") expr df of
         Left e   -> expectationFailure (show e)
         Right df' -> do
-          let [r] = toRows df'
-          fromDFValue @Int (r Map.! "AgePlusFive") `shouldBe` Right 10
+          case toRows df' of
+            [r] -> fromDFValue @Int (r Map.! "AgePlusFive") `shouldBe` Right 10
+            rows -> expectationFailure ("Expected 1 row, but got " ++ show (length rows))
 
   -----------------------------------------------------------------------------------------------
   -- Join
@@ -248,11 +252,12 @@ main = hspec $ do
                     , Map.fromList [("ID",IntValue 3),("City",TextValue "London")]
                     ]
           joined = joinDF @'["ID"] left right
-      length (toRows joined) `shouldBe` 1
-      let [r] = toRows joined
-      fromDFValue @Int     (r Map.! "ID")   `shouldBe` Right 1
-      fromDFValue @T.Text  (r Map.! "Name") `shouldBe` Right "Alice"
-      fromDFValue @T.Text  (r Map.! "City") `shouldBe` Right "New York"
+      case toRows joined of
+        [r] -> do
+          fromDFValue @Int     (r Map.! "ID")   `shouldBe` Right 1
+          fromDFValue @T.Text  (r Map.! "Name") `shouldBe` Right "Alice"
+          fromDFValue @T.Text  (r Map.! "City") `shouldBe` Right "New York"
+        rows -> expectationFailure ("Expected 1 row, but got " ++ show (length rows))
 
   -----------------------------------------------------------------------------------------------
   -- selectColumns / dropColumns
@@ -262,15 +267,17 @@ main = hspec $ do
       let df = fromRows @'[ '("Name",T.Text), '("Age",Int), '("Salary",Double)]
                [ Map.fromList [("Name",TextValue "A"),("Age",IntValue 1),("Salary",DoubleValue 1.0)] ]
           df' = selectColumns @'["Name","Salary"] df
-          [r] = toRows df'
-      Map.keys r `shouldMatchList` ["Name","Salary"]
+      case toRows df' of
+        [r] -> Map.keys r `shouldMatchList` ["Name","Salary"]
+        rows -> expectationFailure ("Expected 1 row, but got " ++ show (length rows))
 
     it "dropColumns removes requested columns" $ do
       let df = fromRows @'[ '("Name",T.Text), '("Age",Int), '("Salary",Double)]
                [ Map.fromList [("Name",TextValue "A"),("Age",IntValue 1),("Salary",DoubleValue 1.0)] ]
           df' = dropColumns @'["Age"] df
-          [r] = toRows df'
-      Map.keys r `shouldMatchList` ["Name","Salary"]
+      case toRows df' of
+        [r] -> Map.keys r `shouldMatchList` ["Name","Salary"]
+        rows -> expectationFailure ("Expected 1 row, but got " ++ show (length rows))
 
   -----------------------------------------------------------------------------------------------
   -- Aggregations
@@ -389,7 +396,7 @@ main = hspec $ do
       toRows (bfill d) `shouldBe` toRows e
 
     it "dropna rows (any NA)" $ do
-      let out = dropna dfNA (DropAxis DropRows) Nothing
+      let out = dropna dfNA DropRows Nothing
       length (toRows out) `shouldBe` 1
 
     it "isna / notna shapes are preserved" $ do
@@ -411,10 +418,11 @@ main = hspec $ do
         BL.hPutStr h "" >> hClose h
         writeJSONStreaming fp (dfToStream df)
         r <- readJSONStreaming (Proxy @'[ '("name",T.Text), '("age",Int)]) fp
-        s <- either (const (expectationFailure "readJSONStreaming failed") >> pure (fromRows @'[] []))
-                    streamToDf
-                    r
-        s `shouldBe` df
+        case r of
+          Left err -> expectationFailure ("readJSONStreaming failed: " ++ show err)
+          Right stream -> do
+            s <- streamToDf stream
+            s `shouldBe` df
 
     it "non-existent JSON file yields IOError" $ do
       r <- readJSONStreaming (Proxy @'[ '("name",T.Text), '("age",Int)]) "does-not-exist.json"
@@ -492,7 +500,7 @@ main = hspec $ do
       fromDFValue @T.Text (toDFValue ("hi"::T.Text))    `shouldBe` Right "hi"
       fromDFValue @Bool   (toDFValue True)              `shouldBe` Right True
       (fromDFValue @(Maybe Int) (toDFValue (Nothing::Maybe Int))) `shouldBe` Right Nothing
-      (fromDFValue @(Maybe Int) (toDFValue (Just 7)))             `shouldBe` Right (Just 7)
+      (fromDFValue @(Maybe Int) (toDFValue (Just (7 :: Int))))             `shouldBe` Right (Just 7)
 
     it "getDFValueType reports expected TypeRep (or Nothing for NA)" $ do
       getDFValueType (IntValue  1) `shouldBe` Just (typeRep (Proxy @Int))
@@ -510,12 +518,12 @@ main = hspec $ do
 
     prop "filterRows True ≡ identity" $
       \(DF_NAS df) -> ioProperty $ do
-        out <- streamToDf (filterRows (lit True) (dfToStream df))
+        out <- streamToDf (filterRows (FilterPredicate (ExprPredicate (lit True))) (dfToStream df))
         pure (out === df)
 
     prop "filterRows False produces empty DF" $
       \(DF_NAS df) -> ioProperty $ do
-        out <- streamToDf (filterRows (lit False) (dfToStream df))
+        out <- streamToDf (filterRows (FilterPredicate (ExprPredicate (lit False))) (dfToStream df))
         pure (toRows out === [])
 
     prop "selectColumns preserves selected values" $
@@ -551,7 +559,7 @@ main = hspec $ do
     prop "mutate adds AgePlusFive = Age + 5" $
       \(DF_NAS df) ->
         case mutate @"AgePlusFive" (Proxy @"AgePlusFive")
-                    ((col (Proxy @"Age") :: Expr _ Int) +.+ lit (5::Int)) df of
+                    ((col (Proxy @"Age") :: Expr '[ '("Name", T.Text), '("Age", Int), '("Salary", Double)] Int) +.+ lit (5::Int)) df of
           Left _  -> property False
           Right d ->
             let expect' r = do

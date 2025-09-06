@@ -16,6 +16,8 @@ module Sara.DataFrame.Wrangling (
     filterByBoolColumn,
     -- * Sorting
     sortDataFrame,
+    SortCriterion(..),
+    SortOrder(..),
     -- * Dropping
     dropColumns,
     dropRows,

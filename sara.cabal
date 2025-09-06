@@ -28,6 +28,8 @@ library
                      , Sara.Core.Types
                      , Sara.DataFrame.Wrangling
                      , Sara.Internal.Safe
+                     , Sara.DataFrame.Stream
+
   hs-source-dirs:      src
   build-depends:       base >=4.21.0.0 && <4.22
                      , text
@@ -86,6 +88,7 @@ test-suite sara-test
                      , mtl
                      , sqlite-simple
   default-language:    Haskell2010
+  default-extensions:  NumericUnderscores
   ghc-options:         -Wall
   other-modules:
     Sara.DataFrame.Aggregate

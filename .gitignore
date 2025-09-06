@@ -1,13 +1,1 @@
-dist-newstyle/
-*.hi
-*.o
-vega_lite_plot.html
-sara_tutorial.txt
-
-sara_roadmap.md
-sara_vs_frames.md
-commit_message.txt
-# Gemini-generated files to ignore
-final_tests.md
-gemini_tasks.md
-liquid.md
+brand-new.db
